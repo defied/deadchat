@@ -3,7 +3,13 @@ import db from '../db/connection';
 import { authenticate } from '../middleware/auth';
 import { adminOnly } from '../middleware/adminOnly';
 import { hashPassword } from '../services/auth';
-import { getUserUsage, getAllUsage } from '../services/usage';
+import {
+  getUserUsage,
+  getUsageSummary,
+  listModelPricing,
+  upsertModelPricing,
+  deleteModelPricing,
+} from '../services/usage';
 import type { User } from '../types/models';
 
 const router = Router();
@@ -14,8 +20,35 @@ router.use(authenticate, adminOnly);
 // GET /api/users/usage/summary - must be before /:id routes
 router.get('/usage/summary', (req: Request, res: Response): void => {
   const days = parseInt(req.query.days as string) || 30;
-  const summary = getAllUsage(days);
-  res.json({ summary, days });
+  res.json(getUsageSummary(days));
+});
+
+// GET /api/users/usage/pricing
+router.get('/usage/pricing', (_req: Request, res: Response): void => {
+  res.json({ pricing: listModelPricing() });
+});
+
+// PUT /api/users/usage/pricing/:model
+router.put('/usage/pricing/:model', (req: Request, res: Response): void => {
+  const model = req.params.model as string;
+  const { inputPerMtok, outputPerMtok, notes } = req.body || {};
+  if (typeof inputPerMtok !== 'number' || typeof outputPerMtok !== 'number') {
+    res.status(400).json({ error: 'inputPerMtok and outputPerMtok must be numbers' });
+    return;
+  }
+  const row = upsertModelPricing(model, inputPerMtok, outputPerMtok, notes ?? null);
+  res.json({ pricing: row });
+});
+
+// DELETE /api/users/usage/pricing/:model
+router.delete('/usage/pricing/:model', (req: Request, res: Response): void => {
+  const model = req.params.model as string;
+  const ok = deleteModelPricing(model);
+  if (!ok) {
+    res.status(400).json({ error: 'Cannot delete fallback (*) or unknown model' });
+    return;
+  }
+  res.json({ message: 'Deleted' });
 });
 
 // GET /api/users

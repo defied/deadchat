@@ -6,13 +6,14 @@ import { UserForm } from '../components/admin/UserForm';
 import { PasswordReset } from '../components/admin/PasswordReset';
 import { UsageChart } from '../components/admin/UsageChart';
 import { ModelsPanel } from '../components/admin/ModelsPanel';
+import { ModelPricingPanel } from '../components/admin/ModelPricingPanel';
 import { LiveStatsPanel } from '../components/admin/LiveStatsPanel';
 import type { User } from '../api/auth';
 import type { UsageSummary } from '../api/users';
 import * as usersApi from '../api/users';
-import { Users, BarChart3, Plus, Cpu, Activity } from 'lucide-react';
+import { Users, BarChart3, Plus, Cpu, Activity, DollarSign } from 'lucide-react';
 
-type Tab = 'users' | 'usage' | 'models' | 'live';
+type Tab = 'users' | 'usage' | 'pricing' | 'models' | 'live';
 
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>('users');
@@ -164,6 +165,12 @@ export function AdminPage() {
             label="Usage"
           />
           <TabButton
+            active={tab === 'pricing'}
+            onClick={() => setTab('pricing')}
+            icon={<DollarSign size={14} />}
+            label="Pricing"
+          />
+          <TabButton
             active={tab === 'models'}
             onClick={() => setTab('models')}
             icon={<Cpu size={14} />}
@@ -197,6 +204,10 @@ export function AdminPage() {
 
         {tab === 'usage' && (
           <UsageChart data={usageData} loading={usageLoading} />
+        )}
+
+        {tab === 'pricing' && (
+          <ModelPricingPanel />
         )}
 
         {tab === 'models' && (

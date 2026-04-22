@@ -142,7 +142,7 @@ export async function handleChatMessage(
   }
 
   // Log usage
-  logUsage(user.id, sessionId, 'chat', promptTokens, evalTokens, durationMs);
+  logUsage(user.id, sessionId, 'chat', reportedModel, promptTokens, evalTokens, durationMs);
   recordRequest({
     userId: user.id,
     username: user.username,

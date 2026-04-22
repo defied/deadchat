@@ -102,7 +102,7 @@ async function proxyStream(
   } finally {
     const duration = Date.now() - started;
     try {
-      logUsage(req.user!.id, null, `public:${upstreamPath}`, promptTokens, evalTokens, duration);
+      logUsage(req.user!.id, null, `public:${upstreamPath}`, model || null, promptTokens, evalTokens, duration);
     } catch {
       // never fail request on logging failure
     }

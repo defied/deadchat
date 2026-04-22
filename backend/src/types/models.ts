@@ -29,10 +29,20 @@ export interface UsageRecord {
   user_id: number;
   session_id: number | null;
   endpoint: string;
+  model: string | null;
   tokens_in: number;
   tokens_out: number;
   duration_ms: number;
   created_at: string;
+}
+
+export interface ModelPricing {
+  model: string;
+  input_per_mtok: number;
+  output_per_mtok: number;
+  currency: string;
+  notes: string | null;
+  updated_at: string;
 }
 
 export interface RefreshToken {
