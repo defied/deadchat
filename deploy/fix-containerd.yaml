@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fix-containerd-script
+  namespace: deadchat
+data:
+  fix.sh: |
+    #!/bin/bash
+    set -e
+    containerd config default > /etc/containerd/config.toml
+    sed -i '0,/config_path = ""/s|config_path = ""|config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
+    mkdir -p /etc/containerd/certs.d/192.168.0.8:31500
+    printf 'server = "http://192.168.0.8:31500"\n\n[host."http://192.168.0.8:31500"]\n  capabilities = ["pull", "resolve", "push"]\n' > /etc/containerd/certs.d/192.168.0.8:31500/hosts.toml
+    echo "=== hosts.toml ==="
+    cat /etc/containerd/certs.d/192.168.0.8:31500/hosts.toml
+    echo "=== config_path ==="
+    grep config_path /etc/containerd/config.toml | head -2
+    systemctl restart containerd
+    sleep 5
+    echo "=== pull test ==="
+    ctr -n k8s.io images pull 192.168.0.8:31500/deadchat-backend:latest 2>&1 | tail -5
+    ctr -n k8s.io images pull 192.168.0.8:31500/deadchat-frontend:latest 2>&1 | tail -5
+    echo "DONE"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-fix3
+  namespace: deadchat
+spec:
+  hostPID: true
+  hostNetwork: true
+  containers:
+    - name: nsenter
+      image: alpine:3.19
+      command:
+        - nsenter
+        - "--target"
+        - "1"
+        - "--mount"
+        - "--uts"
+        - "--ipc"
+        - "--net"
+        - "--pid"
+        - "--"
+        - bash
+        - /mnt/fix.sh
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: script
+          mountPath: /mnt
+  volumes:
+    - name: script
+      configMap:
+        name: fix-containerd-script
+  restartPolicy: Never

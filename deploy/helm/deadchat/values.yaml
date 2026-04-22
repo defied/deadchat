@@ -1,0 +1,50 @@
+frontend:
+  image:
+    repository: deadchat-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 80
+
+backend:
+  image:
+    repository: deadchat-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    port: 3000
+  env:
+    ollamaUrl: "http://192.168.0.106:11434"
+    ollamaModel: "gemma4"
+    maxFileSize: "10485760"
+  jwtSecret: "changeme-generate-a-real-secret"
+
+storage:
+  size: 5Gi
+  storageClass: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: deadchat.deadplanet.net
+  tls:
+    enabled: true
+    clusterIssuer: letsencrypt-prod
+
+resources:
+  frontend:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  backend:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi

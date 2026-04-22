@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "deadchat.fullname" . }}-config
+  labels:
+    {{- include "deadchat.labels" . | nindent 4 }}
+data:
+  OLLAMA_URL: {{ .Values.backend.env.ollamaUrl | quote }}
+  OLLAMA_MODEL: {{ .Values.backend.env.ollamaModel | quote }}
+  MAX_FILE_SIZE: {{ .Values.backend.env.maxFileSize | quote }}

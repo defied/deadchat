@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "deadchat.fullname" . }}-frontend
+  labels:
+    {{- include "deadchat.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.frontend.service.port }}
+      targetPort: 80
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "deadchat.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend

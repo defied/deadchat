@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/frontend.Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/backend.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - JWT_SECRET=deadchat-dev-secret
+      - OLLAMA_URL=http://192.168.0.106:11434
+      - OLLAMA_MODEL=gemma4
+      - DB_PATH=/data/deadchat.db
+      - UPLOAD_DIR=/data/uploads
+    volumes:
+      - backend-data:/data
+
+volumes:
+  backend-data:

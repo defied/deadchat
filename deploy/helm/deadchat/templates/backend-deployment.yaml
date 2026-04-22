@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "deadchat.fullname" . }}-backend
+  labels:
+    {{- include "deadchat.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "deadchat.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "deadchat.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3000"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "deadchat.fullname" . }}-secret
+                  key: JWT_SECRET
+            - name: OLLAMA_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "deadchat.fullname" . }}-config
+                  key: OLLAMA_URL
+            - name: OLLAMA_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "deadchat.fullname" . }}-config
+                  key: OLLAMA_MODEL
+            - name: MAX_FILE_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "deadchat.fullname" . }}-config
+                  key: MAX_FILE_SIZE
+            - name: DB_PATH
+              value: /data/deadchat.db
+            - name: UPLOAD_DIR
+              value: /data/uploads
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.resources.backend | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "deadchat.fullname" . }}-data
