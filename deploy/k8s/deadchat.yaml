@@ -113,7 +113,10 @@ spec:
           image: ghcr.io/defied/deadchat-frontend:2a1ba3cc231f
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 80
+            - name: http
+              containerPort: 80
+            - name: status
+              containerPort: 8080
           livenessProbe:
             httpGet:
               path: /
@@ -145,8 +148,12 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 80
+    - name: status
+      port: 8080
+      targetPort: 8080
   selector:
     app.kubernetes.io/name: deadchat-frontend
 ---

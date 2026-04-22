@@ -3,7 +3,10 @@ import { authenticate } from '../middleware/auth';
 import { adminOnly } from '../middleware/adminOnly';
 import { config } from '../config';
 import db from '../db/connection';
-import { getSnapshot } from '../services/liveStats';
+import { buildSnapshot, fetchNginxStatus, type RunningModelLite } from '../services/liveStats';
+
+const FRONTEND_STATUS_URL =
+  process.env.FRONTEND_STATUS_URL || 'http://deadchat-frontend:8080/_nginx_status';
 
 const router = Router();
 
@@ -38,23 +41,32 @@ router.get('/running', authenticate, adminOnly, async (_req: Request, res: Respo
 
 // GET /api/ollama/live-stats - loaded models + host + recent request telemetry
 router.get('/live-stats', authenticate, adminOnly, async (_req: Request, res: Response): Promise<void> => {
-  const snapshot = getSnapshot();
-  let running: unknown[] = [];
-  let ollamaError: string | undefined;
+  const [psResult, nginxStatus] = await Promise.all([
+    (async () => {
+      try {
+        const response = await fetch(`${config.ollamaUrl}/api/ps`);
+        if (!response.ok) return { running: [] as RunningModelLite[], error: `Ollama responded ${response.status}` };
+        const data = await response.json() as { models?: RunningModelLite[] };
+        return { running: data.models || [], error: undefined as string | undefined };
+      } catch (err: any) {
+        return { running: [] as RunningModelLite[], error: err.message as string };
+      }
+    })(),
+    fetchNginxStatus(FRONTEND_STATUS_URL),
+  ]);
 
-  try {
-    const response = await fetch(`${config.ollamaUrl}/api/ps`);
-    if (response.ok) {
-      const data = await response.json() as { models?: unknown[] };
-      running = data.models || [];
-    } else {
-      ollamaError = `Ollama responded ${response.status}`;
-    }
-  } catch (err: any) {
-    ollamaError = err.message;
-  }
+  const snapshot = buildSnapshot({
+    runningModels: psResult.running,
+    nginxStatus,
+    nginxError: nginxStatus ? undefined : 'Frontend status unreachable',
+    ollamaReachable: !psResult.error,
+  });
 
-  res.json({ running, ollamaError, ...snapshot });
+  res.json({
+    running: psResult.running,
+    ollamaError: psResult.error,
+    ...snapshot,
+  });
 });
 
 // POST /api/ollama/pull - pull a model (streaming progress)

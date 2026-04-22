@@ -6,9 +6,9 @@ export interface RequestEvent {
   username: string;
   model: string;
   endpoint: 'chat' | 'generate';
-  startedAt: number;               // ms epoch
-  firstTokenAt?: number;           // ms epoch (when first token arrived)
-  finishedAt: number;              // ms epoch
+  startedAt: number;
+  firstTokenAt?: number;
+  finishedAt: number;
   wallDurationMs: number;
   promptTokens: number;
   evalTokens: number;
@@ -17,6 +17,23 @@ export interface RequestEvent {
   promptEvalDurationNs?: number;
   evalDurationNs?: number;
   error?: string;
+}
+
+export interface RunningModelLite {
+  name: string;
+  size: number;
+  size_vram: number;
+  expires_at?: string;
+}
+
+export interface NginxStatus {
+  active: number;
+  accepts: number;
+  handled: number;
+  requests: number;
+  reading: number;
+  writing: number;
+  waiting: number;
 }
 
 const MAX_EVENTS = 100;
@@ -45,8 +62,42 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx];
 }
 
-export function getSnapshot(): {
-  recent: RequestEvent[];
+export function parseNginxStatus(body: string): NginxStatus | null {
+  // nginx stub_status format:
+  //   Active connections: 12
+  //   server accepts handled requests
+  //    1000 1000 5000
+  //   Reading: 0 Writing: 1 Waiting: 11
+  const active = /Active connections:\s*(\d+)/.exec(body)?.[1];
+  const counts = /server accepts handled requests\s*\n\s*(\d+)\s+(\d+)\s+(\d+)/.exec(body);
+  const rww = /Reading:\s*(\d+)\s*Writing:\s*(\d+)\s*Waiting:\s*(\d+)/.exec(body);
+  if (!active || !counts || !rww) return null;
+  return {
+    active: Number(active),
+    accepts: Number(counts[1]),
+    handled: Number(counts[2]),
+    requests: Number(counts[3]),
+    reading: Number(rww[1]),
+    writing: Number(rww[2]),
+    waiting: Number(rww[3]),
+  };
+}
+
+export async function fetchNginxStatus(url: string, timeoutMs = 1500): Promise<NginxStatus | null> {
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(t);
+    if (!response.ok) return null;
+    const text = await response.text();
+    return parseNginxStatus(text);
+  } catch {
+    return null;
+  }
+}
+
+export interface Snapshot {
   rolling: {
     windowMs: number;
     requests: number;
@@ -58,18 +109,40 @@ export function getSnapshot(): {
     avgTtftMs: number;
     errors: number;
   };
-  host: {
-    loadavg: number[];
-    cpus: number;
-    totalMemMB: number;
-    freeMemMB: number;
+  recent: RequestEvent[];
+  backend: {
     processRssMB: number;
     processHeapUsedMB: number;
     uptimeSec: number;
     nodeVersion: string;
+  };
+  frontend: {
+    status: NginxStatus | null;
+    error?: string;
+  };
+  node: {
+    loadavg: number[];
+    cpus: number;
+    totalMemMB: number;
+    freeMemMB: number;
     platform: string;
   };
-} {
+  gpu: {
+    source: string;
+    totalVramMB: number;
+    models: Array<{ name: string; vramMB: number; totalMB: number }>;
+    reachable: boolean;
+  };
+}
+
+interface SnapshotInputs {
+  runningModels: RunningModelLite[];
+  nginxStatus: NginxStatus | null;
+  nginxError?: string;
+  ollamaReachable: boolean;
+}
+
+export function buildSnapshot(inputs: SnapshotInputs): Snapshot {
   const now = Date.now();
   const inWindow = events.filter((e) => now - e.finishedAt <= ROLLING_WINDOW_MS);
 
@@ -99,11 +172,17 @@ export function getSnapshot(): {
     ? tokensPerSec.reduce((s, v) => s + v, 0) / tokensPerSec.length
     : 0;
 
-  const mem = process.memoryUsage();
   const MB = 1024 * 1024;
+  const mem = process.memoryUsage();
+
+  const gpuModels = inputs.runningModels.map((m) => ({
+    name: m.name,
+    vramMB: (m.size_vram || 0) / MB,
+    totalMB: (m.size || 0) / MB,
+  }));
+  const totalVramMB = gpuModels.reduce((s, m) => s + m.vramMB, 0);
 
   return {
-    recent: events.slice(-30).reverse(),
     rolling: {
       windowMs: ROLLING_WINDOW_MS,
       requests: inWindow.length,
@@ -115,16 +194,29 @@ export function getSnapshot(): {
       avgTtftMs: ttftCount ? ttftSum / ttftCount : 0,
       errors,
     },
-    host: {
-      loadavg: os.loadavg(),
-      cpus: os.cpus().length,
-      totalMemMB: os.totalmem() / MB,
-      freeMemMB: os.freemem() / MB,
+    recent: events.slice(-30).reverse(),
+    backend: {
       processRssMB: mem.rss / MB,
       processHeapUsedMB: mem.heapUsed / MB,
       uptimeSec: process.uptime(),
       nodeVersion: process.version,
+    },
+    frontend: {
+      status: inputs.nginxStatus,
+      error: inputs.nginxError,
+    },
+    node: {
+      loadavg: os.loadavg(),
+      cpus: os.cpus().length,
+      totalMemMB: os.totalmem() / MB,
+      freeMemMB: os.freemem() / MB,
       platform: `${os.platform()} ${os.arch()}`,
+    },
+    gpu: {
+      source: 'ollama:/api/ps',
+      totalVramMB,
+      models: gpuModels,
+      reachable: inputs.ollamaReachable,
     },
   };
 }

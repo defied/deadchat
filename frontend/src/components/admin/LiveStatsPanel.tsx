@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, AlertCircle, Pause, Play, RefreshCw, Cpu, MemoryStick, Zap } from 'lucide-react';
+import { Activity, AlertCircle, Pause, Play, RefreshCw, Cpu, MemoryStick, Zap, Server, Globe } from 'lucide-react';
 import * as ollamaApi from '../../api/ollama';
 import type { LiveStats, LiveRequestEvent } from '../../api/ollama';
 
@@ -162,13 +162,30 @@ export function LiveStatsPanel() {
             />
           </div>
 
-          {/* Host + loaded models row */}
+          {/* Resources row: Backend pod / Frontend pod / Cluster node */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: 10, marginBottom: 14,
+          }}>
+            <Card title="Backend (pod)" icon={<Server size={13} />}>
+              <BackendBlock stats={stats} />
+            </Card>
+            <Card title="Frontend (pod)" icon={<Globe size={13} />}>
+              <FrontendBlock stats={stats} />
+            </Card>
+            <Card title="Cluster node (shared)" icon={<Cpu size={13} />}>
+              <NodeBlock stats={stats} />
+            </Card>
+          </div>
+
+          {/* GPU + loaded models row */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
             gap: 10, marginBottom: 14,
           }}>
-            <Card title="Host">
-              <HostBlock stats={stats} />
+            <Card title="GPU / VRAM (Ollama host)" icon={<Zap size={13} />}>
+              <GpuBlock stats={stats} />
             </Card>
             <Card title={`Loaded models (${stats.running.length})`}>
               {stats.running.length === 0 ? (
@@ -272,36 +289,147 @@ const cellStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-function HostBlock({ stats }: { stats: LiveStats }) {
-  const memUsed = stats.host.totalMemMB - stats.host.freeMemMB;
-  const memPct = (memUsed / stats.host.totalMemMB) * 100;
-  const loadPct = Math.min(100, (stats.host.loadavg[0] / stats.host.cpus) * 100);
-
+function BackendBlock({ stats }: { stats: LiveStats }) {
+  const heapPctOfRss = stats.backend.processRssMB > 0
+    ? (stats.backend.processHeapUsedMB / stats.backend.processRssMB) * 100
+    : 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <GaugeRow
         icon={<MemoryStick size={13} />}
-        label="System RAM"
-        pct={memPct}
-        detail={`${formatBytes(memUsed)} / ${formatBytes(stats.host.totalMemMB)}`}
-      />
-      <GaugeRow
-        icon={<Cpu size={13} />}
-        label={`CPU load (${stats.host.cpus} cores)`}
-        pct={loadPct}
-        detail={`${stats.host.loadavg.map((l) => l.toFixed(2)).join(' · ')}`}
+        label="Heap / RSS"
+        pct={heapPctOfRss}
+        detail={`${formatBytes(stats.backend.processHeapUsedMB)} / ${formatBytes(stats.backend.processRssMB)}`}
       />
       <div style={{
         display: 'flex', justifyContent: 'space-between',
         fontSize: 11, color: 'var(--color-text-dim)',
         paddingTop: 4, borderTop: '1px solid var(--color-border)',
       }}>
-        <span>Process RSS {formatBytes(stats.host.processRssMB)}</span>
-        <span>Heap {formatBytes(stats.host.processHeapUsedMB)}</span>
-        <span>Up {formatUptime(stats.host.uptimeSec)}</span>
+        <span>Uptime {formatUptime(stats.backend.uptimeSec)}</span>
+        <span style={{ fontFamily: 'var(--font-mono)' }}>Node {stats.backend.nodeVersion}</span>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-        Node {stats.host.nodeVersion} · {stats.host.platform}
+    </div>
+  );
+}
+
+function FrontendBlock({ stats }: { stats: LiveStats }) {
+  const fe = stats.frontend;
+  if (!fe.status) {
+    return (
+      <div style={{ color: 'var(--color-text-dim)', fontSize: 12, padding: '4px 0' }}>
+        {fe.error || 'Frontend status unavailable'}
+        <div style={{ fontSize: 11, marginTop: 4 }}>
+          Backend scrapes <code>http://deadchat-frontend:8080/_nginx_status</code>. If you just rolled out, give the new frontend pod a minute to come up.
+        </div>
+      </div>
+    );
+  }
+  const s = fe.status;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <StatPair label="Active conns" value={s.active.toString()} />
+        <StatPair label="Requests (total)" value={s.requests.toLocaleString()} />
+        <StatPair label="Reading" value={s.reading.toString()} />
+        <StatPair label="Writing" value={s.writing.toString()} />
+        <StatPair label="Waiting" value={s.waiting.toString()} />
+        <StatPair label="Accepted / handled" value={`${s.accepts.toLocaleString()} / ${s.handled.toLocaleString()}`} />
+      </div>
+      <div style={{
+        fontSize: 11, color: 'var(--color-text-dim)',
+        paddingTop: 4, borderTop: '1px solid var(--color-border)',
+      }}>
+        nginx stub_status · static assets + /api proxy
+      </div>
+    </div>
+  );
+}
+
+function NodeBlock({ stats }: { stats: LiveStats }) {
+  const memUsed = stats.node.totalMemMB - stats.node.freeMemMB;
+  const memPct = (memUsed / stats.node.totalMemMB) * 100;
+  const loadPct = Math.min(100, (stats.node.loadavg[0] / stats.node.cpus) * 100);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <GaugeRow
+        icon={<MemoryStick size={13} />}
+        label="System RAM"
+        pct={memPct}
+        detail={`${formatBytes(memUsed)} / ${formatBytes(stats.node.totalMemMB)}`}
+      />
+      <GaugeRow
+        icon={<Cpu size={13} />}
+        label={`CPU load (${stats.node.cpus} cores)`}
+        pct={loadPct}
+        detail={`${stats.node.loadavg.map((l) => l.toFixed(2)).join(' · ')}`}
+      />
+      <div style={{
+        fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)',
+        paddingTop: 4, borderTop: '1px solid var(--color-border)',
+      }}>
+        {stats.node.platform} · shared by all pods on this node
+      </div>
+    </div>
+  );
+}
+
+function GpuBlock({ stats }: { stats: LiveStats }) {
+  const { gpu } = stats;
+  if (!gpu.reachable) {
+    return (
+      <div style={{ color: 'var(--color-text-dim)', fontSize: 12, padding: '4px 0' }}>
+        Ollama host not reachable — cannot read VRAM occupancy.
+      </div>
+    );
+  }
+  if (gpu.models.length === 0) {
+    return (
+      <div style={{ color: 'var(--color-text-dim)', fontSize: 12, padding: '4px 0' }}>
+        No models currently in VRAM. <span style={{ opacity: 0.7 }}>Chat with a model to populate.</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4,
+        }}>
+          <span>Total VRAM occupied</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--color-text)' }}>
+            {formatBytes(gpu.totalVramMB)}
+          </span>
+        </div>
+      </div>
+      {gpu.models.map((m) => (
+        <div key={m.name} style={{
+          fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)',
+          display: 'flex', justifyContent: 'space-between',
+        }}>
+          <span style={{ color: 'var(--color-text-secondary)' }}>{m.name}</span>
+          <span>{formatBytes(m.vramMB)} / {formatBytes(m.totalMB)}</span>
+        </div>
+      ))}
+      <div style={{
+        fontSize: 11, color: 'var(--color-text-dim)',
+        paddingTop: 4, borderTop: '1px solid var(--color-border)',
+      }}>
+        Source: {gpu.source} · occupancy only (not utilization %)
+      </div>
+    </div>
+  );
+}
+
+function StatPair({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'var(--color-text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)', fontFamily: 'var(--font-mono)' }}>
+        {value}
       </div>
     </div>
   );
@@ -334,17 +462,18 @@ function GaugeRow({ icon, label, pct, detail }: {
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{
       padding: 14, background: 'var(--color-surface)',
       border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)',
     }}>
       <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
         fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em',
         color: 'var(--color-text-dim)', marginBottom: 10,
       }}>
-        {title}
+        {icon}{title}
       </div>
       {children}
     </div>

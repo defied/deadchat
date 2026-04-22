@@ -51,6 +51,16 @@ export interface LiveRequestEvent {
   error?: string;
 }
 
+export interface NginxStatus {
+  active: number;
+  accepts: number;
+  handled: number;
+  requests: number;
+  reading: number;
+  writing: number;
+  waiting: number;
+}
+
 export interface LiveStats {
   running: RunningModel[];
   ollamaError?: string;
@@ -66,16 +76,28 @@ export interface LiveStats {
     avgTtftMs: number;
     errors: number;
   };
-  host: {
-    loadavg: number[];
-    cpus: number;
-    totalMemMB: number;
-    freeMemMB: number;
+  backend: {
     processRssMB: number;
     processHeapUsedMB: number;
     uptimeSec: number;
     nodeVersion: string;
+  };
+  frontend: {
+    status: NginxStatus | null;
+    error?: string;
+  };
+  node: {
+    loadavg: number[];
+    cpus: number;
+    totalMemMB: number;
+    freeMemMB: number;
     platform: string;
+  };
+  gpu: {
+    source: string;
+    totalVramMB: number;
+    models: Array<{ name: string; vramMB: number; totalMB: number }>;
+    reachable: boolean;
   };
 }
 
