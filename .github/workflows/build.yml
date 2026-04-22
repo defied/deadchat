@@ -1,0 +1,83 @@
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'deploy/k8s/**'
+      - 'README.md'
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/deadchat-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/deadchat-frontend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tag
+        id: tag
+        run: echo "sha=${GITHUB_SHA::12}" >> $GITHUB_OUTPUT
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/docker/backend.Dockerfile
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ steps.tag.outputs.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/docker/frontend.Dockerfile
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ steps.tag.outputs.sha }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Update k8s manifest with new image tags
+        run: |
+          SHA=${{ steps.tag.outputs.sha }}
+          sed -i -E "s|image: ${BACKEND_IMAGE}:.*|image: ${BACKEND_IMAGE}:${SHA}|" deploy/k8s/deadchat.yaml
+          sed -i -E "s|image: ${FRONTEND_IMAGE}:.*|image: ${FRONTEND_IMAGE}:${SHA}|" deploy/k8s/deadchat.yaml
+
+      - name: Commit manifest updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet deploy/k8s; then
+            echo "No manifest changes"
+            exit 0
+          fi
+          git add deploy/k8s/deadchat.yaml
+          git commit -m "chore: bump images to ${{ steps.tag.outputs.sha }}"
+          git push

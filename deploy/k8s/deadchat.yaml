@@ -1,12 +1,8 @@
 ---
 apiVersion: v1
-kind: Secret
+kind: Namespace
 metadata:
-  name: deadchat-secret
-  namespace: deadchat
-type: Opaque
-stringData:
-  JWT_SECRET: REPLACE_JWT_SECRET
+  name: deadchat
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -41,7 +37,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: 192.168.0.8:31500/deadchat-backend:latest
+          image: ghcr.io/defied/deadchat-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
@@ -114,7 +110,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: 192.168.0.8:31500/deadchat-frontend:latest
+          image: ghcr.io/defied/deadchat-frontend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
