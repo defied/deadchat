@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Download, Trash2, Check, Copy, Info, Play, Plus, X, RefreshCw, Loader2,
+  Download, Trash2, Check, Copy, Info, Play, Plus, X, RefreshCw, Loader2, Sliders,
 } from 'lucide-react';
 import * as ollamaApi from '../../api/ollama';
 import type { OllamaModel, RunningModel } from '../../api/ollama';
+import { ModelSettingsEditor } from './ModelSettingsEditor';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -38,6 +39,9 @@ export function ModelsPanel() {
   // Info state
   const [infoModel, setInfoModel] = useState<string | null>(null);
   const [infoData, setInfoData] = useState<string>('');
+
+  // Per-model settings editor
+  const [settingsModel, setSettingsModel] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -455,6 +459,12 @@ export function ModelsPanel() {
                     }}>
                       <Info size={13} />
                     </button>
+                    <button onClick={() => setSettingsModel(model.name)} title="Per-model settings" style={{
+                      background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)',
+                      padding: '4px 8px', color: 'var(--color-text-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    }}>
+                      <Sliders size={13} />
+                    </button>
                     <button onClick={() => { setCopySource(model.name); setCopyDest(''); }} title="Copy model" style={{
                       background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)',
                       padding: '4px 8px', color: 'var(--color-text-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center',
@@ -480,6 +490,13 @@ export function ModelsPanel() {
           </div>
         )}
       </div>
+
+      {settingsModel && (
+        <ModelSettingsEditor
+          model={settingsModel}
+          onClose={() => setSettingsModel(null)}
+        />
+      )}
     </div>
   );
 }

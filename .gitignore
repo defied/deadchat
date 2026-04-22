@@ -5,3 +5,5 @@ dist/
 uploads/
 data/
 .DS_Store
+*.tsbuildinfo
+frontend/vite.config.d.ts

@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ChatPage } from './pages/ChatPage';
 import { AdminPage } from './pages/AdminPage';
 import { GeneratePage } from './pages/GeneratePage';
+import { TokensPage } from './pages/TokensPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 class ErrorBoundary extends React.Component<
@@ -55,6 +56,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <GeneratePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tokens"
+          element={
+            <ProtectedRoute>
+              <TokensPage />
             </ProtectedRoute>
           }
         />

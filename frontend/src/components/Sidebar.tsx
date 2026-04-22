@@ -1,4 +1,4 @@
-import { Plus, Trash2, MessageSquare, Image, Shield } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Image, Shield, Key } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import type { ChatSession } from '../api/chat';
@@ -143,6 +143,12 @@ export function Sidebar({
           label="Generate"
           active={location.pathname === '/generate'}
           onClick={() => navigate('/generate')}
+        />
+        <NavItem
+          icon={<Key size={16} />}
+          label="API Tokens"
+          active={location.pathname === '/tokens'}
+          onClick={() => navigate('/tokens')}
         />
         {user?.role === 'admin' && (
           <NavItem

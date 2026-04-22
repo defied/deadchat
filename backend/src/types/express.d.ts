@@ -8,6 +8,7 @@ declare global {
         username: string;
         role: string;
       };
+      apiTokenId?: number;
     }
   }
 }
