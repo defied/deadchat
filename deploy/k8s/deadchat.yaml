@@ -187,6 +187,13 @@ spec:
                 name: deadchat-backend
                 port:
                   number: 3000
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: deadchat-backend
+                port:
+                  number: 3000
           - path: /ws
             pathType: Prefix
             backend:
