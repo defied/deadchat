@@ -17,14 +17,27 @@ interface OllamaChatResponse {
   total_duration?: number;
   load_duration?: number;
   prompt_eval_count?: number;
+  prompt_eval_duration?: number;
   eval_count?: number;
   eval_duration?: number;
+}
+
+export interface ChatStreamChunk {
+  content: string;
+  done: boolean;
+  model?: string;
+  promptTokens?: number;
+  evalTokens?: number;
+  totalDurationNs?: number;
+  loadDurationNs?: number;
+  promptEvalDurationNs?: number;
+  evalDurationNs?: number;
 }
 
 export async function* chatStream(
   messages: OllamaMessage[],
   model?: string
-): AsyncGenerator<{ content: string; done: boolean; promptTokens?: number; evalTokens?: number }> {
+): AsyncGenerator<ChatStreamChunk> {
   const response = await fetch(`${config.ollamaUrl}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -63,8 +76,13 @@ export async function* chatStream(
         yield {
           content: parsed.message.content,
           done: parsed.done,
+          model: parsed.model,
           promptTokens: parsed.prompt_eval_count,
           evalTokens: parsed.eval_count,
+          totalDurationNs: parsed.total_duration,
+          loadDurationNs: parsed.load_duration,
+          promptEvalDurationNs: parsed.prompt_eval_duration,
+          evalDurationNs: parsed.eval_duration,
         };
       } catch {
         // Skip malformed JSON lines

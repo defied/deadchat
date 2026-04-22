@@ -6,12 +6,13 @@ import { UserForm } from '../components/admin/UserForm';
 import { PasswordReset } from '../components/admin/PasswordReset';
 import { UsageChart } from '../components/admin/UsageChart';
 import { ModelsPanel } from '../components/admin/ModelsPanel';
+import { LiveStatsPanel } from '../components/admin/LiveStatsPanel';
 import type { User } from '../api/auth';
 import type { UsageSummary } from '../api/users';
 import * as usersApi from '../api/users';
-import { Users, BarChart3, Plus, Cpu } from 'lucide-react';
+import { Users, BarChart3, Plus, Cpu, Activity } from 'lucide-react';
 
-type Tab = 'users' | 'usage' | 'models';
+type Tab = 'users' | 'usage' | 'models' | 'live';
 
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>('users');
@@ -168,6 +169,12 @@ export function AdminPage() {
             icon={<Cpu size={14} />}
             label="Models"
           />
+          <TabButton
+            active={tab === 'live'}
+            onClick={() => setTab('live')}
+            icon={<Activity size={14} />}
+            label="Live"
+          />
         </div>
 
         {tab === 'users' && (
@@ -194,6 +201,10 @@ export function AdminPage() {
 
         {tab === 'models' && (
           <ModelsPanel />
+        )}
+
+        {tab === 'live' && (
+          <LiveStatsPanel />
         )}
 
         {showForm && (

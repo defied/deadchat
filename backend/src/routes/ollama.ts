@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth';
 import { adminOnly } from '../middleware/adminOnly';
 import { config } from '../config';
 import db from '../db/connection';
+import { getSnapshot } from '../services/liveStats';
 
 const router = Router();
 
@@ -33,6 +34,27 @@ router.get('/running', authenticate, adminOnly, async (_req: Request, res: Respo
   } catch (err: any) {
     res.status(502).json({ error: `Failed to connect to Ollama: ${err.message}` });
   }
+});
+
+// GET /api/ollama/live-stats - loaded models + host + recent request telemetry
+router.get('/live-stats', authenticate, adminOnly, async (_req: Request, res: Response): Promise<void> => {
+  const snapshot = getSnapshot();
+  let running: unknown[] = [];
+  let ollamaError: string | undefined;
+
+  try {
+    const response = await fetch(`${config.ollamaUrl}/api/ps`);
+    if (response.ok) {
+      const data = await response.json() as { models?: unknown[] };
+      running = data.models || [];
+    } else {
+      ollamaError = `Ollama responded ${response.status}`;
+    }
+  } catch (err: any) {
+    ollamaError = err.message;
+  }
+
+  res.json({ running, ollamaError, ...snapshot });
 });
 
 // POST /api/ollama/pull - pull a model (streaming progress)

@@ -2,6 +2,8 @@ import WebSocket from 'ws';
 import db from '../db/connection';
 import { chatStream, OllamaMessage } from '../services/ollama';
 import { logUsage } from '../services/usage';
+import { recordRequest } from '../services/liveStats';
+import { config } from '../config';
 import type { WsUser } from './auth';
 import type { Message, Session } from '../types/models';
 
@@ -75,26 +77,51 @@ export async function handleChatMessage(
 
   // Stream response from Ollama
   const startTime = Date.now();
+  let firstTokenAt: number | undefined;
   let fullResponse = '';
   let promptTokens = 0;
   let evalTokens = 0;
+  let reportedModel = activeModel || config.ollamaModel;
+  let totalDurationNs: number | undefined;
+  let loadDurationNs: number | undefined;
+  let promptEvalDurationNs: number | undefined;
+  let evalDurationNs: number | undefined;
 
   try {
     for await (const chunk of chatStream(ollamaMessages, activeModel)) {
+      if (!firstTokenAt && chunk.content) firstTokenAt = Date.now();
       fullResponse += chunk.content;
       send(ws, { type: 'token', content: chunk.content });
 
       if (chunk.done) {
         promptTokens = chunk.promptTokens || 0;
         evalTokens = chunk.evalTokens || 0;
+        if (chunk.model) reportedModel = chunk.model;
+        totalDurationNs = chunk.totalDurationNs;
+        loadDurationNs = chunk.loadDurationNs;
+        promptEvalDurationNs = chunk.promptEvalDurationNs;
+        evalDurationNs = chunk.evalDurationNs;
       }
     }
   } catch (err: any) {
+    recordRequest({
+      userId: user.id,
+      username: user.username,
+      model: reportedModel,
+      endpoint: 'chat',
+      startedAt: startTime,
+      firstTokenAt,
+      finishedAt: Date.now(),
+      promptTokens,
+      evalTokens,
+      error: err.message,
+    });
     send(ws, { type: 'error', message: `Ollama error: ${err.message}` });
     return;
   }
 
-  const durationMs = Date.now() - startTime;
+  const finishedAt = Date.now();
+  const durationMs = finishedAt - startTime;
 
   // Save assistant message
   const result = db.prepare(
@@ -116,6 +143,21 @@ export async function handleChatMessage(
 
   // Log usage
   logUsage(user.id, sessionId, 'chat', promptTokens, evalTokens, durationMs);
+  recordRequest({
+    userId: user.id,
+    username: user.username,
+    model: reportedModel,
+    endpoint: 'chat',
+    startedAt: startTime,
+    firstTokenAt,
+    finishedAt,
+    promptTokens,
+    evalTokens,
+    totalDurationNs,
+    loadDurationNs,
+    promptEvalDurationNs,
+    evalDurationNs,
+  });
 
   send(ws, { type: 'done', messageId });
 }

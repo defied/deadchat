@@ -32,6 +32,58 @@ export interface ModelInfo {
   details: Record<string, unknown>;
 }
 
+export interface LiveRequestEvent {
+  id: number;
+  userId: number;
+  username: string;
+  model: string;
+  endpoint: 'chat' | 'generate';
+  startedAt: number;
+  firstTokenAt?: number;
+  finishedAt: number;
+  wallDurationMs: number;
+  promptTokens: number;
+  evalTokens: number;
+  totalDurationNs?: number;
+  loadDurationNs?: number;
+  promptEvalDurationNs?: number;
+  evalDurationNs?: number;
+  error?: string;
+}
+
+export interface LiveStats {
+  running: RunningModel[];
+  ollamaError?: string;
+  recent: LiveRequestEvent[];
+  rolling: {
+    windowMs: number;
+    requests: number;
+    totalPromptTokens: number;
+    totalEvalTokens: number;
+    avgTokensPerSec: number;
+    p50TokensPerSec: number;
+    p95TokensPerSec: number;
+    avgTtftMs: number;
+    errors: number;
+  };
+  host: {
+    loadavg: number[];
+    cpus: number;
+    totalMemMB: number;
+    freeMemMB: number;
+    processRssMB: number;
+    processHeapUsedMB: number;
+    uptimeSec: number;
+    nodeVersion: string;
+    platform: string;
+  };
+}
+
+export async function getLiveStats(): Promise<LiveStats> {
+  const { data } = await client.get('/api/ollama/live-stats');
+  return data;
+}
+
 export async function getActiveModel(): Promise<string> {
   const { data } = await client.get('/api/ollama/active-model');
   return data.model;
