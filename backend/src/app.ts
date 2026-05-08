@@ -12,13 +12,16 @@ import ollamaRoutes from './routes/ollama';
 import tokensRoutes from './routes/tokens';
 import modelSettingsRoutes from './routes/modelSettings';
 import publicApiRoutes from './routes/publicApi';
+import anthropicCompatRoutes from './routes/anthropicCompat';
 
 const app = express();
 
 // Global middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 32mb body limit accommodates Claude Code / Anthropic SDK payloads, which
+// can be large with prompt context + tool definitions.
+app.use(express.json({ limit: '32mb' }));
+app.use(express.urlencoded({ extended: true, limit: '32mb' }));
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.resolve(config.uploadDir)));
@@ -27,6 +30,7 @@ app.use('/uploads', express.static(path.resolve(config.uploadDir)));
 // /api/tags, etc. reach the Ollama-compat handlers before the JWT-authed
 // web routes below.
 app.use(publicApiRoutes);
+app.use(anthropicCompatRoutes);
 
 // API routes
 app.use('/api/auth', authRoutes);

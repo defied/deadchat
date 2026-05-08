@@ -48,6 +48,30 @@ kubectl apply -f deploy/k8s/
 
 Change these immediately after first login.
 
+## Public API
+
+DeadChat exposes three API surfaces under API-token auth (`Authorization: Bearer dc_live_...`):
+
+| Surface | Path | Notes |
+|---|---|---|
+| Ollama-native | `POST /api/chat`, `/api/generate`, `/api/tags`, ... | Pass-through to upstream Ollama |
+| OpenAI-compatible | `POST /v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `GET /v1/models` | Pass-through |
+| Anthropic-compatible | `POST /v1/messages` | Translates to/from Ollama; supports streaming + tool use |
+
+### Claude Code / Anthropic SDK
+
+```bash
+export ANTHROPIC_BASE_URL="https://deadchat.deadplanet.net"
+export ANTHROPIC_AUTH_TOKEN="dc_live_..."
+export ANTHROPIC_MODEL="qwen3.6"   # any model exposed by your Ollama
+claude
+```
+
+Limitations of the Anthropic-compat layer: image content blocks are dropped,
+prompt caching headers (`cache_control`) are accepted and ignored, no
+`/v1/messages/count_tokens` endpoint, and tool-use quality depends on the
+underlying Ollama model.
+
 ## Tech Stack
 
 - **Frontend:** React, TypeScript, Vite, TailwindCSS
