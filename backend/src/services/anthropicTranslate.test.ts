@@ -75,7 +75,7 @@ describe('anthropicToOllamaRequest', () => {
     assert.equal(out.messages[1].role, 'assistant');
     assert.equal(out.messages[1].content, 'thinking...');
     assert.equal(out.messages[1].tool_calls?.[0]?.function.name, 'do_thing');
-    assert.equal(out.messages[1].tool_calls?.[0]?.function.arguments, '{"x":1}');
+    assert.deepEqual(out.messages[1].tool_calls?.[0]?.function.arguments, { x: 1 });
     assert.equal(out.messages[2].role, 'tool');
     assert.equal(out.messages[2].tool_call_id, 'toolu_1');
     assert.equal(out.messages[2].content, 'result text');
@@ -151,6 +151,38 @@ describe('anthropicToOllamaRequest', () => {
       })
     );
     assert.equal(out.tools, undefined);
+  });
+
+  it('forwards tool_use input as object, not stringified JSON', () => {
+    // Regression: stringifying produced multi-escaped strings that Ollama's
+    // tool-call parser rejected with "Value looks like object, but can't
+    // find closing '}' symbol".
+    const out = anthropicToOllamaRequest(
+      baseReq({
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'toolu_1',
+                name: 'run_code',
+                input: {
+                  code: 'import os\nprint("/Users/defied")',
+                  flags: ['-x', '-y'],
+                },
+              },
+            ],
+          },
+        ],
+      })
+    );
+    const args = out.messages[0].tool_calls?.[0]?.function.arguments;
+    assert.equal(typeof args, 'object');
+    assert.deepEqual(args, {
+      code: 'import os\nprint("/Users/defied")',
+      flags: ['-x', '-y'],
+    });
   });
 
   it('passes server options through, with client values winning', () => {

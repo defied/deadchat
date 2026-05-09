@@ -157,12 +157,17 @@ function appendTranslatedMessage(
         // v1: drop. (Anthropic SDKs don't send images for tool-only flows.)
         break;
       case 'tool_use':
+        // Ollama's /api/chat parses `arguments` as either a string or an
+        // object. The string path runs a second JSON parser that fails on
+        // multiply-escaped values (multi-line code, nested quotes) with
+        // `Value looks like object, but can't find closing '}' symbol`.
+        // Send the raw object — the Ollama type already accepts both.
         toolCalls.push({
           id: block.id,
           type: 'function',
           function: {
             name: block.name,
-            arguments: JSON.stringify(block.input ?? {}),
+            arguments: isObject(block.input) ? block.input : {},
           },
         });
         break;
