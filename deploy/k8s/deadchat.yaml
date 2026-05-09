@@ -16,6 +16,7 @@ data:
   DB_PATH: "/data/deadchat.db"
   UPLOAD_DIR: "/data/uploads"
   PORT: "3000"
+  DEBUG_OLLAMA_REQUESTS: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -24,6 +24,30 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+// Keys that Ollama's schema-to-grammar converter chokes on. Stripping them
+// keeps the generated grammar buildable while leaving the semantic shape of
+// the schema (type/properties/required/enum/etc.) intact.
+const SCHEMA_STRIP_KEYS = new Set([
+  '$schema',
+  '$id',
+  '$ref',
+  '$defs',
+  '$comment',
+  'definitions',
+  'additionalProperties',
+]);
+
+export function sanitizeJsonSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(sanitizeJsonSchema);
+  if (!isObject(schema)) return schema;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (SCHEMA_STRIP_KEYS.has(k)) continue;
+    out[k] = sanitizeJsonSchema(v);
+  }
+  return out;
+}
+
 function blocksToText(blocks: AnthropicContentBlock[]): string {
   const parts: string[] = [];
   for (const b of blocks) {
@@ -42,9 +66,14 @@ function toolResultContentToString(
 
 // ── 3a. Anthropic request → Ollama request ──────────────────────────────────
 
+export interface TranslateOptions {
+  sanitizeToolSchemas?: boolean;
+}
+
 export function anthropicToOllamaRequest(
   req: AnthropicMessagesRequest,
-  serverOptions: Record<string, unknown> = {}
+  serverOptions: Record<string, unknown> = {},
+  translateOpts: TranslateOptions = {}
 ): OllamaChatRequest {
   const messages: OllamaMessage[] = [];
 
@@ -78,16 +107,22 @@ export function anthropicToOllamaRequest(
   const toolsDisabled = choiceType === 'none';
 
   if (req.tools && req.tools.length > 0 && !toolsDisabled) {
-    tools = req.tools.map((t) => ({
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: isObject(t.input_schema)
-          ? t.input_schema
-          : { type: 'object', properties: {} },
-      },
-    }));
+    tools = req.tools.map((t) => {
+      const rawSchema = isObject(t.input_schema)
+        ? t.input_schema
+        : { type: 'object', properties: {} };
+      const parameters = translateOpts.sanitizeToolSchemas
+        ? (sanitizeJsonSchema(rawSchema) as Record<string, unknown>)
+        : rawSchema;
+      return {
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters,
+        },
+      };
+    });
   }
 
   const out: OllamaChatRequest = {
