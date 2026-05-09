@@ -73,13 +73,7 @@ router.post('/v1/messages', authenticateApiToken, async (req: Request, res: Resp
   }
 
   const serverOptions = model ? getOptionsForModel(model) : {};
-  const ollamaReq = anthropicToOllamaRequest(body, serverOptions, {
-    sanitizeToolSchemas: process.env.SANITIZE_TOOL_SCHEMAS === '1',
-  });
-
-  if (process.env.DEBUG_OLLAMA_REQUESTS === '1') {
-    console.log('[ollama-out]', JSON.stringify(ollamaReq, null, 2));
-  }
+  const ollamaReq = anthropicToOllamaRequest(body, serverOptions);
 
   try {
     const upstream = await fetch(`${config.ollamaUrl}/api/chat`, {

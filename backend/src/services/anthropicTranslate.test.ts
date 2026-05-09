@@ -4,7 +4,6 @@ import {
   anthropicToOllamaRequest,
   ollamaToAnthropicResponse,
   ollamaStreamToAnthropicSSE,
-  sanitizeJsonSchema,
   type OllamaStreamChunk,
 } from './anthropicTranslate';
 import type {
@@ -194,98 +193,6 @@ describe('anthropicToOllamaRequest', () => {
     assert.equal(out.options?.num_ctx, 8192);
   });
 
-  it('passes tool schemas through unchanged when sanitizeToolSchemas is off', () => {
-    const out = anthropicToOllamaRequest(
-      baseReq({
-        tools: [
-          {
-            name: 'add',
-            input_schema: {
-              $schema: 'http://json-schema.org/draft-07/schema#',
-              type: 'object',
-              properties: { a: { type: 'number' } },
-              additionalProperties: false,
-            },
-          },
-        ],
-      })
-    );
-    const params = out.tools?.[0]?.function.parameters as Record<string, unknown>;
-    assert.equal(params.$schema, 'http://json-schema.org/draft-07/schema#');
-    assert.equal(params.additionalProperties, false);
-  });
-
-  it('strips Ollama-hostile schema keys when sanitizeToolSchemas is on', () => {
-    const out = anthropicToOllamaRequest(
-      baseReq({
-        tools: [
-          {
-            name: 'add',
-            input_schema: {
-              $schema: 'http://json-schema.org/draft-07/schema#',
-              type: 'object',
-              properties: {
-                a: { type: 'number' },
-                nested: {
-                  type: 'object',
-                  additionalProperties: true,
-                  properties: { b: { type: 'string' } },
-                },
-              },
-              additionalProperties: false,
-            },
-          },
-        ],
-      }),
-      {},
-      { sanitizeToolSchemas: true }
-    );
-    const params = out.tools?.[0]?.function.parameters as Record<string, unknown>;
-    assert.equal(params.$schema, undefined);
-    assert.equal(params.additionalProperties, undefined);
-    assert.equal(params.type, 'object');
-    const nested = (params.properties as Record<string, unknown>).nested as Record<string, unknown>;
-    assert.equal(nested.additionalProperties, undefined);
-    assert.equal(nested.type, 'object');
-  });
-});
-
-describe('sanitizeJsonSchema', () => {
-  it('strips meta keys recursively without mutating input', () => {
-    const input = {
-      $schema: 'x',
-      $id: 'y',
-      definitions: { Foo: { type: 'string' } },
-      type: 'object',
-      properties: {
-        a: { $ref: '#/definitions/Foo', type: 'string' },
-      },
-      additionalProperties: false,
-    };
-    const before = JSON.stringify(input);
-    const out = sanitizeJsonSchema(input) as Record<string, unknown>;
-    assert.equal(JSON.stringify(input), before, 'input must not be mutated');
-    assert.equal(out.$schema, undefined);
-    assert.equal(out.$id, undefined);
-    assert.equal(out.definitions, undefined);
-    assert.equal(out.additionalProperties, undefined);
-    const a = (out.properties as Record<string, unknown>).a as Record<string, unknown>;
-    assert.equal(a.$ref, undefined);
-    assert.equal(a.type, 'string');
-  });
-
-  it('preserves arrays and primitive values', () => {
-    const out = sanitizeJsonSchema({
-      type: 'object',
-      properties: {
-        kind: { type: 'string', enum: ['a', 'b', 'c'] },
-      },
-      required: ['kind'],
-    }) as Record<string, unknown>;
-    const kind = (out.properties as Record<string, unknown>).kind as Record<string, unknown>;
-    assert.deepEqual(kind.enum, ['a', 'b', 'c']);
-    assert.deepEqual(out.required, ['kind']);
-  });
 });
 
 describe('ollamaToAnthropicResponse', () => {
