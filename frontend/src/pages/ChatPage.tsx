@@ -6,14 +6,53 @@ import { ChatInput } from '../components/ChatInput';
 import { useChat } from '../hooks/useChat';
 import { useWebSocket } from '../hooks/useWebSocket';
 import * as chatApi from '../api/chat';
-import { getActiveModel } from '../api/ollama';
+import { getActiveModel, getModelStatus, type ModelStatus } from '../api/ollama';
 import type { ChatSession } from '../api/chat';
 import { Cpu } from 'lucide-react';
+
+const MODEL_STATUS_POLL_MS = 5_000;
+
+function ModelStatusChip({ status }: { status: ModelStatus | null }) {
+  if (!status || status.status === 'unreachable') return null;
+  let label: string, color: string, title: string;
+  switch (status.status) {
+    case 'gpu':
+      label = 'GPU';
+      color = 'var(--color-success, #22c55e)';
+      title = 'Fully loaded in VRAM';
+      break;
+    case 'partial': {
+      const pct = Math.round((status.vramPct ?? 0) * 100);
+      label = `GPU+CPU ${pct}%`;
+      color = 'var(--color-warning, #f59e0b)';
+      title = `${pct}% of model layers in VRAM, rest spilled to CPU — generations will be slower than full-GPU`;
+      break;
+    }
+    case 'cpu':
+      label = 'CPU';
+      color = 'var(--color-danger, #ef4444)';
+      title = 'Model is running entirely on CPU — generations will be much slower';
+      break;
+    case 'cold':
+      label = 'cold';
+      color = 'var(--color-text-dim)';
+      title = 'Model is not currently loaded; first request will pay a load cost';
+      break;
+  }
+  return (
+    <span title={title} style={{
+      color, border: `1px solid ${color}`, borderRadius: 3,
+      padding: '0 6px', fontSize: 10, fontWeight: 600, letterSpacing: '0.02em',
+      whiteSpace: 'nowrap', marginLeft: 4,
+    }}>{label}</span>
+  );
+}
 
 export function ChatPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState<string>('');
+  const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
 
   const {
     messages,
@@ -47,6 +86,24 @@ export function ChatPage() {
   useEffect(() => {
     getActiveModel().then(setActiveModel).catch(() => {});
   }, []);
+
+  // Poll the active model's offload state so the chip reflects current GPU/CPU
+  // split (Ollama can spill to CPU under VRAM pressure between generations).
+  useEffect(() => {
+    if (!activeModel) {
+      setModelStatus(null);
+      return;
+    }
+    let cancelled = false;
+    const tick = () => {
+      getModelStatus(activeModel)
+        .then((s) => { if (!cancelled) setModelStatus(s); })
+        .catch(() => { if (!cancelled) setModelStatus(null); });
+    };
+    tick();
+    const id = setInterval(tick, MODEL_STATUS_POLL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [activeModel]);
 
   useEffect(() => {
     if (activeSessionId) {
@@ -124,6 +181,7 @@ export function ChatPage() {
           }}>
             <Cpu size={12} />
             Model: <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{activeModel}</span>
+            <ModelStatusChip status={modelStatus} />
           </div>
         )}
         <ChatWindow

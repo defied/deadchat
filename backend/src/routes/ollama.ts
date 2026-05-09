@@ -16,6 +16,48 @@ router.get('/active-model', authenticate, (_req: Request, res: Response): void =
   res.json({ model: setting?.value || config.ollamaModel });
 });
 
+// GET /api/ollama/model-status?name=<model> — offload state for a single model.
+// Accessible to all authenticated users (chat header chip uses it). Doesn't
+// expose host/cluster metrics; only the requested model's GPU/CPU split.
+router.get('/model-status', authenticate, async (req: Request, res: Response): Promise<void> => {
+  const name = String(req.query.name ?? '').trim();
+  if (!name) {
+    res.status(400).json({ error: 'name query param is required' });
+    return;
+  }
+
+  try {
+    const response = await fetch(`${config.ollamaUrl}/api/ps`);
+    if (!response.ok) {
+      res.json({ name, status: 'unreachable', reachable: false });
+      return;
+    }
+    const data = await response.json() as { models?: RunningModelLite[] };
+    const m = (data.models || []).find((x) => x.name === name);
+    if (!m) {
+      res.json({ name, status: 'cold', reachable: true });
+      return;
+    }
+    const total = m.size || 0;
+    const vram  = m.size_vram || 0;
+    const vramPct = total > 0 ? Math.max(0, Math.min(1, vram / total)) : 0;
+    let status: 'gpu' | 'partial' | 'cpu';
+    if (vramPct >= 0.999)      status = 'gpu';
+    else if (vramPct <= 0.001) status = 'cpu';
+    else                       status = 'partial';
+    res.json({
+      name,
+      status,
+      reachable: true,
+      vramPct,
+      vramMB:  vram  / (1024 * 1024),
+      totalMB: total / (1024 * 1024),
+    });
+  } catch (err: any) {
+    res.json({ name, status: 'unreachable', reachable: false, error: err.message });
+  }
+});
+
 // All remaining routes require admin
 // GET /api/ollama/models - list local models
 router.get('/models', authenticate, adminOnly, async (_req: Request, res: Response): Promise<void> => {

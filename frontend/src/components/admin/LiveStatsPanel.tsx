@@ -403,15 +403,27 @@ function GpuBlock({ stats }: { stats: LiveStats }) {
           </span>
         </div>
       </div>
-      {gpu.models.map((m) => (
-        <div key={m.name} style={{
-          fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)',
-          display: 'flex', justifyContent: 'space-between',
-        }}>
-          <span style={{ color: 'var(--color-text-secondary)' }}>{m.name}</span>
-          <span>{formatBytes(m.vramMB)} / {formatBytes(m.totalMB)}</span>
-        </div>
-      ))}
+      {gpu.models.map((m) => {
+        const pct = Math.round((m.vramPct ?? 0) * 100);
+        let label: string, color: string;
+        if (pct >= 100)     { label = 'GPU';            color = 'var(--color-success, #22c55e)'; }
+        else if (pct === 0) { label = 'CPU';            color = 'var(--color-danger, #ef4444)'; }
+        else                { label = `GPU+CPU ${pct}%`; color = 'var(--color-warning, #f59e0b)'; }
+        return (
+          <div key={m.name} style={{
+            fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)',
+            display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center',
+          }}>
+            <span style={{ color: 'var(--color-text-secondary)' }}>{m.name}</span>
+            <span style={{
+              color, border: `1px solid ${color}`, borderRadius: 3,
+              padding: '0 6px', fontSize: 10, fontWeight: 600, letterSpacing: '0.02em',
+              whiteSpace: 'nowrap',
+            }}>{label}</span>
+            <span>{formatBytes(m.vramMB)} / {formatBytes(m.totalMB)}</span>
+          </div>
+        );
+      })}
       <div style={{
         fontSize: 11, color: 'var(--color-text-dim)',
         paddingTop: 4, borderTop: '1px solid var(--color-border)',

@@ -96,9 +96,22 @@ export interface LiveStats {
   gpu: {
     source: string;
     totalVramMB: number;
-    models: Array<{ name: string; vramMB: number; totalMB: number }>;
+    models: Array<{ name: string; vramMB: number; totalMB: number; vramPct: number }>;
     reachable: boolean;
   };
+}
+
+// Single-model offload status. Returned by GET /api/ollama/model-status.
+// Accessible to all authenticated users (chat-header chip).
+export type ModelStatusKind = 'gpu' | 'partial' | 'cpu' | 'cold' | 'unreachable';
+
+export interface ModelStatus {
+  name: string;
+  status: ModelStatusKind;
+  reachable: boolean;
+  vramPct?: number;   // present when status is gpu/partial/cpu
+  vramMB?: number;
+  totalMB?: number;
 }
 
 export async function getLiveStats(): Promise<LiveStats> {
@@ -109,6 +122,11 @@ export async function getLiveStats(): Promise<LiveStats> {
 export async function getActiveModel(): Promise<string> {
   const { data } = await client.get('/api/ollama/active-model');
   return data.model;
+}
+
+export async function getModelStatus(name: string): Promise<ModelStatus> {
+  const { data } = await client.get('/api/ollama/model-status', { params: { name } });
+  return data;
 }
 
 export async function setActiveModel(model: string): Promise<void> {

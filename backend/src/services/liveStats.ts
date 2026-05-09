@@ -175,11 +175,14 @@ export function buildSnapshot(inputs: SnapshotInputs): Snapshot {
   const MB = 1024 * 1024;
   const mem = process.memoryUsage();
 
-  const gpuModels = inputs.runningModels.map((m) => ({
-    name: m.name,
-    vramMB: (m.size_vram || 0) / MB,
-    totalMB: (m.size || 0) / MB,
-  }));
+  const gpuModels = inputs.runningModels.map((m) => {
+    const vramMB  = (m.size_vram || 0) / MB;
+    const totalMB = (m.size      || 0) / MB;
+    // vramPct: 0..1 fraction of the model resident in VRAM. 1.0 = fully on
+    // GPU, 0 = fully on CPU, anything in between = layer-spilled/split.
+    const vramPct = totalMB > 0 ? Math.max(0, Math.min(1, vramMB / totalMB)) : 0;
+    return { name: m.name, vramMB, totalMB, vramPct };
+  });
   const totalVramMB = gpuModels.reduce((s, m) => s + m.vramMB, 0);
 
   return {
