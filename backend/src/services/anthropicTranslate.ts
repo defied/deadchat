@@ -175,6 +175,104 @@ function parseToolArgs(args: string | Record<string, unknown>): Record<string, u
   }
 }
 
+// Salvage tool calls that the model emitted as text markup instead of via the
+// structured tool_calls field. Open-weight models (notably qwen3-coder) sometimes
+// drift to formats Ollama's parser doesn't recognize, dropping the call into
+// plain text. Without salvage, the agent loop sees no tool_use and stops.
+//
+// Handles two formats observed in practice:
+//   1. Llama-style: <function=NAME><parameter=K>V</parameter>...</function>
+//   2. Qwen JSON-style: <tool_call>{"name":"X","arguments":{...}}</tool_call>
+//
+// `knownTools` is required to avoid false positives — only matches against the
+// tools the request actually declared.
+export interface ExtractedToolCall {
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface ExtractionResult {
+  cleanedText: string;
+  toolCalls: ExtractedToolCall[];
+}
+
+function maybeJsonValue(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return raw;
+  if (
+    trimmed === 'true' ||
+    trimmed === 'false' ||
+    trimmed === 'null' ||
+    /^-?\d+(\.\d+)?$/.test(trimmed) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+    (trimmed.startsWith('{') && trimmed.endsWith('}'))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      // fall through
+    }
+  }
+  return raw.trim();
+}
+
+export function extractEmbeddedToolCalls(
+  text: string,
+  knownTools: string[]
+): ExtractionResult {
+  if (!text || knownTools.length === 0) return { cleanedText: text, toolCalls: [] };
+
+  const known = new Set(knownTools);
+  const calls: ExtractedToolCall[] = [];
+  let cleaned = text;
+
+  // Pattern 1: <function=NAME>...<parameter=K>V</parameter>...</function>
+  cleaned = cleaned.replace(
+    /<function=([\w.-]+)>([\s\S]*?)<\/function>/g,
+    (match, name: string, body: string): string => {
+      if (!known.has(name)) return match;
+      const input: Record<string, unknown> = {};
+      const paramRe = /<parameter=([\w.-]+)>([\s\S]*?)<\/parameter>/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = paramRe.exec(body)) !== null) {
+        input[pm[1]] = maybeJsonValue(pm[2]);
+      }
+      calls.push({ name, input });
+      return '';
+    }
+  );
+
+  // Pattern 2: <tool_call>{"name":"X","arguments":{...}}</tool_call>
+  cleaned = cleaned.replace(
+    /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g,
+    (match, body: string): string => {
+      try {
+        const obj = JSON.parse(body);
+        if (
+          isObject(obj) &&
+          typeof obj.name === 'string' &&
+          known.has(obj.name)
+        ) {
+          calls.push({
+            name: obj.name,
+            input: isObject(obj.arguments) ? obj.arguments : {},
+          });
+          return '';
+        }
+      } catch {
+        // not JSON; leave it
+      }
+      return match;
+    }
+  );
+
+  // Strip any orphaned closing tags left behind by truncated markup.
+  cleaned = cleaned.replace(/<\/(?:tool_call|function|parameter)>/g, '');
+  cleaned = cleaned.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  return { cleanedText: cleaned, toolCalls: calls };
+}
+
 function pickStopReason(
   resp: OllamaChatResponse,
   hasToolUse: boolean,
@@ -196,14 +294,27 @@ function pickStopReason(
 export function ollamaToAnthropicResponse(
   resp: OllamaChatResponse,
   requestModel: string,
-  stopSequences?: string[]
+  stopSequences?: string[],
+  knownTools: string[] = []
 ): AnthropicResponse {
   const content: Array<AnthropicTextBlock | AnthropicToolUseBlock> = [];
-  const text = resp.message?.content ?? '';
-  if (text.length > 0) content.push({ type: 'text', text });
+  const rawText = resp.message?.content ?? '';
+  const structured = resp.message?.tool_calls ?? [];
 
-  const toolCalls = resp.message?.tool_calls ?? [];
-  for (const tc of toolCalls) {
+  // Salvage embedded markup only when Ollama returned no structured calls —
+  // if the model already emitted them properly we don't second-guess.
+  let displayText = rawText;
+  const salvaged: ExtractedToolCall[] =
+    structured.length === 0
+      ? extractEmbeddedToolCalls(rawText, knownTools).toolCalls
+      : [];
+  if (salvaged.length > 0) {
+    displayText = extractEmbeddedToolCalls(rawText, knownTools).cleanedText;
+  }
+
+  if (displayText.length > 0) content.push({ type: 'text', text: displayText });
+
+  for (const tc of structured) {
     content.push({
       type: 'tool_use',
       id: tc.id ?? `toolu_${randomUUID()}`,
@@ -211,13 +322,22 @@ export function ollamaToAnthropicResponse(
       input: parseToolArgs(tc.function.arguments),
     });
   }
+  for (const sc of salvaged) {
+    content.push({
+      type: 'tool_use',
+      id: `toolu_${randomUUID()}`,
+      name: sc.name,
+      input: sc.input,
+    });
+  }
 
   if (content.length === 0) content.push({ type: 'text', text: '' });
 
+  const hasToolUse = structured.length > 0 || salvaged.length > 0;
   const { reason, sequence } = pickStopReason(
     resp,
-    toolCalls.length > 0,
-    text,
+    hasToolUse,
+    displayText,
     stopSequences
   );
 
@@ -253,6 +373,7 @@ function sse(event: string, data: unknown): string {
 export interface SseStreamOptions {
   requestModel: string;
   stopSequences?: string[];
+  knownTools?: string[];
 }
 
 /**
@@ -355,6 +476,31 @@ export async function* ollamaStreamToAnthropicSSE(
       index: toolIndex,
     });
     textOpen = false;
+  }
+
+  // Salvage path: model emitted tool-call markup as text instead of structured
+  // tool_calls. Without this the agent loop sees no tool_use and stops.
+  if (!toolUseEmitted && textBuffer.length > 0 && (opts.knownTools?.length ?? 0) > 0) {
+    const { toolCalls: salvaged } = extractEmbeddedToolCalls(
+      textBuffer,
+      opts.knownTools!
+    );
+    for (const sc of salvaged) {
+      const idx = nextBlockIndex++;
+      const id = `toolu_${randomUUID()}`;
+      yield sse('content_block_start', {
+        type: 'content_block_start',
+        index: idx,
+        content_block: { type: 'tool_use', id, name: sc.name, input: {} },
+      });
+      yield sse('content_block_delta', {
+        type: 'content_block_delta',
+        index: idx,
+        delta: { type: 'input_json_delta', partial_json: JSON.stringify(sc.input) },
+      });
+      yield sse('content_block_stop', { type: 'content_block_stop', index: idx });
+      toolUseEmitted = true;
+    }
   }
 
   let stopReason: AnthropicStopReason = 'end_turn';

@@ -4,6 +4,7 @@ import {
   anthropicToOllamaRequest,
   ollamaToAnthropicResponse,
   ollamaStreamToAnthropicSSE,
+  extractEmbeddedToolCalls,
   type OllamaStreamChunk,
 } from './anthropicTranslate';
 import type {
@@ -274,6 +275,102 @@ describe('ollamaToAnthropicResponse', () => {
     assert.equal(r.stop_sequence, 'END');
   });
 
+  it('salvages tool calls when the model emits markup as text', () => {
+    const r = ollamaToAnthropicResponse(
+      {
+        model: 'qwen3-coder:30b',
+        message: {
+          role: 'assistant',
+          content:
+            "I'll list /tmp.\n<function=Bash>\n<parameter=command>\nls /tmp\n</parameter>\n<parameter=timeout>\n5000\n</parameter>\n</function>\n</tool_call>",
+        },
+        done: true,
+      },
+      'qwen3-coder:30b',
+      undefined,
+      ['Bash', 'Read']
+    );
+    assert.equal(r.stop_reason, 'tool_use');
+    assert.equal(r.content.length, 2);
+    assert.equal(r.content[0].type, 'text');
+    if (r.content[0].type === 'text') {
+      assert.equal(r.content[0].text, "I'll list /tmp.");
+    }
+    const tu = r.content[1];
+    assert.equal(tu.type, 'tool_use');
+    if (tu.type === 'tool_use') {
+      assert.equal(tu.name, 'Bash');
+      assert.deepEqual(tu.input, { command: 'ls /tmp', timeout: 5000 });
+    }
+  });
+
+  it('salvages <tool_call> JSON-style markup', () => {
+    const r = ollamaToAnthropicResponse(
+      {
+        model: 'm',
+        message: {
+          role: 'assistant',
+          content:
+            'reply\n<tool_call>\n{"name":"Read","arguments":{"file_path":"/etc/hosts"}}\n</tool_call>',
+        },
+        done: true,
+      },
+      'm',
+      undefined,
+      ['Read', 'Bash']
+    );
+    assert.equal(r.stop_reason, 'tool_use');
+    const tu = r.content.find((b) => b.type === 'tool_use');
+    assert.ok(tu);
+    if (tu && tu.type === 'tool_use') {
+      assert.equal(tu.name, 'Read');
+      assert.deepEqual(tu.input, { file_path: '/etc/hosts' });
+    }
+  });
+
+  it('does not salvage when knownTools is empty (no false positives)', () => {
+    const r = ollamaToAnthropicResponse(
+      {
+        model: 'm',
+        message: {
+          role: 'assistant',
+          content: '<function=Bash><parameter=command>ls</parameter></function>',
+        },
+        done: true,
+      },
+      'm'
+    );
+    assert.equal(r.stop_reason, 'end_turn');
+    assert.equal(r.content.length, 1);
+    assert.equal(r.content[0].type, 'text');
+  });
+
+  it('does not salvage if Ollama already returned structured tool_calls', () => {
+    const r = ollamaToAnthropicResponse(
+      {
+        model: 'm',
+        message: {
+          role: 'assistant',
+          content:
+            '<function=Bash><parameter=command>ls</parameter></function>',
+          tool_calls: [
+            { function: { name: 'Read', arguments: { file_path: '/x' } } },
+          ],
+        },
+        done: true,
+      },
+      'm',
+      undefined,
+      ['Bash', 'Read']
+    );
+    // Trust the structured one; do not also extract the text markup.
+    const toolUseBlocks = r.content.filter((b) => b.type === 'tool_use');
+    assert.equal(toolUseBlocks.length, 1);
+    if (toolUseBlocks[0].type === 'tool_use') {
+      assert.equal(toolUseBlocks[0].name, 'Read');
+    }
+  });
+
   it('propagates token usage', () => {
     const r = ollamaToAnthropicResponse(
       ollamaResp({ prompt_eval_count: 12, eval_count: 34 }),
@@ -281,6 +378,78 @@ describe('ollamaToAnthropicResponse', () => {
     );
     assert.equal(r.usage.input_tokens, 12);
     assert.equal(r.usage.output_tokens, 34);
+  });
+});
+
+describe('extractEmbeddedToolCalls', () => {
+  it('parses llama-style function/parameter markup', () => {
+    const r = extractEmbeddedToolCalls(
+      "say hi\n<function=Bash>\n<parameter=command>\necho 'hi'\n</parameter>\n</function>",
+      ['Bash']
+    );
+    assert.equal(r.toolCalls.length, 1);
+    assert.equal(r.toolCalls[0].name, 'Bash');
+    assert.deepEqual(r.toolCalls[0].input, { command: "echo 'hi'" });
+    assert.equal(r.cleanedText, 'say hi');
+  });
+
+  it('coerces numeric and boolean parameter values', () => {
+    const r = extractEmbeddedToolCalls(
+      '<function=Run><parameter=count>3</parameter><parameter=force>true</parameter><parameter=name>alpha</parameter></function>',
+      ['Run']
+    );
+    assert.deepEqual(r.toolCalls[0].input, {
+      count: 3,
+      force: true,
+      name: 'alpha',
+    });
+  });
+
+  it('preserves multi-line parameter content', () => {
+    const r = extractEmbeddedToolCalls(
+      '<function=Write><parameter=content>line1\nline2\n  line3</parameter></function>',
+      ['Write']
+    );
+    assert.equal(r.toolCalls[0].input.content, 'line1\nline2\n  line3');
+  });
+
+  it('ignores function calls referencing unknown tools', () => {
+    const r = extractEmbeddedToolCalls(
+      '<function=Unknown><parameter=x>1</parameter></function>',
+      ['Bash']
+    );
+    assert.equal(r.toolCalls.length, 0);
+    // Untouched markup remains in cleaned text.
+    assert.match(r.cleanedText, /Unknown/);
+  });
+
+  it('parses multiple consecutive function calls', () => {
+    const r = extractEmbeddedToolCalls(
+      '<function=Bash><parameter=command>ls</parameter></function><function=Bash><parameter=command>pwd</parameter></function>',
+      ['Bash']
+    );
+    assert.equal(r.toolCalls.length, 2);
+    assert.equal(r.toolCalls[0].input.command, 'ls');
+    assert.equal(r.toolCalls[1].input.command, 'pwd');
+  });
+
+  it('parses qwen JSON-style <tool_call>', () => {
+    const r = extractEmbeddedToolCalls(
+      'pre\n<tool_call>{"name":"Bash","arguments":{"command":"ls"}}</tool_call>\npost',
+      ['Bash']
+    );
+    assert.equal(r.toolCalls.length, 1);
+    assert.deepEqual(r.toolCalls[0].input, { command: 'ls' });
+    assert.match(r.cleanedText, /pre/);
+    assert.match(r.cleanedText, /post/);
+  });
+
+  it('returns empty when knownTools is empty', () => {
+    const r = extractEmbeddedToolCalls(
+      '<function=Bash><parameter=command>ls</parameter></function>',
+      []
+    );
+    assert.equal(r.toolCalls.length, 0);
   });
 });
 
@@ -324,6 +493,50 @@ describe('ollamaStreamToAnthropicSSE', () => {
     const msgDelta = events.find((e) => eventName(e) === 'message_delta')!;
     assert.match(msgDelta, /"output_tokens":2/);
     assert.match(msgDelta, /"input_tokens":5/);
+  });
+
+  it('salvages llama-style <function=...> markup at end of stream', async () => {
+    const events: string[] = [];
+    const it = ollamaStreamToAnthropicSSE(
+      (async function* () {
+        yield {
+          message: {
+            content:
+              "I'll list /tmp.\n<function=Bash>\n<parameter=command>\nls /tmp\n</parameter>\n</function>\n</tool_call>",
+          },
+        };
+        yield { done: true, eval_count: 5, prompt_eval_count: 100 };
+      })(),
+      { requestModel: 'qwen3-coder:30b', knownTools: ['Bash', 'Read'] }
+    );
+    for await (const e of it) events.push(e);
+
+    const tu = events.find((e) => e.includes('"type":"tool_use"'));
+    assert.ok(tu, 'expected a tool_use content_block_start');
+    assert.match(tu!, /"name":"Bash"/);
+    const delta = events.find((e) => e.includes('input_json_delta'));
+    assert.ok(delta);
+    assert.match(delta!, /\\"command\\":\\"ls \/tmp\\"/);
+    const msgDelta = events.find((e) => e.includes('"type":"message_delta"'));
+    assert.match(msgDelta!, /"stop_reason":"tool_use"/);
+  });
+
+  it('does not salvage when no tools were declared in the request', async () => {
+    const events: string[] = [];
+    const it = ollamaStreamToAnthropicSSE(
+      (async function* () {
+        yield {
+          message: {
+            content: '<function=Bash><parameter=command>ls</parameter></function>',
+          },
+        };
+        yield { done: true };
+      })(),
+      { requestModel: 'm' }
+    );
+    for await (const e of it) events.push(e);
+    const hasTu = events.some((e) => e.includes('"type":"tool_use"'));
+    assert.equal(hasTu, false);
   });
 
   it('emits text then tool_use with correct indices', async () => {

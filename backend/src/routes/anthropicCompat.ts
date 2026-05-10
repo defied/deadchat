@@ -74,6 +74,7 @@ router.post('/v1/messages', authenticateApiToken, async (req: Request, res: Resp
 
   const serverOptions = model ? getOptionsForModel(model) : {};
   const ollamaReq = anthropicToOllamaRequest(body, serverOptions);
+  const knownTools = (body.tools ?? []).map((t) => t.name).filter((n): n is string => typeof n === 'string');
 
   try {
     const upstream = await fetch(`${config.ollamaUrl}/api/chat`, {
@@ -121,7 +122,7 @@ router.post('/v1/messages', authenticateApiToken, async (req: Request, res: Resp
               yield chunk;
             }
           })(),
-          { requestModel: model, stopSequences: body.stop_sequences }
+          { requestModel: model, stopSequences: body.stop_sequences, knownTools }
         );
         for await (const evt of events) {
           if (clientClosed || res.writableEnded) break;
@@ -145,7 +146,7 @@ router.post('/v1/messages', authenticateApiToken, async (req: Request, res: Resp
     const data = (await upstream.json()) as OllamaChatResponse;
     promptTokens = data.prompt_eval_count ?? 0;
     evalTokens = data.eval_count ?? 0;
-    const out = ollamaToAnthropicResponse(data, model, body.stop_sequences);
+    const out = ollamaToAnthropicResponse(data, model, body.stop_sequences, knownTools);
     res.status(200).json(out);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
