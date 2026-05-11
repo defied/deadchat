@@ -1,7 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { authenticateApiToken } from '../middleware/apiToken';
+import { adminOnly } from '../middleware/adminOnly';
 import { config } from '../config';
-import { getOptionsForModel, getEnabledModels } from '../services/modelSettings';
+import {
+  getOptionsForModel,
+  getEnabledModels,
+  listModelSettings,
+  upsertModelSettings,
+  deleteModelSettings,
+} from '../services/modelSettings';
 import { logUsage } from '../services/usage';
 
 const router = Router();
@@ -214,6 +221,48 @@ router.post('/v1/completions', auth, (req, res) => {
 
 router.post('/v1/embeddings', auth, (req, res) => {
   proxyJson('/v1/embeddings', 'POST', req.body, res);
+});
+
+// ========== Admin (API token + admin role) ==========
+// These mirror /api/admin/model-settings and /api/ollama/models but accept
+// the long-lived dc_live_* API token instead of a JWT session, so external
+// tools (e.g. the vs-dead-claude extension) can manage the enable-list
+// without a separate login flow. Mounted under /api/admin-ext/* so the
+// ingress (which only routes /api, /v1, /ws to the backend) reaches them
+// without colliding with the SPA's /admin page route.
+
+router.get('/api/admin-ext/ollama-models', auth, adminOnly, async (_req, res) => {
+  try {
+    const resp = await fetch(`${config.ollamaUrl}/api/tags`);
+    const data = await resp.json();
+    res.status(resp.status).json(data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: `Upstream Ollama unreachable: ${msg}` });
+  }
+});
+
+router.get('/api/admin-ext/model-settings', auth, adminOnly, (_req, res) => {
+  res.json({ settings: listModelSettings() });
+});
+
+router.put('/api/admin-ext/model-settings/:model', auth, adminOnly, (req, res) => {
+  const model = req.params.model as string;
+  const { options, enabled } = req.body || {};
+  const opts = (typeof options === 'object' && options !== null && !Array.isArray(options))
+    ? options as Record<string, unknown>
+    : {};
+  const s = upsertModelSettings(model, opts, enabled !== false);
+  res.json({ settings: s });
+});
+
+router.delete('/api/admin-ext/model-settings/:model', auth, adminOnly, (req, res) => {
+  const ok = deleteModelSettings(req.params.model as string);
+  if (!ok) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  res.json({ message: 'Deleted' });
 });
 
 export default router;
