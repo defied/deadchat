@@ -3,11 +3,14 @@ import { Layout } from '../components/Layout';
 import { Sidebar } from '../components/Sidebar';
 import { ChatWindow } from '../components/ChatWindow';
 import { ChatInput } from '../components/ChatInput';
+import { AgentPicker } from '../components/AgentPicker';
+import { AgentChip } from '../components/AgentChip';
 import { useChat } from '../hooks/useChat';
 import { useWebSocket } from '../hooks/useWebSocket';
 import * as chatApi from '../api/chat';
 import { getActiveModel, getModelStatus, type ModelStatus } from '../api/ollama';
 import type { ChatSession } from '../api/chat';
+import type { AgentSelection } from '../api/agents';
 import { Cpu } from 'lucide-react';
 
 const MODEL_STATUS_POLL_MS = 5_000;
@@ -53,6 +56,9 @@ export function ChatPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState<string>('');
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
   const {
     messages,
@@ -113,9 +119,18 @@ export function ChatPage() {
     }
   }, [activeSessionId, setInitialMessages]);
 
-  const handleNewSession = async () => {
+  const handleNewSession = () => {
+    // Open the agent picker; createSession fires after the user makes a choice.
+    setPickerOpen(true);
+  };
+
+  const handlePickerPick = async (selection: AgentSelection | null) => {
+    setPickerOpen(false);
     try {
-      const session = await chatApi.createSession();
+      const session = await chatApi.createSession(
+        undefined,
+        selection ? { source: selection.source, id: selection.id } : null,
+      );
       setSessions((prev) => [session, ...prev]);
       setActiveSessionId(session.id);
       setInitialMessages([]);
@@ -168,20 +183,27 @@ export function ChatPage() {
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-        {activeModel && (
+        {(activeModel || activeSession?.agent_name) && (
           <div style={{
             padding: '6px 24px',
             borderBottom: '1px solid var(--color-border)',
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            gap: 10,
             fontSize: 12,
             color: 'var(--color-text-dim)',
             background: 'var(--color-surface)',
           }}>
-            <Cpu size={12} />
-            Model: <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{activeModel}</span>
-            <ModelStatusChip status={modelStatus} />
+            {activeModel && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Cpu size={12} />
+                Model: <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>{activeModel}</span>
+                <ModelStatusChip status={modelStatus} />
+              </div>
+            )}
+            {activeSession?.agent_name && (
+              <AgentChip name={activeSession.agent_name} />
+            )}
           </div>
         )}
         <ChatWindow
@@ -191,6 +213,9 @@ export function ChatPage() {
         />
         <ChatInput onSend={handleSend} disabled={isStreaming} />
       </div>
+      {pickerOpen && (
+        <AgentPicker onPick={handlePickerPick} onCancel={() => setPickerOpen(false)} />
+      )}
     </Layout>
   );
 }

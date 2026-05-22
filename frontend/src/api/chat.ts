@@ -5,6 +5,10 @@ export interface ChatSession {
   title: string;
   createdAt: string;
   updatedAt: string;
+  // Agent snapshot — present only when the session was created with one.
+  agent_source?: 'library' | 'user' | null;
+  agent_id?: number | null;
+  agent_name?: string | null;
 }
 
 export interface ChatMessage {
@@ -26,10 +30,16 @@ export async function getSessions(): Promise<ChatSession[]> {
   return data.sessions;
 }
 
-export async function createSession(title?: string): Promise<ChatSession> {
-  const { data } = await client.post<{ session: ChatSession }>('/api/chat/sessions', {
-    title: title || 'New Chat',
-  });
+export async function createSession(
+  title?: string,
+  agent?: { source: 'library' | 'user'; id: number } | null,
+): Promise<ChatSession> {
+  const body: Record<string, unknown> = { title: title || 'New Chat' };
+  if (agent) {
+    body.agentSource = agent.source;
+    body.agentId = agent.id;
+  }
+  const { data } = await client.post<{ session: ChatSession }>('/api/chat/sessions', body);
   return data.session;
 }
 

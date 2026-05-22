@@ -66,10 +66,19 @@ export async function handleChatMessage(
     'SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at ASC'
   ).all(sessionId) as Pick<Message, 'role' | 'content'>[];
 
-  const ollamaMessages: OllamaMessage[] = history.map(msg => ({
-    role: msg.role as OllamaMessage['role'],
-    content: msg.content,
-  }));
+  // If the session was created with an agent, the snapshot system_prompt lives
+  // on the session row. Prepend it so every turn includes it without polluting
+  // the messages table.
+  const ollamaMessages: OllamaMessage[] = [];
+  if (session.system_prompt) {
+    ollamaMessages.push({ role: 'system', content: session.system_prompt });
+  }
+  for (const msg of history) {
+    ollamaMessages.push({
+      role: msg.role as OllamaMessage['role'],
+      content: msg.content,
+    });
+  }
 
   // Get active model from settings
   const settingRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('active_model') as { value: string } | undefined;

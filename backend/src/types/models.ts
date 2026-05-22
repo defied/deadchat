@@ -12,7 +12,32 @@ export interface Session {
   id: number;
   user_id: number;
   title: string;
+  agent_source: 'library' | 'user' | null;
+  agent_id: number | null;
+  agent_name: string | null;
+  system_prompt: string | null;
   created_at: string;
+}
+
+export interface LibraryAgent {
+  id: number;
+  name: string;
+  description: string;
+  system_prompt: string;
+  created_by_user_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserAgent {
+  id: number;
+  user_id: number;
+  name: string;
+  description: string;
+  system_prompt: string;
+  source_library_id: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Message {

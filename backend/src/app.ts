@@ -13,6 +13,7 @@ import tokensRoutes from './routes/tokens';
 import modelSettingsRoutes from './routes/modelSettings';
 import publicApiRoutes from './routes/publicApi';
 import anthropicCompatRoutes from './routes/anthropicCompat';
+import agentsRoutes from './routes/agents';
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/ollama', ollamaRoutes);
 app.use('/api/tokens', tokensRoutes);
 app.use('/api/admin/model-settings', modelSettingsRoutes);
+app.use('/api/agents', agentsRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

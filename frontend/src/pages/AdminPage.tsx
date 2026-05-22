@@ -8,12 +8,13 @@ import { UsageChart } from '../components/admin/UsageChart';
 import { ModelsPanel } from '../components/admin/ModelsPanel';
 import { ModelPricingPanel } from '../components/admin/ModelPricingPanel';
 import { LiveStatsPanel } from '../components/admin/LiveStatsPanel';
+import { AgentsPanel } from '../components/admin/AgentsPanel';
 import type { User } from '../api/auth';
 import type { UsageSummary } from '../api/users';
 import * as usersApi from '../api/users';
-import { Users, BarChart3, Plus, Cpu, Activity, DollarSign } from 'lucide-react';
+import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot } from 'lucide-react';
 
-type Tab = 'users' | 'usage' | 'pricing' | 'models' | 'live';
+type Tab = 'users' | 'usage' | 'pricing' | 'models' | 'live' | 'agents';
 
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>('users');
@@ -182,6 +183,12 @@ export function AdminPage() {
             icon={<Activity size={14} />}
             label="Live"
           />
+          <TabButton
+            active={tab === 'agents'}
+            onClick={() => setTab('agents')}
+            icon={<Bot size={14} />}
+            label="Agents"
+          />
         </div>
 
         {tab === 'users' && (
@@ -216,6 +223,10 @@ export function AdminPage() {
 
         {tab === 'live' && (
           <LiveStatsPanel />
+        )}
+
+        {tab === 'agents' && (
+          <AgentsPanel />
         )}
 
         {showForm && (

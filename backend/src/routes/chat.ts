@@ -19,11 +19,48 @@ router.get('/sessions', (req: Request, res: Response): void => {
 
 // POST /api/chat/sessions
 router.post('/sessions', (req: Request, res: Response): void => {
-  const { title } = req.body;
+  const { title, agentSource, agentId } = req.body || {};
+
+  // Resolve the agent (if specified) and snapshot its name + system_prompt
+  // onto the session row. If the agent disappears later, the chat is unaffected.
+  let resolvedSource: 'library' | 'user' | null = null;
+  let resolvedId: number | null = null;
+  let agentName: string | null = null;
+  let systemPrompt: string | null = null;
+
+  if (agentSource === 'library' && Number.isInteger(agentId)) {
+    const row = db.prepare(
+      'SELECT name, system_prompt FROM agent_library WHERE id = ?'
+    ).get(agentId) as { name: string; system_prompt: string } | undefined;
+    if (row) {
+      resolvedSource = 'library';
+      resolvedId = agentId;
+      agentName = row.name;
+      systemPrompt = row.system_prompt;
+    }
+  } else if (agentSource === 'user' && Number.isInteger(agentId)) {
+    const row = db.prepare(
+      'SELECT name, system_prompt FROM user_agents WHERE id = ? AND user_id = ?'
+    ).get(agentId, req.user!.id) as { name: string; system_prompt: string } | undefined;
+    if (row) {
+      resolvedSource = 'user';
+      resolvedId = agentId;
+      agentName = row.name;
+      systemPrompt = row.system_prompt;
+    }
+  }
 
   const result = db.prepare(
-    'INSERT INTO sessions (user_id, title) VALUES (?, ?)'
-  ).run(req.user!.id, title || 'New Chat');
+    `INSERT INTO sessions (user_id, title, agent_source, agent_id, agent_name, system_prompt)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(
+    req.user!.id,
+    title || 'New Chat',
+    resolvedSource,
+    resolvedId,
+    agentName,
+    systemPrompt,
+  );
 
   const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(result.lastInsertRowid) as Session;
 
