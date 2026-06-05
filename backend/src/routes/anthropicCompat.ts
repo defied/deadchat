@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authenticateApiToken } from '../middleware/apiToken';
-import { config } from '../config';
+import { getOllamaUrl } from '../services/appSettings';
 import { getOptionsForModel } from '../services/modelSettings';
 import { logUsage } from '../services/usage';
 import {
@@ -77,7 +77,7 @@ router.post('/v1/messages', authenticateApiToken, async (req: Request, res: Resp
   const knownTools = (body.tools ?? []).map((t) => t.name).filter((n): n is string => typeof n === 'string');
 
   try {
-    const upstream = await fetch(`${config.ollamaUrl}/api/chat`, {
+    const upstream = await fetch(`${getOllamaUrl()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ollamaReq),

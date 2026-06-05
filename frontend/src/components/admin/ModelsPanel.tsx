@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Download, Trash2, Check, Copy, Info, Play, Plus, X, RefreshCw, Loader2, Sliders,
+  Download, Trash2, Check, Copy, Info, Play, Plus, X, RefreshCw, Loader2, Sliders, Server, RotateCcw,
 } from 'lucide-react';
 import * as ollamaApi from '../../api/ollama';
-import type { OllamaModel, RunningModel } from '../../api/ollama';
+import type { OllamaModel, RunningModel, BackendUrlInfo } from '../../api/ollama';
 import { ModelSettingsEditor } from './ModelSettingsEditor';
 
 function formatSize(bytes: number): string {
@@ -43,6 +43,23 @@ export function ModelsPanel() {
   // Per-model settings editor
   const [settingsModel, setSettingsModel] = useState<string | null>(null);
 
+  // Backend URL config
+  const [backendUrl, setBackendUrl] = useState<BackendUrlInfo | null>(null);
+  const [backendUrlInput, setBackendUrlInput] = useState('');
+  const [backendUrlSaving, setBackendUrlSaving] = useState(false);
+  const [backendUrlError, setBackendUrlError] = useState('');
+  const [backendUrlNotice, setBackendUrlNotice] = useState('');
+
+  const loadBackendUrl = useCallback(async () => {
+    try {
+      const info = await ollamaApi.getBackendUrl();
+      setBackendUrl(info);
+      setBackendUrlInput(info.url);
+    } catch (err: any) {
+      setBackendUrlError(err.message || 'Failed to load backend URL');
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -62,7 +79,48 @@ export function ModelsPanel() {
     }
   }, []);
 
+  const handleSaveBackendUrl = async () => {
+    setBackendUrlSaving(true);
+    setBackendUrlError('');
+    setBackendUrlNotice('');
+    try {
+      const info = await ollamaApi.setBackendUrl(backendUrlInput.trim() || null);
+      setBackendUrl(info);
+      setBackendUrlInput(info.url);
+      setBackendUrlNotice(
+        info.isOverride
+          ? `Saved. All Ollama traffic now goes to ${info.url}.`
+          : 'Override cleared; using boot-time default.'
+      );
+      refresh();
+    } catch (err: any) {
+      const apiMsg = err?.response?.data?.error;
+      setBackendUrlError(apiMsg || err.message || 'Failed to save backend URL');
+    } finally {
+      setBackendUrlSaving(false);
+    }
+  };
+
+  const handleResetBackendUrl = async () => {
+    setBackendUrlSaving(true);
+    setBackendUrlError('');
+    setBackendUrlNotice('');
+    try {
+      const info = await ollamaApi.setBackendUrl(null);
+      setBackendUrl(info);
+      setBackendUrlInput(info.url);
+      setBackendUrlNotice('Override cleared; using boot-time default.');
+      refresh();
+    } catch (err: any) {
+      const apiMsg = err?.response?.data?.error;
+      setBackendUrlError(apiMsg || err.message || 'Failed to reset backend URL');
+    } finally {
+      setBackendUrlSaving(false);
+    }
+  };
+
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { loadBackendUrl(); }, [loadBackendUrl]);
 
   const handleSetActive = async (name: string) => {
     try {
@@ -194,6 +252,101 @@ export function ModelsPanel() {
           </button>
         </div>
       )}
+
+      {/* Backend URL config */}
+      <div style={{
+        padding: '12px 16px',
+        marginBottom: 16,
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius)',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 10,
+          fontSize: 13,
+          color: 'var(--color-text-secondary)',
+        }}>
+          <Server size={16} style={{ color: 'var(--color-text-dim)' }} />
+          <span style={{ fontWeight: 500 }}>Ollama backend URL</span>
+          {backendUrl?.isOverride ? (
+            <span style={{
+              padding: '1px 6px', fontSize: 10, fontWeight: 500, borderRadius: 4,
+              background: 'var(--color-accent-dim)', color: 'var(--color-accent-light)',
+            }}>
+              admin override
+            </span>
+          ) : (
+            <span style={{
+              padding: '1px 6px', fontSize: 10, fontWeight: 500, borderRadius: 4,
+              background: 'var(--color-surface-light)', color: 'var(--color-text-dim)',
+            }}>
+              boot default
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            value={backendUrlInput}
+            onChange={(e) => setBackendUrlInput(e.target.value)}
+            placeholder={backendUrl?.default || 'http://host:11434'}
+            disabled={backendUrlSaving}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveBackendUrl()}
+            style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13 }}
+          />
+          <button
+            onClick={handleSaveBackendUrl}
+            disabled={backendUrlSaving || backendUrlInput.trim() === (backendUrl?.url || '')}
+            style={{
+              padding: '8px 16px', background: 'var(--color-accent)', border: 'none',
+              color: '#fff', fontWeight: 500, borderRadius: 'var(--radius)', cursor: 'pointer',
+              opacity: backendUrlSaving || backendUrlInput.trim() === (backendUrl?.url || '') ? 0.6 : 1,
+            }}
+          >
+            {backendUrlSaving ? 'Saving…' : 'Save'}
+          </button>
+          {backendUrl?.isOverride && (
+            <button
+              onClick={handleResetBackendUrl}
+              disabled={backendUrlSaving}
+              title={`Reset to boot default (${backendUrl.default})`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '8px 12px', background: 'transparent',
+                border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
+                borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 13,
+              }}
+            >
+              <RotateCcw size={13} /> Reset
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 6 }}>
+          All chat, generate, and tool-call traffic forwards here. Boot default: <code>{backendUrl?.default || '—'}</code>
+        </div>
+        {backendUrlNotice && (
+          <div style={{
+            marginTop: 8, padding: '6px 10px', fontSize: 12,
+            background: 'rgba(34, 197, 94, 0.08)',
+            border: '1px solid rgba(34, 197, 94, 0.2)',
+            borderRadius: 'var(--radius)', color: 'var(--color-success)',
+          }}>
+            {backendUrlNotice}
+          </div>
+        )}
+        {backendUrlError && (
+          <div style={{
+            marginTop: 8, padding: '6px 10px', fontSize: 12,
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.2)',
+            borderRadius: 'var(--radius)', color: 'var(--color-danger)',
+          }}>
+            {backendUrlError}
+          </div>
+        )}
+      </div>
 
       {/* Active model indicator */}
       <div style={{

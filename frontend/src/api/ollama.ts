@@ -133,6 +133,22 @@ export async function setActiveModel(model: string): Promise<void> {
   await client.put('/api/ollama/active-model', { model });
 }
 
+export interface BackendUrlInfo {
+  url: string;
+  default: string;
+  isOverride: boolean;
+}
+
+export async function getBackendUrl(): Promise<BackendUrlInfo> {
+  const { data } = await client.get('/api/ollama/backend-url');
+  return data;
+}
+
+export async function setBackendUrl(url: string | null): Promise<BackendUrlInfo> {
+  const { data } = await client.put('/api/ollama/backend-url', { url });
+  return data;
+}
+
 export async function listModels(): Promise<OllamaModel[]> {
   const { data } = await client.get('/api/ollama/models');
   return data.models || [];

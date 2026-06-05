@@ -4,6 +4,7 @@ import { adminOnly } from '../middleware/adminOnly';
 import { config } from '../config';
 import db from '../db/connection';
 import { buildSnapshot, fetchNginxStatus, type RunningModelLite } from '../services/liveStats';
+import { getOllamaUrl, getOllamaUrlOverride, setOllamaUrl } from '../services/appSettings';
 
 const FRONTEND_STATUS_URL =
   process.env.FRONTEND_STATUS_URL || 'http://deadchat-frontend:8080/_nginx_status';
@@ -27,7 +28,7 @@ router.get('/model-status', authenticate, async (req: Request, res: Response): P
   }
 
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/ps`);
+    const response = await fetch(`${getOllamaUrl()}/api/ps`);
     if (!response.ok) {
       res.json({ name, status: 'unreachable', reachable: false });
       return;
@@ -62,7 +63,7 @@ router.get('/model-status', authenticate, async (req: Request, res: Response): P
 // GET /api/ollama/models - list local models
 router.get('/models', authenticate, adminOnly, async (_req: Request, res: Response): Promise<void> => {
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/tags`);
+    const response = await fetch(`${getOllamaUrl()}/api/tags`);
     const data = await response.json();
     res.json(data);
   } catch (err: any) {
@@ -73,7 +74,7 @@ router.get('/models', authenticate, adminOnly, async (_req: Request, res: Respon
 // GET /api/ollama/running - list running models
 router.get('/running', authenticate, adminOnly, async (_req: Request, res: Response): Promise<void> => {
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/ps`);
+    const response = await fetch(`${getOllamaUrl()}/api/ps`);
     const data = await response.json();
     res.json(data);
   } catch (err: any) {
@@ -86,7 +87,7 @@ router.get('/live-stats', authenticate, adminOnly, async (_req: Request, res: Re
   const [psResult, nginxStatus] = await Promise.all([
     (async () => {
       try {
-        const response = await fetch(`${config.ollamaUrl}/api/ps`);
+        const response = await fetch(`${getOllamaUrl()}/api/ps`);
         if (!response.ok) return { running: [] as RunningModelLite[], error: `Ollama responded ${response.status}` };
         const data = await response.json() as { models?: RunningModelLite[] };
         return { running: data.models || [], error: undefined as string | undefined };
@@ -120,7 +121,7 @@ router.post('/pull', authenticate, adminOnly, async (req: Request, res: Response
   }
 
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/pull`, {
+    const response = await fetch(`${getOllamaUrl()}/api/pull`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, stream: true }),
@@ -154,7 +155,7 @@ router.post('/pull', authenticate, adminOnly, async (req: Request, res: Response
 router.delete('/models/:name', authenticate, adminOnly, async (req: Request, res: Response): Promise<void> => {
   const { name } = req.params;
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/delete`, {
+    const response = await fetch(`${getOllamaUrl()}/api/delete`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -179,7 +180,7 @@ router.post('/create', authenticate, adminOnly, async (req: Request, res: Respon
   }
 
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/create`, {
+    const response = await fetch(`${getOllamaUrl()}/api/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, modelfile, stream: true }),
@@ -213,7 +214,7 @@ router.post('/create', authenticate, adminOnly, async (req: Request, res: Respon
 router.get('/model/:name', authenticate, adminOnly, async (req: Request, res: Response): Promise<void> => {
   const { name } = req.params;
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/show`, {
+    const response = await fetch(`${getOllamaUrl()}/api/show`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -234,7 +235,7 @@ router.post('/copy', authenticate, adminOnly, async (req: Request, res: Response
   }
 
   try {
-    const response = await fetch(`${config.ollamaUrl}/api/copy`, {
+    const response = await fetch(`${getOllamaUrl()}/api/copy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source, destination }),
@@ -266,6 +267,68 @@ router.put('/active-model', authenticate, adminOnly, (req: Request, res: Respons
   }
 
   res.json({ model, message: `Active model set to ${model} for all users` });
+});
+
+// GET /api/ollama/backend-url - return effective Ollama URL + env default (admin only)
+router.get('/backend-url', authenticate, adminOnly, (_req: Request, res: Response): void => {
+  const override = getOllamaUrlOverride();
+  res.json({
+    url: getOllamaUrl(),
+    default: config.ollamaUrl,
+    isOverride: override !== null,
+  });
+});
+
+// PUT /api/ollama/backend-url - set or clear the Ollama URL override (admin only)
+// Body: { url: string | null }. null/empty string clears the override.
+router.put('/backend-url', authenticate, adminOnly, (req: Request, res: Response): void => {
+  const raw = req.body?.url;
+
+  if (raw === null || raw === undefined || raw === '') {
+    setOllamaUrl(null);
+    res.json({
+      url: getOllamaUrl(),
+      default: config.ollamaUrl,
+      isOverride: false,
+      message: 'Ollama URL override cleared; using boot-time default',
+    });
+    return;
+  }
+
+  if (typeof raw !== 'string') {
+    res.status(400).json({ error: 'url must be a string or null' });
+    return;
+  }
+
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    res.status(400).json({ error: 'url is not a valid URL' });
+    return;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    res.status(400).json({ error: 'url must use http:// or https://' });
+    return;
+  }
+  if (parsed.pathname !== '/' && parsed.pathname !== '') {
+    res.status(400).json({ error: 'url must not contain a path' });
+    return;
+  }
+  if (parsed.search || parsed.hash) {
+    res.status(400).json({ error: 'url must not contain a query string or fragment' });
+    return;
+  }
+
+  const normalised = `${parsed.protocol}//${parsed.host}`;
+  setOllamaUrl(normalised);
+  res.json({
+    url: normalised,
+    default: config.ollamaUrl,
+    isOverride: true,
+    message: `Ollama URL set to ${normalised}`,
+  });
 });
 
 export default router;

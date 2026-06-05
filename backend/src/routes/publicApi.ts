@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateApiToken } from '../middleware/apiToken';
 import { adminOnly } from '../middleware/adminOnly';
-import { config } from '../config';
+import { getOllamaUrl } from '../services/appSettings';
 import {
   getOptionsForModel,
   getEnabledModels,
@@ -21,7 +21,7 @@ async function proxyJson(
   res: Response
 ): Promise<void> {
   try {
-    const resp = await fetch(`${config.ollamaUrl}${upstreamPath}`, {
+    const resp = await fetch(`${getOllamaUrl()}${upstreamPath}`, {
       method,
       headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -50,7 +50,7 @@ async function proxyStream(
   let model = '';
 
   try {
-    const upstream = await fetch(`${config.ollamaUrl}${upstreamPath}`, {
+    const upstream = await fetch(`${getOllamaUrl()}${upstreamPath}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -144,7 +144,7 @@ function filterTags(data: unknown): unknown {
 
 router.get('/api/tags', auth, async (_req, res) => {
   try {
-    const resp = await fetch(`${config.ollamaUrl}/api/tags`);
+    const resp = await fetch(`${getOllamaUrl()}/api/tags`);
     const data = await resp.json();
     res.status(resp.status).json(filterTags(data));
   } catch (err) {
@@ -189,7 +189,7 @@ router.post('/api/embed', auth, (req, res) => {
 
 router.get('/v1/models', auth, async (_req, res) => {
   try {
-    const resp = await fetch(`${config.ollamaUrl}/v1/models`);
+    const resp = await fetch(`${getOllamaUrl()}/v1/models`);
     const data = await resp.json();
     const enabled = getEnabledModels();
     if (enabled.length > 0 && typeof data === 'object' && data !== null) {
@@ -233,7 +233,7 @@ router.post('/v1/embeddings', auth, (req, res) => {
 
 router.get('/api/admin-ext/ollama-models', auth, adminOnly, async (_req, res) => {
   try {
-    const resp = await fetch(`${config.ollamaUrl}/api/tags`);
+    const resp = await fetch(`${getOllamaUrl()}/api/tags`);
     const data = await resp.json();
     res.status(resp.status).json(data);
   } catch (err) {

@@ -1,4 +1,5 @@
 import { config } from '../config';
+import { getOllamaUrl } from './appSettings';
 
 export interface OllamaMessage {
   role: 'user' | 'assistant' | 'system';
@@ -38,7 +39,7 @@ export async function* chatStream(
   messages: OllamaMessage[],
   model?: string
 ): AsyncGenerator<ChatStreamChunk> {
-  const response = await fetch(`${config.ollamaUrl}/api/chat`, {
+  const response = await fetch(`${getOllamaUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -115,7 +116,7 @@ export async function chatSync(
   evalTokens: number;
   totalDuration: number;
 }> {
-  const response = await fetch(`${config.ollamaUrl}/api/chat`, {
+  const response = await fetch(`${getOllamaUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
