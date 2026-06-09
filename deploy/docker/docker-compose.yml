@@ -22,6 +22,10 @@ services:
       - OLLAMA_MODEL=gemma4
       - DB_PATH=/data/deadchat.db
       - UPLOAD_DIR=/data/uploads
+      - COMFYUI_URL=http://192.168.0.106:8188
+      - MEDIA_DIR=/data/media
+      - SECRETS_KEY=change-this-in-production
+      - RUN_WORKER=true
     volumes:
       - backend-data:/data
 

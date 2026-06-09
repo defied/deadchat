@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { getOllamaUrl } from './appSettings';
+import type { OllamaChatRequest, OllamaChatResponse as OllamaApiResponse } from '../types/anthropic';
 
 export interface OllamaMessage {
   role: 'user' | 'assistant' | 'system';
@@ -147,8 +148,41 @@ export async function generateImage(
   return {
     success: false,
     message:
-      'Image generation requires a compatible model (e.g., stable-diffusion). ' +
-      'The current model (' + config.ollamaModel + ') does not support image generation. ' +
-      'Please configure a compatible model and try again.',
+      'Image generation is handled by the job queue. ' +
+      'POST /api/generate/image to enqueue a job.',
   };
 }
+
+// Full request/response pass-through for the agent loop, which constructs the
+// Ollama request via anthropicToOllamaRequest (includes tools, keep_alive, etc.).
+export async function chatSyncRaw(req: OllamaChatRequest): Promise<OllamaApiResponse> {
+  const body = { ...req, stream: false };
+  const response = await fetch(`${getOllamaUrl()}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Ollama API error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<OllamaApiResponse>;
+}
+
+// Evict a model from VRAM before running a heavy GPU job (video gen).
+// keep_alive=0 tells Ollama to unload the model immediately.
+export async function evictModel(model: string): Promise<void> {
+  try {
+    await fetch(`${getOllamaUrl()}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, keep_alive: 0 }),
+    });
+  } catch {
+    // Best-effort — don't block the job if eviction fails
+  }
+}
+
+export { config };

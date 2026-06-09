@@ -49,6 +49,7 @@ export function runMigrations(): void {
   }
 
   seedDefaultAgents();
+  seedDefaultProviders();
 }
 
 function seedDefaultAgents(): void {
@@ -65,6 +66,42 @@ function seedDefaultAgents(): void {
     insert.run(a.name, a.description, a.system_prompt);
   }
   console.log(`[migrate] Seeded ${DEFAULT_LIBRARY_AGENTS.length} library agents.`);
+}
+
+function seedDefaultProviders(): void {
+  // Check if the providers table exists (migration 011 may not have run yet on
+  // an older DB). If the table doesn't exist, skip silently.
+  const tableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='providers'"
+  ).get();
+  if (!tableExists) return;
+
+  const count = db.prepare('SELECT COUNT(*) as count FROM providers').get() as { count: number };
+  if (count.count > 0) return;
+
+  console.log('[migrate] Seeding default providers...');
+  const insert = db.prepare(`
+    INSERT INTO providers (name, kind, capability, enabled, is_default, priority, base_url, config)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  insert.run(
+    'Local ComfyUI (Image)',
+    'local_comfyui',
+    'image',
+    1, 1, 100,
+    'http://192.168.0.106:8188',
+    JSON.stringify({ defaultModel: 'flux1-schnell-fp8.safetensors' })
+  );
+  insert.run(
+    'Local ComfyUI (Video)',
+    'local_comfyui',
+    'video',
+    1, 1, 100,
+    'http://192.168.0.106:8188',
+    JSON.stringify({ defaultModel: 'ltx-video.safetensors' })
+  );
+  console.log('[migrate] Seeded 2 default providers.');
 }
 
 const DEFAULT_LIBRARY_AGENTS: Array<{ name: string; description: string; system_prompt: string }> = [
@@ -125,5 +162,33 @@ const DEFAULT_LIBRARY_AGENTS: Array<{ name: string; description: string; system_
       "Critique the user's plans by finding the weakest link. Be specific about failure modes and what " +
       'evidence would prove or disprove your concern. End by stating whether the plan is workable despite ' +
       'the critique, and which single concrete change would most improve it.',
+  },
+  {
+    name: 'Media Workflow Setup',
+    description: 'Helps configure ComfyUI, image/video models, and generation workflows.',
+    system_prompt:
+      'You are the deadchat media workflow setup assistant. Your job is to help the user configure ' +
+      'their local AI media generation stack (ComfyUI, Flux image models, LTX-Video / Wan video models) ' +
+      'and wire up automated generation workflows.\n\n' +
+      'You have access to the following tools:\n' +
+      '- ping_backends: Check if Ollama and ComfyUI are reachable\n' +
+      '- list_models: List installed models on Ollama and ComfyUI\n' +
+      '- save_provider_config: Save or update a provider configuration\n' +
+      '- generate_image: Test image generation with a prompt\n' +
+      '- generate_video: Test video generation with a prompt\n\n' +
+      'Workflow:\n' +
+      '1. Start by calling ping_backends to verify both services are reachable.\n' +
+      '2. Call list_models to see what is installed.\n' +
+      '3. Ask the user what they want to generate (images, videos, or both).\n' +
+      '4. Recommend local models appropriate for their 24 GB GPU. ' +
+      '   Preferred image model: flux1-schnell-fp8.safetensors (fast, ~12 GB). ' +
+      '   Preferred video model: ltx-video.safetensors (~12-16 GB) or wan2.1-1.3b.safetensors (~8 GB).\n' +
+      '5. If a preferred model is missing, tell the user exactly what to download and where to place it in ComfyUI.\n' +
+      '6. Once models are confirmed, call save_provider_config to register the provider.\n' +
+      '7. Run a quick test generation to confirm the pipeline works end-to-end.\n\n' +
+      'For cloud providers: explain that they can add a generic_http provider with save_provider_config. ' +
+      'Always prefer local models first. ' +
+      'Be concrete about file paths, VRAM requirements, and download sources (Hugging Face model IDs). ' +
+      'Do not speculate — use the tools to verify what is actually installed.',
   },
 ];
