@@ -53,18 +53,18 @@ export class LocalComfyuiProvider implements MediaProvider {
     onProgress?: (p: number) => void
   ): Promise<GenerateResult> {
     const clientId = randomUUID();
-    // Video uses a separate VAE (ltxv-vae.safetensors) vs Flux (ae.safetensors).
     const extra: Record<string, string> = { ...req.extra };
-    if (this.capability === 'video' && !extra.VAE) {
-      extra.VAE = 'ltxv-vae.safetensors';
-    }
+    // Video-specific overrides: LTXV distilled uses a separate VAE and
+    // guidance-distilled sampling (cfg≈1, steps≈8 sufficient).
+    const isVideo = this.capability === 'video';
+    if (isVideo && !extra.VAE) extra.VAE = 'ltxv-vae.safetensors';
     const promptId = await comfyui.submitWorkflow(this.workflowTemplate, {
       prompt: req.prompt,
       seed: req.seed,
       width: req.width,
       height: req.height,
-      steps: req.steps,
-      cfg: req.cfg,
+      steps: req.steps ?? (isVideo ? 8 : undefined),
+      cfg: req.cfg ?? (isVideo ? 1.0 : undefined),
       model: req.model ?? this.defaultModel,
       extra,
     }, clientId);
