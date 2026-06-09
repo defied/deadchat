@@ -77,12 +77,17 @@ export function GeneratePanel() {
             let mediaId: number | undefined;
             try {
               const result = finalJob.result ? JSON.parse(finalJob.result) : null;
-              if (result?.media_id) mediaId = result.media_id;
+              if (result?.media_ids?.[0]) mediaId = result.media_ids[0];
+              else if (result?.media_id) mediaId = result.media_id;
             } catch {}
             return { ...j, status: finalJob.status, progress: 100, mediaId, error: finalJob.error ?? undefined };
           })
         );
         if (finalJob.status === 'succeeded') loadGallery();
+      }).catch((e: any) => {
+        setActiveJobs((prev) =>
+          prev.map((j) => j.id !== resp.job_id ? j : { ...j, status: 'failed', error: e?.message || 'Poll error' })
+        );
       });
     } catch (e: any) {
       setError(e?.response?.data?.error || e.message || 'Failed to submit job');

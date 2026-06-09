@@ -1,7 +1,7 @@
 // Single-instance job worker. Claims one heavy job at a time, ensuring the
 // shared 24 GB GPU is never double-booked between ComfyUI and Ollama.
 
-import { claimNext, updateProgress, setExternalRef, complete, fail } from './jobQueue';
+import { claimNext, updateProgress, setExternalRef, complete, fail, resetStaleRunningJobs } from './jobQueue';
 import { saveMedia } from './mediaStore';
 import { selectProvider } from './providers/registry';
 import { evictModel } from './ollama';
@@ -15,6 +15,7 @@ let running = false;
 export function startWorker(): void {
   if (running) return;
   running = true;
+  resetStaleRunningJobs();
   console.log('[worker] Started.');
   loop();
 }

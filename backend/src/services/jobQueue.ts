@@ -13,6 +13,17 @@ export interface EnqueueOptions {
   agentRunId?: number;
 }
 
+// On startup, any job stuck in 'running' means the server crashed mid-job.
+// Reset them to 'queued' so they get retried.
+export function resetStaleRunningJobs(): void {
+  const result = db.prepare(
+    `UPDATE jobs SET status = 'queued', started_at = NULL WHERE status = 'running'`
+  ).run();
+  if (result.changes > 0) {
+    console.log(`[jobQueue] Reset ${result.changes} stale running job(s) to queued.`);
+  }
+}
+
 export function enqueue(
   type: JobType,
   params: Record<string, unknown>,
@@ -33,38 +44,28 @@ export function enqueue(
   return result.lastInsertRowid as number;
 }
 
-// Claim the next queued heavy job, enforcing that no other heavy job is running.
+// Claim the next queued job, enforcing that no other heavy job is running.
 // Returns null if nothing is available or a heavy job is already in flight.
 export function claimNext(): Job | null {
-  const claim = db.transaction((): Job | null => {
+  return db.transaction((): Job | null => {
     // Check if any heavy job is running
-    const running = db.prepare(`
-      SELECT id FROM jobs WHERE status = 'running' AND heavy = 1 LIMIT 1
-    `).get();
+    const running = db.prepare(
+      `SELECT id FROM jobs WHERE status = 'running' AND heavy = 1 LIMIT 1`
+    ).get();
     if (running) return null;
 
     // Find the highest-priority queued job
-    const next = db.prepare(`
-      SELECT * FROM jobs
-      WHERE status = 'queued'
-      ORDER BY priority DESC, id ASC
-      LIMIT 1
-    `).get() as Job | undefined;
+    const next = db.prepare(
+      `SELECT * FROM jobs WHERE status = 'queued' ORDER BY priority DESC, id ASC LIMIT 1`
+    ).get() as Job | undefined;
     if (!next) return null;
 
-    // Only claim heavy jobs when no heavy job is running (already checked above).
-    // Light jobs (heavy=0) can also be claimed here — they bypass the exclusion guard.
-    db.prepare(`
-      UPDATE jobs
-      SET status = 'running', started_at = datetime('now'), attempts = attempts + 1
-      WHERE id = ?
-    `).run(next.id);
+    db.prepare(
+      `UPDATE jobs SET status = 'running', started_at = datetime('now'), attempts = attempts + 1 WHERE id = ?`
+    ).run(next.id);
 
     return { ...next, status: 'running' as JobStatus };
-  });
-
-  // Run as an immediate transaction (writer lock) to prevent races
-  return (db.transaction(claim) as unknown as () => Job | null)();
+  }).immediate();
 }
 
 export function updateProgress(id: number, progress: number): void {

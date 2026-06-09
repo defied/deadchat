@@ -50,13 +50,13 @@ export async function generateVideo(params: GenerateVideoParams): Promise<{ job_
 }
 
 export async function getJob(id: number): Promise<Job> {
-  const { data } = await client.get<{ job: Job }>(`/api/jobs/${id}`);
-  return data.job;
+  const { data } = await client.get<Job>(`/api/jobs/${id}`);
+  return data;
 }
 
 export async function listJobs(params?: { status?: JobStatus; limit?: number }): Promise<Job[]> {
-  const { data } = await client.get<{ jobs: Job[] }>('/api/jobs', { params });
-  return data.jobs;
+  const { data } = await client.get<Job[]>('/api/jobs', { params });
+  return data;
 }
 
 export async function cancelJob(id: number): Promise<void> {
