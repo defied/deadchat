@@ -27,6 +27,7 @@ export interface GenerateImageParams {
   height?: number;
   steps?: number;
   cfg?: number;
+  seed?: number;
   model?: string;
 }
 
@@ -34,8 +35,11 @@ export interface GenerateVideoParams {
   prompt: string;
   width?: number;
   height?: number;
-  num_frames?: number;
+  frames?: number;
   fps?: number;
+  steps?: number;
+  cfg?: number;
+  seed?: number;
   model?: string;
 }
 

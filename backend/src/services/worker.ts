@@ -72,6 +72,10 @@ async function processMediaJob(
   const provider = await selectProvider(capability);
   console.log(`[worker] Using provider ${provider.id} for job ${job.id}`);
 
+  const extra: Record<string, string> = {};
+  if (params.frames) extra.FRAMES = String(params.frames);
+  if (params.fps) extra.FPS = String(params.fps);
+
   const result = await provider.generate(
     {
       prompt: (params.prompt as string) ?? '',
@@ -81,6 +85,7 @@ async function processMediaJob(
       steps: params.steps as number | undefined,
       cfg: params.cfg as number | undefined,
       model: params.model as string | undefined,
+      extra: Object.keys(extra).length ? extra : undefined,
     },
     (p) => updateProgress(job.id, p)
   );

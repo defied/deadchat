@@ -29,6 +29,29 @@ router.get('/status', authenticate, async (_req: Request, res: Response): Promis
   }
 });
 
+// GET /api/comfyui/generate-models — image and video model lists for the generate UI
+const VIDEO_MODEL_RE = /ltx|ltxv|wan|animatediff|video|animate/i;
+router.get('/generate-models', authenticate, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const r = await fetch(`${getComfyuiUrl()}/object_info`, { signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) { res.status(502).json({ error: `ComfyUI responded ${r.status}` }); return; }
+    const info = await r.json() as Record<string, unknown>;
+    function pickList(nodeClass: string, inputKey: string): string[] {
+      const node = info[nodeClass] as Record<string, unknown> | undefined;
+      const req = (node?.input as Record<string, unknown>)?.required as Record<string, unknown> | undefined;
+      return ((req?.[inputKey] as [string[]] | undefined)?.[0]) ?? [];
+    }
+    const unets = pickList('UNETLoader', 'unet_name');
+    const ckpts = pickList('CheckpointLoaderSimple', 'ckpt_name');
+    res.json({
+      image: [...unets.filter((m) => !VIDEO_MODEL_RE.test(m)), ...ckpts],
+      video: unets.filter((m) => VIDEO_MODEL_RE.test(m)),
+    });
+  } catch (err: any) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // ── Admin-only ───────────────────────────────────────────────────────────────
 
 router.use(adminOnly);

@@ -9,16 +9,18 @@ export const mediaToolDefs: AnthropicTool[] = [
     name: 'generate_image',
     description:
       'Generate an image from a text prompt using ComfyUI. ' +
-      'Enqueues a job and waits for completion. Returns the media_id of the saved image.',
+      'Enqueues a job and waits for completion. Returns the media_id of the saved image. ' +
+      'Ask the user for clarification on style, dimensions, or quality if the request is ambiguous.',
     input_schema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', description: 'The image generation prompt.' },
-        width: { type: 'number', description: 'Image width in pixels (default 1024).' },
-        height: { type: 'number', description: 'Image height in pixels (default 1024).' },
-        steps: { type: 'number', description: 'Sampling steps (default 20).' },
-        seed: { type: 'number', description: 'Random seed for reproducibility.' },
-        model: { type: 'string', description: 'ComfyUI checkpoint name to use.' },
+        prompt: { type: 'string', description: 'Detailed image generation prompt.' },
+        width: { type: 'number', description: 'Width in pixels, divisible by 64 (default 1024).' },
+        height: { type: 'number', description: 'Height in pixels, divisible by 64 (default 1024).' },
+        steps: { type: 'number', description: 'Sampling steps (default 20; 4 = fast draft, 30+ = high quality).' },
+        cfg: { type: 'number', description: 'Guidance scale — prompt adherence (default 7.0; range 1–15).' },
+        seed: { type: 'number', description: 'Random seed for reproducibility. Omit for random.' },
+        model: { type: 'string', description: 'UNETLoader checkpoint filename. Use list_models to see options.' },
       },
       required: ['prompt'],
     },
@@ -26,18 +28,21 @@ export const mediaToolDefs: AnthropicTool[] = [
   {
     name: 'generate_video',
     description:
-      'Generate a short video from a text prompt using ComfyUI. ' +
-      'Enqueues a job and waits for completion (may take several minutes). ' +
-      'Returns the media_id of the saved video.',
+      'Generate a short video clip from a text prompt using ComfyUI (LTX-Video distilled). ' +
+      'Takes several minutes on a 4090. Returns the media_id of the saved video. ' +
+      'Ask the user for clarification on content, length, or style if the request is ambiguous.',
     input_schema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', description: 'The video generation prompt.' },
-        width: { type: 'number', description: 'Video width in pixels (default 512).' },
-        height: { type: 'number', description: 'Video height in pixels (default 512).' },
-        steps: { type: 'number', description: 'Sampling steps (default 20).' },
-        seed: { type: 'number', description: 'Random seed for reproducibility.' },
-        model: { type: 'string', description: 'ComfyUI video checkpoint name to use.' },
+        prompt: { type: 'string', description: 'Detailed video generation prompt.' },
+        width: { type: 'number', description: 'Width in pixels, divisible by 32 (default 512).' },
+        height: { type: 'number', description: 'Height in pixels, divisible by 32 (default 512).' },
+        frames: { type: 'number', description: 'Frame count (default 65; must satisfy (n-1) % 8 == 0, e.g. 25, 33, 41, 49, 57, 65, 97, 129).' },
+        fps: { type: 'number', description: 'Playback frame rate (default 24).' },
+        steps: { type: 'number', description: 'Sampling steps (default 8; 4 = fast, 12 = higher quality).' },
+        cfg: { type: 'number', description: 'Guidance scale (default 1.0 for distilled LTX-Video; keep 1.0–3.0).' },
+        seed: { type: 'number', description: 'Random seed for reproducibility. Omit for random.' },
+        model: { type: 'string', description: 'UNETLoader checkpoint filename. Use list_models to see options.' },
       },
       required: ['prompt'],
     },
@@ -58,6 +63,7 @@ export async function handleGenerateImage(
     width: input.width,
     height: input.height,
     steps: input.steps,
+    cfg: input.cfg,
     seed: input.seed,
     model: input.model,
   }, {
@@ -97,7 +103,10 @@ export async function handleGenerateVideo(
     prompt: input.prompt,
     width: input.width ?? 512,
     height: input.height ?? 512,
+    frames: input.frames,
+    fps: input.fps,
     steps: input.steps,
+    cfg: input.cfg,
     seed: input.seed,
     model: input.model,
   }, {
