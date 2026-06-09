@@ -2,12 +2,15 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Bot } from 'lucide-react';
+import { MermaidBlock } from './MermaidBlock';
+import { ToolCallBlock, type ToolCallEntry } from './ToolCallBlock';
 
 interface StreamingTextProps {
   text: string;
+  toolCalls?: ToolCallEntry[];
 }
 
-export function StreamingText({ text }: StreamingTextProps) {
+export function StreamingText({ text, toolCalls = [] }: StreamingTextProps) {
   return (
     <div
       style={{
@@ -46,63 +49,80 @@ export function StreamingText({ text }: StreamingTextProps) {
             wordBreak: 'break-word',
           }}
         >
-          <ReactMarkdown
-            components={{
-              code({ className, children }) {
-                const match = /language-(\w+)/.exec(className || '');
-                const codeString = String(children).replace(/\n$/, '');
-                if (match) {
-                  return (
-                    <SyntaxHighlighter
-                      style={vscDarkPlus}
-                      language={match[1]}
-                      PreTag="div"
-                      customStyle={{
-                        margin: '8px 0',
-                        padding: '12px',
-                        borderRadius: 'var(--radius)',
-                        fontSize: 13,
-                        fontFamily: 'var(--font-mono)',
-                      }}
-                    >
-                      {codeString}
-                    </SyntaxHighlighter>
-                  );
-                }
-                return (
-                  <code
-                    style={{
-                      background: 'var(--color-surface-hover)',
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      fontSize: 13,
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--color-accent-light)',
-                    }}
-                  >
-                    {children}
-                  </code>
-                );
-              },
-              p({ children }) {
-                return <p style={{ margin: '6px 0' }}>{children}</p>;
-              },
-            }}
-          >
-            {text}
-          </ReactMarkdown>
-          <span
-            style={{
-              display: 'inline-block',
-              width: 2,
-              height: 16,
-              background: 'var(--color-accent)',
-              marginLeft: 2,
-              animation: 'pulse 0.8s infinite',
-              verticalAlign: 'text-bottom',
-              borderRadius: 1,
-            }}
-          />
+          {toolCalls.length > 0 && (
+            <div style={{ marginBottom: text ? 10 : 0 }}>
+              {toolCalls.map((tc) => (
+                <ToolCallBlock key={tc.id} tc={tc} />
+              ))}
+            </div>
+          )}
+
+          {text && (
+            <>
+              <ReactMarkdown
+                components={{
+                  code({ className, children }) {
+                    const match = /language-(\w+)/.exec(className || '');
+                    const codeString = String(children).replace(/\n$/, '');
+
+                    if (match?.[1] === 'mermaid') {
+                      return <MermaidBlock code={codeString} />;
+                    }
+
+                    if (match) {
+                      return (
+                        <SyntaxHighlighter
+                          style={vscDarkPlus}
+                          language={match[1]}
+                          PreTag="div"
+                          customStyle={{
+                            margin: '8px 0',
+                            padding: '12px',
+                            borderRadius: 'var(--radius)',
+                            fontSize: 13,
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {codeString}
+                        </SyntaxHighlighter>
+                      );
+                    }
+                    return (
+                      <code
+                        style={{
+                          background: 'var(--color-surface-hover)',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          fontSize: 13,
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--color-accent-light)',
+                        }}
+                      >
+                        {children}
+                      </code>
+                    );
+                  },
+                  p({ children }) {
+                    return <p style={{ margin: '6px 0' }}>{children}</p>;
+                  },
+                }}
+              >
+                {text}
+              </ReactMarkdown>
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 2,
+                  height: 16,
+                  background: 'var(--color-accent)',
+                  marginLeft: 2,
+                  animation: 'pulse 0.8s infinite',
+                  verticalAlign: 'text-bottom',
+                  borderRadius: 1,
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>

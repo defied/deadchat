@@ -16,6 +16,7 @@ export interface Session {
   agent_id: number | null;
   agent_name: string | null;
   system_prompt: string | null;
+  agent_agentic: number;
   created_at: string;
 }
 
@@ -24,6 +25,7 @@ export interface LibraryAgent {
   name: string;
   description: string;
   system_prompt: string;
+  agentic: number;
   created_by_user_id: number | null;
   created_at: string;
   updated_at: string;
@@ -35,6 +37,7 @@ export interface UserAgent {
   name: string;
   description: string;
   system_prompt: string;
+  agentic: number;
   source_library_id: number | null;
   created_at: string;
   updated_at: string;

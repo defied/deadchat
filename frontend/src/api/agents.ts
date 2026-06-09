@@ -5,6 +5,7 @@ export interface LibraryAgent {
   name: string;
   description: string;
   system_prompt: string;
+  agentic: number;
   created_by_user_id: number | null;
   created_at: string;
   updated_at: string;
@@ -16,6 +17,7 @@ export interface UserAgent {
   name: string;
   description: string;
   system_prompt: string;
+  agentic: number;
   source_library_id: number | null;
   created_at: string;
   updated_at: string;

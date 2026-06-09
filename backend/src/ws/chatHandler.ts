@@ -1,11 +1,13 @@
 import WebSocket from 'ws';
 import db from '../db/connection';
 import { chatStream, OllamaMessage } from '../services/ollama';
+import { runAgentLoop, AgentEvent } from '../services/agentLoop';
 import { logUsage } from '../services/usage';
 import { recordRequest } from '../services/liveStats';
 import { config } from '../config';
 import type { WsUser } from './auth';
 import type { Message, Session } from '../types/models';
+import type { AnthropicMessage } from '../types/anthropic';
 
 interface ChatMessage {
   type: 'chat';
@@ -29,7 +31,29 @@ interface OutgoingError {
   message: string;
 }
 
-function send(ws: WebSocket, data: OutgoingToken | OutgoingDone | OutgoingError): void {
+interface OutgoingToolCall {
+  type: 'tool_call';
+  step: number;
+  toolName: string;
+  toolCallId: string;
+  toolInput: unknown;
+}
+
+interface OutgoingToolResult {
+  type: 'tool_result';
+  step: number;
+  toolCallId: string;
+  result: unknown;
+}
+
+type OutgoingMessage =
+  | OutgoingToken
+  | OutgoingDone
+  | OutgoingError
+  | OutgoingToolCall
+  | OutgoingToolResult;
+
+function send(ws: WebSocket, data: OutgoingMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data));
   }
@@ -61,14 +85,80 @@ export async function handleChatMessage(
     'INSERT INTO messages (session_id, role, content, attachments) VALUES (?, ?, ?, ?)'
   ).run(sessionId, 'user', content, attachmentsJson);
 
-  // Load session history
+  // Load session history (includes the just-inserted user message)
   const history = db.prepare(
     'SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at ASC'
   ).all(sessionId) as Pick<Message, 'role' | 'content'>[];
 
-  // If the session was created with an agent, the snapshot system_prompt lives
-  // on the session row. Prepend it so every turn includes it without polluting
-  // the messages table.
+  // Get active model from settings
+  const settingRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('active_model') as { value: string } | undefined;
+  const activeModel = settingRow?.value || config.ollamaModel;
+
+  // ─── Agentic session: route through the plan→tool→observe loop ──────────────
+  if (session.agent_agentic) {
+    // Build Anthropic-format history (filter out system messages — those go in systemPrompt)
+    const anthropicHistory: AnthropicMessage[] = history
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+    const startTime = Date.now();
+    let fullResponse = '';
+
+    try {
+      const result = await runAgentLoop({
+        model: activeModel,
+        systemPrompt: session.system_prompt || '',
+        userGoal: content,
+        history: anthropicHistory,
+        ctx: { userId: user.id },
+        onEvent(evt: AgentEvent) {
+          if (evt.type === 'tool_call') {
+            send(ws, {
+              type: 'tool_call',
+              step: evt.step,
+              toolName: evt.toolName!,
+              toolCallId: evt.toolCallId!,
+              toolInput: evt.toolInput,
+            });
+          } else if (evt.type === 'tool_result') {
+            send(ws, {
+              type: 'tool_result',
+              step: evt.step,
+              toolCallId: evt.toolCallId!,
+              result: evt.result,
+            });
+          } else if (evt.type === 'agent_step' && evt.text) {
+            fullResponse += evt.text;
+            send(ws, { type: 'token', content: evt.text });
+          }
+        },
+      });
+
+      // Use the finalText from the loop result (last text block seen)
+      if (!fullResponse && result.finalText) {
+        fullResponse = result.finalText;
+        send(ws, { type: 'token', content: result.finalText });
+      }
+    } catch (err: any) {
+      send(ws, { type: 'error', message: `Agent error: ${err.message}` });
+      return;
+    }
+
+    // Save assistant message
+    const msgResult = db.prepare(
+      'INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)'
+    ).run(sessionId, 'assistant', fullResponse || '(no response)');
+
+    const messageId = Number(msgResult.lastInsertRowid);
+
+    updateSessionTitle(sessionId, content, session.title);
+    logUsage(user.id, sessionId, 'chat', activeModel, 0, 0, Date.now() - startTime);
+
+    send(ws, { type: 'done', messageId });
+    return;
+  }
+
+  // ─── Standard streaming chat ─────────────────────────────────────────────────
   const ollamaMessages: OllamaMessage[] = [];
   if (session.system_prompt) {
     ollamaMessages.push({ role: 'system', content: session.system_prompt });
@@ -80,17 +170,12 @@ export async function handleChatMessage(
     });
   }
 
-  // Get active model from settings
-  const settingRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('active_model') as { value: string } | undefined;
-  const activeModel = settingRow?.value || undefined;
-
-  // Stream response from Ollama
   const startTime = Date.now();
   let firstTokenAt: number | undefined;
   let fullResponse = '';
   let promptTokens = 0;
   let evalTokens = 0;
-  let reportedModel = activeModel || config.ollamaModel;
+  let reportedModel = activeModel;
   let totalDurationNs: number | undefined;
   let loadDurationNs: number | undefined;
   let promptEvalDurationNs: number | undefined;
@@ -139,18 +224,8 @@ export async function handleChatMessage(
 
   const messageId = Number(result.lastInsertRowid);
 
-  // Update session title if it's the first exchange
-  const messageCount = db.prepare(
-    'SELECT COUNT(*) as count FROM messages WHERE session_id = ?'
-  ).get(sessionId) as { count: number };
+  updateSessionTitle(sessionId, content, session.title);
 
-  if (messageCount.count <= 2 && session.title === 'New Chat') {
-    // Use first 50 chars of user message as title
-    const title = content.length > 50 ? content.substring(0, 50) + '...' : content;
-    db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(title, sessionId);
-  }
-
-  // Log usage
   logUsage(user.id, sessionId, 'chat', reportedModel, promptTokens, evalTokens, durationMs);
   recordRequest({
     userId: user.id,
@@ -169,4 +244,15 @@ export async function handleChatMessage(
   });
 
   send(ws, { type: 'done', messageId });
+}
+
+function updateSessionTitle(sessionId: number, userContent: string, currentTitle: string): void {
+  const messageCount = db.prepare(
+    'SELECT COUNT(*) as count FROM messages WHERE session_id = ?'
+  ).get(sessionId) as { count: number };
+
+  if (messageCount.count <= 2 && currentTitle === 'New Chat') {
+    const title = userContent.length > 50 ? userContent.substring(0, 50) + '...' : userContent;
+    db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(title, sessionId);
+  }
 }

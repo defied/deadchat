@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import type { ChatMessage } from '../api/chat';
+import type { ToolCallEntry } from '../components/ToolCallBlock';
 import wsManager from '../api/ws';
 
 interface Attachment {
@@ -13,7 +14,9 @@ export function useChat(sessionId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const [toolCalls, setToolCalls] = useState<ToolCallEntry[]>([]);
   const streamingTextRef = useRef('');
+  const toolCallsRef = useRef<ToolCallEntry[]>([]);
 
   const handleWSMessage = useCallback(
     (data: { type: string; [key: string]: unknown }) => {
@@ -21,6 +24,20 @@ export function useChat(sessionId: string | null) {
         const token = data.content as string;
         streamingTextRef.current += token;
         setStreamingText(streamingTextRef.current);
+      } else if (data.type === 'tool_call') {
+        const entry: ToolCallEntry = {
+          id: data.toolCallId as string,
+          step: data.step as number,
+          name: data.toolName as string,
+          input: data.toolInput,
+        };
+        toolCallsRef.current = [...toolCallsRef.current, entry];
+        setToolCalls([...toolCallsRef.current]);
+      } else if (data.type === 'tool_result') {
+        toolCallsRef.current = toolCallsRef.current.map((tc) =>
+          tc.id === (data.toolCallId as string) ? { ...tc, result: data.result } : tc
+        );
+        setToolCalls([...toolCallsRef.current]);
       } else if (data.type === 'done') {
         const finalText = streamingTextRef.current;
         if (finalText) {
@@ -35,6 +52,8 @@ export function useChat(sessionId: string | null) {
         }
         streamingTextRef.current = '';
         setStreamingText('');
+        toolCallsRef.current = [];
+        setToolCalls([]);
         setIsStreaming(false);
       } else if (data.type === 'error') {
         const errorMsg: ChatMessage = {
@@ -47,6 +66,8 @@ export function useChat(sessionId: string | null) {
         setMessages((prev) => [...prev, errorMsg]);
         streamingTextRef.current = '';
         setStreamingText('');
+        toolCallsRef.current = [];
+        setToolCalls([]);
         setIsStreaming(false);
       }
     },
@@ -70,6 +91,8 @@ export function useChat(sessionId: string | null) {
       setIsStreaming(true);
       streamingTextRef.current = '';
       setStreamingText('');
+      toolCallsRef.current = [];
+      setToolCalls([]);
 
       wsManager.send({
         type: 'chat',
@@ -89,6 +112,7 @@ export function useChat(sessionId: string | null) {
     messages,
     isStreaming,
     streamingText,
+    toolCalls,
     sendMessage,
     setInitialMessages,
     handleWSMessage,

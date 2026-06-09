@@ -64,6 +64,7 @@ export function ChatPage() {
     messages,
     isStreaming,
     streamingText,
+    toolCalls,
     sendMessage,
     setInitialMessages,
     handleWSMessage,
@@ -210,6 +211,7 @@ export function ChatPage() {
           messages={messages}
           isStreaming={isStreaming}
           streamingText={streamingText}
+          toolCalls={toolCalls}
         />
         <ChatInput onSend={handleSend} disabled={isStreaming} />
       </div>

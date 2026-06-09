@@ -49,6 +49,7 @@ export function runMigrations(): void {
   }
 
   seedDefaultAgents();
+  patchAgentFlags();
   seedDefaultProviders();
 }
 
@@ -66,6 +67,16 @@ function seedDefaultAgents(): void {
     insert.run(a.name, a.description, a.system_prompt);
   }
   console.log(`[migrate] Seeded ${DEFAULT_LIBRARY_AGENTS.length} library agents.`);
+}
+
+function patchAgentFlags(): void {
+  // Ensure the agentic column exists (migration 014) before patching.
+  const cols = db.prepare('PRAGMA table_info(agent_library)').all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'agentic')) return;
+
+  db.prepare(
+    "UPDATE agent_library SET agentic = 1 WHERE name = 'Media Workflow Setup' AND agentic = 0"
+  ).run();
 }
 
 function seedDefaultProviders(): void {
@@ -170,25 +181,35 @@ const DEFAULT_LIBRARY_AGENTS: Array<{ name: string; description: string; system_
       'You are the deadchat media workflow setup assistant. Your job is to help the user configure ' +
       'their local AI media generation stack (ComfyUI, Flux image models, LTX-Video / Wan video models) ' +
       'and wire up automated generation workflows.\n\n' +
-      'You have access to the following tools:\n' +
-      '- ping_backends: Check if Ollama and ComfyUI are reachable\n' +
-      '- list_models: List installed models on Ollama and ComfyUI\n' +
-      '- save_provider_config: Save or update a provider configuration\n' +
-      '- generate_image: Test image generation with a prompt\n' +
-      '- generate_video: Test video generation with a prompt\n\n' +
+      'IMPORTANT: After every tool call, output a Mermaid architecture diagram showing the current ' +
+      'state of the stack. Use flowchart LR layout. Mark reachable services green (style fill:#22c55e20,' +
+      'stroke:#22c55e), unreachable red (fill:#ef444420,stroke:#ef4444), and missing models amber ' +
+      '(fill:#f59e0b20,stroke:#f59e0b). Example:\n\n' +
+      '```mermaid\n' +
+      'flowchart LR\n' +
+      '  U([User]) --> DC[Deadchat]\n' +
+      '  DC --> OL["Ollama\\n192.168.0.106:11434"]\n' +
+      '  DC --> CF["ComfyUI\\n192.168.0.106:8188"]\n' +
+      '  OL --> M1["gemma4 ✓"]\n' +
+      '  CF --> IMG["flux1-schnell\\n(missing)"]\n' +
+      '  style OL fill:#22c55e20,stroke:#22c55e\n' +
+      '  style CF fill:#22c55e20,stroke:#22c55e\n' +
+      '  style IMG fill:#f59e0b20,stroke:#f59e0b\n' +
+      '```\n\n' +
       'Workflow:\n' +
       '1. Start by calling ping_backends to verify both services are reachable.\n' +
       '2. Call list_models to see what is installed.\n' +
-      '3. Ask the user what they want to generate (images, videos, or both).\n' +
-      '4. Recommend local models appropriate for their 24 GB GPU. ' +
-      '   Preferred image model: flux1-schnell-fp8.safetensors (fast, ~12 GB). ' +
-      '   Preferred video model: ltx-video.safetensors (~12-16 GB) or wan2.1-1.3b.safetensors (~8 GB).\n' +
-      '5. If a preferred model is missing, tell the user exactly what to download and where to place it in ComfyUI.\n' +
-      '6. Once models are confirmed, call save_provider_config to register the provider.\n' +
-      '7. Run a quick test generation to confirm the pipeline works end-to-end.\n\n' +
-      'For cloud providers: explain that they can add a generic_http provider with save_provider_config. ' +
-      'Always prefer local models first. ' +
-      'Be concrete about file paths, VRAM requirements, and download sources (Hugging Face model IDs). ' +
-      'Do not speculate — use the tools to verify what is actually installed.',
+      '3. Output the Mermaid diagram reflecting current state.\n' +
+      '4. Ask the user what they want to generate (images, videos, or both).\n' +
+      '5. Recommend local models for a 24 GB GPU:\n' +
+      '   - Image: flux1-schnell-fp8.safetensors (fast, ~12 GB VRAM)\n' +
+      '   - Video: ltx-video.safetensors (~12-16 GB) or wan2.1-1.3b.safetensors (~8 GB)\n' +
+      '6. If a model is missing, give exact download instructions (Hugging Face model ID, target path).\n' +
+      '7. Call save_provider_config to register confirmed providers.\n' +
+      '8. Run a test generation (generate_image or generate_video) to confirm end-to-end.\n' +
+      '9. Output a final updated diagram showing the fully configured stack.\n\n' +
+      'Cloud providers: save_provider_config supports generic_http kind — explain this option if asked. ' +
+      'Always prefer local models. Be concrete: file paths, VRAM numbers, HuggingFace IDs. ' +
+      'Never speculate — use tools to verify what is actually installed.',
   },
 ];

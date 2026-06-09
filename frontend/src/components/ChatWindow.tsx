@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ChatMessage as ChatMessageType } from '../api/chat';
+import type { ToolCallEntry } from './ToolCallBlock';
 import { ChatMessage } from './ChatMessage';
 import { StreamingText } from './StreamingText';
 import { MessageSquare } from 'lucide-react';
@@ -8,14 +9,15 @@ interface ChatWindowProps {
   messages: ChatMessageType[];
   isStreaming: boolean;
   streamingText: string;
+  toolCalls?: ToolCallEntry[];
 }
 
-export function ChatWindow({ messages, isStreaming, streamingText }: ChatWindowProps) {
+export function ChatWindow({ messages, isStreaming, streamingText, toolCalls = [] }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingText]);
+  }, [messages, streamingText, toolCalls]);
 
   if (messages.length === 0 && !isStreaming) {
     return (
@@ -55,6 +57,9 @@ export function ChatWindow({ messages, isStreaming, streamingText }: ChatWindowP
     );
   }
 
+  const showToolCallsOrText = isStreaming && (toolCalls.length > 0 || streamingText);
+  const showThinking = isStreaming && !toolCalls.length && !streamingText;
+
   return (
     <div
       style={{
@@ -66,8 +71,10 @@ export function ChatWindow({ messages, isStreaming, streamingText }: ChatWindowP
       {messages.map((msg) => (
         <ChatMessage key={msg.id} message={msg} />
       ))}
-      {isStreaming && streamingText && <StreamingText text={streamingText} />}
-      {isStreaming && !streamingText && (
+      {showToolCallsOrText && (
+        <StreamingText text={streamingText} toolCalls={toolCalls} />
+      )}
+      {showThinking && (
         <div
           style={{
             display: 'flex',

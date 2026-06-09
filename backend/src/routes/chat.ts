@@ -27,32 +27,35 @@ router.post('/sessions', (req: Request, res: Response): void => {
   let resolvedId: number | null = null;
   let agentName: string | null = null;
   let systemPrompt: string | null = null;
+  let agentAgentic = 0;
 
   if (agentSource === 'library' && Number.isInteger(agentId)) {
     const row = db.prepare(
-      'SELECT name, system_prompt FROM agent_library WHERE id = ?'
-    ).get(agentId) as { name: string; system_prompt: string } | undefined;
+      'SELECT name, system_prompt, agentic FROM agent_library WHERE id = ?'
+    ).get(agentId) as { name: string; system_prompt: string; agentic: number } | undefined;
     if (row) {
       resolvedSource = 'library';
       resolvedId = agentId;
       agentName = row.name;
       systemPrompt = row.system_prompt;
+      agentAgentic = row.agentic || 0;
     }
   } else if (agentSource === 'user' && Number.isInteger(agentId)) {
     const row = db.prepare(
-      'SELECT name, system_prompt FROM user_agents WHERE id = ? AND user_id = ?'
-    ).get(agentId, req.user!.id) as { name: string; system_prompt: string } | undefined;
+      'SELECT name, system_prompt, agentic FROM user_agents WHERE id = ? AND user_id = ?'
+    ).get(agentId, req.user!.id) as { name: string; system_prompt: string; agentic: number } | undefined;
     if (row) {
       resolvedSource = 'user';
       resolvedId = agentId;
       agentName = row.name;
       systemPrompt = row.system_prompt;
+      agentAgentic = row.agentic || 0;
     }
   }
 
   const result = db.prepare(
-    `INSERT INTO sessions (user_id, title, agent_source, agent_id, agent_name, system_prompt)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO sessions (user_id, title, agent_source, agent_id, agent_name, system_prompt, agent_agentic)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(
     req.user!.id,
     title || 'New Chat',
@@ -60,6 +63,7 @@ router.post('/sessions', (req: Request, res: Response): void => {
     resolvedId,
     agentName,
     systemPrompt,
+    agentAgentic,
   );
 
   const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(result.lastInsertRowid) as Session;

@@ -9,6 +9,7 @@ export interface ChatSession {
   agent_source?: 'library' | 'user' | null;
   agent_id?: number | null;
   agent_name?: string | null;
+  agent_agentic?: number;
 }
 
 export interface ChatMessage {
