@@ -110,7 +110,7 @@ function seedDefaultProviders(): void {
     'video',
     1, 1, 100,
     'http://192.168.0.106:8188',
-    JSON.stringify({ defaultModel: 'ltx-video.safetensors' })
+    JSON.stringify({ defaultModel: 'ltxv-2b-0.9.8-distilled-fp8.safetensors' })
   );
   console.log('[migrate] Seeded 2 default providers.');
 }
@@ -203,7 +203,7 @@ const DEFAULT_LIBRARY_AGENTS: Array<{ name: string; description: string; system_
       '4. Ask the user what they want to generate (images, videos, or both).\n' +
       '5. Recommend local models for a 24 GB GPU:\n' +
       '   - Image: flux1-schnell-fp8.safetensors (fast, ~12 GB VRAM)\n' +
-      '   - Video: ltx-video.safetensors (~12-16 GB) or wan2.1-1.3b.safetensors (~8 GB)\n' +
+      '   - Video: ltxv-2b-0.9.8-distilled-fp8.safetensors (~4 GB fp8) from Lightricks/LTX-Video\n' +
       '6. If a model is missing, give exact download instructions (Hugging Face model ID, target path).\n' +
       '7. Call save_provider_config to register confirmed providers.\n' +
       '8. Run a test generation (generate_image or generate_video) to confirm end-to-end.\n' +
