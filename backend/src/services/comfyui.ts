@@ -45,6 +45,10 @@ function fillTemplate(template: string, params: ComfyWorkflowParams): string {
   out = out.replace(/%STEPS%/g, String(params.steps ?? 20));
   out = out.replace(/%CFG%/g, String(params.cfg ?? 7.0));
   if (params.model) out = out.replace(/%MODEL%/g, params.model);
+  // Flux separate-loader defaults
+  out = out.replace(/%CLIP1%/g, params.extra?.CLIP1 ?? 't5xxl_fp8_e4m3fn.safetensors');
+  out = out.replace(/%CLIP2%/g, params.extra?.CLIP2 ?? 'clip_l.safetensors');
+  out = out.replace(/%VAE%/g, params.extra?.VAE ?? 'ae.safetensors');
   for (const [k, v] of Object.entries(params.extra ?? {})) {
     out = out.replace(new RegExp(`%${k}%`, 'g'), v);
   }
@@ -119,7 +123,24 @@ export async function pollHistory(
 
     if (entry?.status) {
       const status = entry.status as Record<string, unknown>;
-      // ComfyUI sets status.completed = true when done
+      const messages = status.messages as Array<[string, Record<string, unknown>]> | undefined;
+
+      // Fail fast: execution_error in messages → don't wait for timeout
+      if (messages) {
+        for (const [msgType, msgData] of messages) {
+          if (msgType === 'execution_error') {
+            const detail = (msgData?.exception_message as string) || JSON.stringify(msgData);
+            throw new Error(`ComfyUI execution error: ${detail}`);
+          }
+        }
+      }
+
+      // Fail fast on error status_str
+      if (status.status_str === 'error') {
+        throw new Error('ComfyUI job failed (status_str=error)');
+      }
+
+      // ComfyUI sets status.completed = true when done (success or error already handled above)
       if (status.completed === true || status.status_str === 'success') {
         const outputs = entry.outputs as Record<string, Record<string, unknown>> | undefined;
         const files: ComfyOutputFile[] = [];
@@ -138,7 +159,6 @@ export async function pollHistory(
                   });
                 }
               }
-              // Suppress unused-variable warning
               void key;
             }
           }
@@ -147,15 +167,14 @@ export async function pollHistory(
         return files;
       }
 
-      // Try to extract progress from messages
-      const messages = status.messages as Array<[string, Record<string, unknown>]> | undefined;
+      // Extract progress from messages
       if (messages) {
         for (const [type, data] of messages) {
           if (type === 'progress' && typeof data?.value === 'number' && typeof data?.max === 'number') {
             const p = data.max > 0 ? data.value / data.max : 0;
             if (p > lastProgress) {
               lastProgress = p;
-              onProgress?.(p * 0.95); // leave last 5% for file fetch
+              onProgress?.(p * 0.95);
             }
           }
         }
@@ -230,16 +249,23 @@ export async function isReachable(): Promise<boolean> {
 }
 
 // Returns installed model names from /object_info.
+// Checks UNETLoader (Flux.1 models) first, falls back to CheckpointLoaderSimple.
 export async function listModels(): Promise<string[]> {
   try {
     const res = await fetch(`${getBaseUrl()}/object_info`, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return [];
     const data = await res.json() as Record<string, unknown>;
-    // CheckpointLoaderSimple is the standard node; its ckpt_name input lists models
-    const loader = data['CheckpointLoaderSimple'] as Record<string, unknown> | undefined;
-    const inputs = (loader?.input as Record<string, unknown>)?.required as Record<string, unknown> | undefined;
-    const ckptNames = inputs?.ckpt_name as [string[]] | undefined;
-    return ckptNames?.[0] ?? [];
+
+    function getNames(nodeName: string, inputKey: string): string[] {
+      const loader = data[nodeName] as Record<string, unknown> | undefined;
+      const req = ((loader?.input as Record<string, unknown>)?.required as Record<string, unknown> | undefined);
+      const field = req?.[inputKey] as [string[]] | undefined;
+      return field?.[0] ?? [];
+    }
+
+    const unets = getNames('UNETLoader', 'unet_name');
+    const ckpts = getNames('CheckpointLoaderSimple', 'ckpt_name');
+    return [...unets, ...ckpts];
   } catch {
     return [];
   }
