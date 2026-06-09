@@ -93,8 +93,20 @@ export function GeneratePanel() {
     setHeight(d.height);
     setSteps(d.steps);
     setCfg(d.cfg);
+    setFrames(VIDEO_DEFAULTS.frames);
     setModel('');
   }, [genType]);
+
+  // When a video model is selected, apply its specific defaults
+  useEffect(() => {
+    if (genType !== 'video' || !model) return;
+    const isWan = /wan/i.test(model);
+    setSteps(isWan ? 20 : 8);
+    setCfg(isWan ? 5.0 : 1.0);
+    setFrames(isWan ? 81 : 65);
+    setWidth(isWan ? 832 : 512);
+    setHeight(isWan ? 480 : 512);
+  }, [model, genType]);
 
   // Fetch available models once
   useEffect(() => {
