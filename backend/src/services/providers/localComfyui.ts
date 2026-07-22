@@ -11,25 +11,15 @@ import type { MediaCapability } from '../../types/models';
 // CLIP1=t5xxl_fp8_e4m3fn.safetensors, CLIP2=clip_l.safetensors, VAE=ae.safetensors.
 const DEFAULT_IMAGE_WORKFLOW = '{"6":{"inputs":{"text":"%PROMPT%","clip":["32",0]},"class_type":"CLIPTextEncode"},"8":{"inputs":{"samples":["13",0],"vae":["33",0]},"class_type":"VAEDecode"},"9":{"inputs":{"filename_prefix":"deadchat_img","images":["8",0]},"class_type":"SaveImage"},"13":{"inputs":{"noise":["25",0],"guider":["22",0],"sampler":["16",0],"sigmas":["17",0],"latent_image":["27",0]},"class_type":"SamplerCustomAdvanced"},"16":{"inputs":{"sampler_name":"euler"},"class_type":"KSamplerSelect"},"17":{"inputs":{"scheduler":"simple","steps":%STEPS%,"denoise":1,"model":["31",0]},"class_type":"BasicScheduler"},"22":{"inputs":{"model":["31",0],"conditioning":["6",0]},"class_type":"BasicGuider"},"25":{"inputs":{"noise_seed":%SEED%},"class_type":"RandomNoise"},"27":{"inputs":{"width":%WIDTH%,"height":%HEIGHT%,"batch_size":1},"class_type":"EmptySD3LatentImage"},"31":{"inputs":{"unet_name":"%MODEL%","weight_dtype":"fp8_e4m3fn"},"class_type":"UNETLoader"},"32":{"inputs":{"clip_name1":"%CLIP1%","clip_name2":"%CLIP2%","type":"flux"},"class_type":"DualCLIPLoader"},"33":{"inputs":{"vae_name":"%VAE%"},"class_type":"VAELoader"}}';
 
-// LTX-Video (distilled): UNETLoader + CLIPLoader(ltxv/T5-XXL) + LTXV-specific nodes.
-// VAE=ltxv-vae.safetensors, CLIP1=t5xxl_fp8_e4m3fn.safetensors, FRAMES=65, FPS=24.
-// Distilled model: cfg≈1.0, steps≈8.
-const DEFAULT_LTXV_WORKFLOW = '{"1":{"inputs":{"unet_name":"%MODEL%","weight_dtype":"default"},"class_type":"UNETLoader"},"2":{"inputs":{"clip_name":"%CLIP1%","type":"ltxv"},"class_type":"CLIPLoader"},"3":{"inputs":{"text":"%PROMPT%","clip":["2",0]},"class_type":"CLIPTextEncode"},"4":{"inputs":{"text":"low quality, blurry, distorted, watermark","clip":["2",0]},"class_type":"CLIPTextEncode"},"5":{"inputs":{"positive":["3",0],"negative":["4",0],"frame_rate":%FPS%},"class_type":"LTXVConditioning"},"6":{"inputs":{"width":%WIDTH%,"height":%HEIGHT%,"length":%FRAMES%,"batch_size":1},"class_type":"EmptyLTXVLatentVideo"},"7":{"inputs":{"model":["1",0],"max_shift":2.05,"base_shift":0.95},"class_type":"ModelSamplingLTXV"},"8":{"inputs":{"steps":%STEPS%,"max_shift":2.05,"base_shift":0.95,"stretch":true,"terminal":0.1},"class_type":"LTXVScheduler"},"9":{"inputs":{"noise_seed":%SEED%},"class_type":"RandomNoise"},"10":{"inputs":{"model":["7",0],"positive":["5",0],"negative":["5",1],"cfg":%CFG%},"class_type":"CFGGuider"},"11":{"inputs":{"sampler_name":"euler"},"class_type":"KSamplerSelect"},"12":{"inputs":{"noise":["9",0],"guider":["10",0],"sampler":["11",0],"sigmas":["8",0],"latent_image":["6",0]},"class_type":"SamplerCustomAdvanced"},"13":{"inputs":{"vae_name":"%VAE%"},"class_type":"VAELoader"},"14":{"inputs":{"samples":["12",0],"vae":["13",0],"tile_size":512,"overlap":64,"temporal_size":64,"temporal_overlap":8},"class_type":"VAEDecodeTiled"},"15":{"inputs":{"images":["14",0],"filename_prefix":"deadchat_vid","fps":%FPS%,"lossless":false,"quality":80,"method":"default"},"class_type":"SaveAnimatedWEBP"}}';
-
-// Wan 2.1 T2V: UNETLoader + CLIPLoader(wan/UMT5-XXL) + WanImageToVideo (no start_image = T2V)
-// + KSampler(euler/beta) + VAEDecodeTiled + SaveAnimatedWEBP.
-// VAE=Wan2_1_VAE_bf16.safetensors, CLIP1=umt5-xxl-enc-fp8_e4m3fn.safetensors.
-// FRAMES=81 (step-4 constraint: (n-1)%4==0), FPS=24, cfg≈5.0, steps≈20.
-const DEFAULT_WAN_WORKFLOW = '{"1":{"inputs":{"unet_name":"%MODEL%","weight_dtype":"default"},"class_type":"UNETLoader"},"2":{"inputs":{"clip_name":"%CLIP1%","type":"wan"},"class_type":"CLIPLoader"},"3":{"inputs":{"text":"%PROMPT%","clip":["2",0]},"class_type":"CLIPTextEncode"},"4":{"inputs":{"text":"low quality, blurry, distorted, watermark, text, logo","clip":["2",0]},"class_type":"CLIPTextEncode"},"5":{"inputs":{"vae_name":"%VAE%"},"class_type":"VAELoader"},"6":{"inputs":{"positive":["3",0],"negative":["4",0],"vae":["5",0],"width":%WIDTH%,"height":%HEIGHT%,"length":%FRAMES%,"batch_size":1},"class_type":"WanImageToVideo"},"7":{"inputs":{"model":["1",0],"seed":%SEED%,"steps":%STEPS%,"cfg":%CFG%,"sampler_name":"euler","scheduler":"beta","positive":["6",0],"negative":["6",1],"latent_image":["6",2],"denoise":1.0},"class_type":"KSampler"},"8":{"inputs":{"samples":["7",0],"vae":["5",0],"tile_size":512,"overlap":64,"temporal_size":64,"temporal_overlap":8},"class_type":"VAEDecodeTiled"},"9":{"inputs":{"images":["8",0],"filename_prefix":"deadchat_vid","fps":%FPS%,"lossless":false,"quality":80,"method":"default"},"class_type":"SaveAnimatedWEBP"}}';
+// Wan 2.2 T2V 14B (MoE: high-noise + low-noise expert models, sampled in two
+// KSamplerAdvanced passes split at %STEPS_SPLIT% of %STEPS% total steps).
+// Full-quality settings (no speed LoRA) per the official Comfy-Org template:
+// steps=20 (10+10 split), cfg=3.5, ModelSamplingSD3 shift=5.0, fps=16.
+// VAE=wan_2.1_vae.safetensors, CLIP1=umt5_xxl_fp8_e4m3fn_scaled.safetensors.
+// MODEL=low-noise expert filename; MODEL_HIGH=high-noise expert filename.
+// FRAMES must satisfy (n-1)%4==0 (81 is the standard default).
+const DEFAULT_WAN_WORKFLOW = '{"1":{"inputs":{"unet_name":"%MODEL%","weight_dtype":"default"},"class_type":"UNETLoader"},"2":{"inputs":{"unet_name":"%MODEL_HIGH%","weight_dtype":"default"},"class_type":"UNETLoader"},"3":{"inputs":{"clip_name":"%CLIP1%","type":"wan"},"class_type":"CLIPLoader"},"4":{"inputs":{"text":"%PROMPT%","clip":["3",0]},"class_type":"CLIPTextEncode"},"5":{"inputs":{"text":"色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走，裸露，NSFW","clip":["3",0]},"class_type":"CLIPTextEncode"},"6":{"inputs":{"vae_name":"%VAE%"},"class_type":"VAELoader"},"7":{"inputs":{"model":["2",0],"shift":%SHIFT%},"class_type":"ModelSamplingSD3"},"8":{"inputs":{"model":["1",0],"shift":%SHIFT%},"class_type":"ModelSamplingSD3"},"9":{"inputs":{"width":%WIDTH%,"height":%HEIGHT%,"length":%FRAMES%,"batch_size":1},"class_type":"EmptyHunyuanLatentVideo"},"10":{"inputs":{"add_noise":"enable","noise_seed":%SEED%,"steps":%STEPS%,"cfg":%CFG%,"sampler_name":"euler","scheduler":"simple","start_at_step":0,"end_at_step":%STEPS_SPLIT%,"return_with_leftover_noise":"enable","model":["7",0],"positive":["4",0],"negative":["5",0],"latent_image":["9",0]},"class_type":"KSamplerAdvanced"},"11":{"inputs":{"add_noise":"disable","noise_seed":%SEED%,"steps":%STEPS%,"cfg":%CFG%,"sampler_name":"euler","scheduler":"simple","start_at_step":%STEPS_SPLIT%,"end_at_step":10000,"return_with_leftover_noise":"disable","model":["8",0],"positive":["4",0],"negative":["5",0],"latent_image":["10",0]},"class_type":"KSamplerAdvanced"},"12":{"inputs":{"samples":["11",0],"vae":["6",0]},"class_type":"VAEDecode"},"13":{"inputs":{"images":["12",0],"fps":%FPS%},"class_type":"CreateVideo"},"14":{"inputs":{"video":["13",0],"filename_prefix":"deadchat_vid","format":"auto","codec":"auto"},"class_type":"SaveVideo"}}';
 /* eslint-enable */
-
-const WAN_RE = /wan/i;
-
-type VideoBackend = 'wan' | 'ltxv';
-
-function detectVideoBackend(modelName: string): VideoBackend {
-  return WAN_RE.test(modelName) ? 'wan' : 'ltxv';
-}
 
 export class LocalComfyuiProvider implements MediaProvider {
   readonly capability: MediaCapability;
@@ -42,9 +32,9 @@ export class LocalComfyuiProvider implements MediaProvider {
   ) {
     this.capability = capability;
     this.workflowTemplate = (providerConfig.workflowTemplate as string | undefined)
-      ?? (capability === 'image' ? DEFAULT_IMAGE_WORKFLOW : DEFAULT_LTXV_WORKFLOW);
+      ?? (capability === 'image' ? DEFAULT_IMAGE_WORKFLOW : DEFAULT_WAN_WORKFLOW);
     this.defaultModel = (providerConfig.defaultModel as string | undefined)
-      ?? (capability === 'image' ? 'flux1-schnell-fp8.safetensors' : 'ltxv-2b-0.9.8-distilled-fp8.safetensors');
+      ?? (capability === 'image' ? 'flux1-schnell-fp8.safetensors' : 'wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors');
   }
 
   get id(): string {
@@ -68,26 +58,26 @@ export class LocalComfyuiProvider implements MediaProvider {
     const isVideo = this.capability === 'video';
     const effectiveModel = req.model ?? this.defaultModel;
 
-    // Select workflow and per-backend defaults based on model name.
-    let workflow = this.workflowTemplate;
+    const workflow = this.workflowTemplate;
     let defaultSteps: number | undefined;
     let defaultCfg: number | undefined;
 
     if (isVideo) {
-      const backend: VideoBackend = detectVideoBackend(effectiveModel);
-      if (backend === 'wan') {
-        workflow = DEFAULT_WAN_WORKFLOW;
-        if (!extra.VAE) extra.VAE = 'Wan2_1_VAE_bf16.safetensors';
-        if (!extra.CLIP1) extra.CLIP1 = 'umt5-xxl-enc-fp8_e4m3fn.safetensors';
-        if (!extra.FRAMES) extra.FRAMES = '81';
-        defaultSteps = 20;
-        defaultCfg = 5.0;
-      } else {
-        // LTXV distilled: guidance-baked, low cfg and few steps needed.
-        if (!extra.VAE) extra.VAE = 'ltxv-vae.safetensors';
-        defaultSteps = 8;
-        defaultCfg = 1.0;
+      // Wan 2.2 T2V 14B: MoE (high-noise + low-noise expert models). Full-quality
+      // settings per the official Comfy-Org template - see DEFAULT_WAN_WORKFLOW comment.
+      if (!extra.VAE) extra.VAE = 'wan_2.1_vae.safetensors';
+      if (!extra.CLIP1) extra.CLIP1 = 'umt5_xxl_fp8_e4m3fn_scaled.safetensors';
+      if (!extra.FRAMES) extra.FRAMES = '81';
+      if (!extra.FPS) extra.FPS = '16';
+      if (!extra.SHIFT) extra.SHIFT = '5.0';
+      if (!extra.STEPS_SPLIT) extra.STEPS_SPLIT = '10';
+      if (!extra.MODEL_HIGH) {
+        extra.MODEL_HIGH = effectiveModel.includes('low_noise')
+          ? effectiveModel.replace('low_noise', 'high_noise')
+          : 'wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors';
       }
+      defaultSteps = 20;
+      defaultCfg = 3.5;
     }
 
     const promptId = await comfyui.submitWorkflow(workflow, {
@@ -104,7 +94,9 @@ export class LocalComfyuiProvider implements MediaProvider {
     const outputFiles = await comfyui.pollHistory(
       promptId,
       onProgress,
-      isVideo ? 600_000 : 300_000
+      // Full-quality Wan 2.2 14B (two 14B experts, 20 steps) benchmarks at
+      // ~530s on an RTX 4090 at 640x640 - 600s was too tight, give real headroom.
+      isVideo ? 1_200_000 : 300_000
     );
 
     const files = await Promise.all(

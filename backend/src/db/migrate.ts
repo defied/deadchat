@@ -110,7 +110,7 @@ function seedDefaultProviders(): void {
     'video',
     1, 1, 100,
     'http://192.168.0.106:8188',
-    JSON.stringify({ defaultModel: 'ltxv-2b-0.9.8-distilled-fp8.safetensors' })
+    JSON.stringify({ defaultModel: 'wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors' })
   );
   console.log('[migrate] Seeded 2 default providers.');
 }

@@ -28,21 +28,22 @@ export const mediaToolDefs: AnthropicTool[] = [
   {
     name: 'generate_video',
     description:
-      'Generate a short video clip from a text prompt using ComfyUI (LTX-Video distilled). ' +
-      'Takes several minutes on a 4090. Returns the media_id of the saved video. ' +
+      'Generate a short video clip from a text prompt using ComfyUI (Wan 2.2 14B, full quality). ' +
+      'Slow: roughly 9-15 minutes on a 4090 (two 14B expert models, 20 sampling steps). ' +
+      'Returns the media_id of the saved video. ' +
       'Ask the user for clarification on content, length, or style if the request is ambiguous.',
     input_schema: {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'Detailed video generation prompt.' },
-        width: { type: 'number', description: 'Width in pixels, divisible by 32 (default 512).' },
-        height: { type: 'number', description: 'Height in pixels, divisible by 32 (default 512).' },
-        frames: { type: 'number', description: 'Frame count. For LTX-Video default 65, (n-1)%8==0. For Wan 2.1 default 81, (n-1)%4==0.' },
-        fps: { type: 'number', description: 'Playback frame rate (default 24).' },
-        steps: { type: 'number', description: 'Sampling steps (default 8; 4 = fast, 12 = higher quality).' },
-        cfg: { type: 'number', description: 'Guidance scale. LTX-Video distilled: default 1.0, keep 1–3. Wan 2.1: default 5.0, keep 4–7.' },
+        width: { type: 'number', description: 'Width in pixels, divisible by 32 (default 512; 640 is the benchmarked/recommended size).' },
+        height: { type: 'number', description: 'Height in pixels, divisible by 32 (default 512; 640 is the benchmarked/recommended size).' },
+        frames: { type: 'number', description: 'Frame count (default 81). Must satisfy (n-1)%4==0.' },
+        fps: { type: 'number', description: 'Playback frame rate (default 16 — Wan 2.2 is natively 16fps).' },
+        steps: { type: 'number', description: 'Total sampling steps, split evenly across the high-noise and low-noise expert passes (default 20). Do not go below ~16 without also lowering cfg — this is a full-quality (non-distilled) model.' },
+        cfg: { type: 'number', description: 'Guidance scale (default 3.5; keep 3–5).' },
         seed: { type: 'number', description: 'Random seed for reproducibility. Omit for random.' },
-        model: { type: 'string', description: 'UNETLoader checkpoint filename. Use list_models to see options.' },
+        model: { type: 'string', description: 'Low-noise expert UNETLoader checkpoint filename (the matching high-noise expert is derived automatically). Use list_models to see options.' },
       },
       required: ['prompt'],
     },
@@ -115,7 +116,9 @@ export async function handleGenerateVideo(
     heavy: true,
   });
 
-  const job = await awaitJob(jobId, 600_000);
+  // Full-quality Wan 2.2 14B video generation runs long (~530s+ on an RTX 4090);
+  // match localComfyui.ts's ComfyUI-poll timeout so this doesn't cut it off first.
+  const job = await awaitJob(jobId, 1_200_000);
 
   if (job.status === 'failed') {
     return { error: job.error ?? 'Video generation failed', job_id: jobId };

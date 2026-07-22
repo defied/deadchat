@@ -45,7 +45,7 @@ function fillTemplate(template: string, params: ComfyWorkflowParams): string {
   out = out.replace(/%STEPS%/g, String(params.steps ?? 20));
   out = out.replace(/%CFG%/g, String(params.cfg ?? 7.0));
   if (params.model) out = out.replace(/%MODEL%/g, params.model);
-  // Separate-loader defaults (Flux image and LTX-Video)
+  // Separate-loader defaults; providers override these via `extra` for their own models.
   out = out.replace(/%CLIP1%/g, params.extra?.CLIP1 ?? 't5xxl_fp8_e4m3fn.safetensors');
   out = out.replace(/%CLIP2%/g, params.extra?.CLIP2 ?? 'clip_l.safetensors');
   out = out.replace(/%VAE%/g, params.extra?.VAE ?? 'ae.safetensors');
