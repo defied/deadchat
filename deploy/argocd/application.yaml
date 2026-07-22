@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: deadchat
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/defied/deadchat.git
+    targetRevision: HEAD
+    path: deploy/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: deadchat
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  # Suppress ArgoCD's "orphaned resource" warning for the out-of-band secret.
+  # The secret itself carries Prune=false so ArgoCD will never delete it.
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ""
+        kind: Secret
+        name: deadchat-secret

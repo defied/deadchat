@@ -56,6 +56,69 @@ router.get('/generate-models', authenticate, async (_req: Request, res: Response
 
 router.use(adminOnly);
 
+// GET /api/comfyui/live-stats — aggregated system stats, VRAM, queue, recent history
+router.get('/live-stats', authenticate, async (_req: Request, res: Response): Promise<void> => {
+  const base = getComfyuiUrl();
+
+  const [sysRes, queueRes, histRes] = await Promise.allSettled([
+    fetch(`${base}/system_stats`, { signal: AbortSignal.timeout(5000) }).then((r) => r.ok ? r.json() : null),
+    fetch(`${base}/queue`,        { signal: AbortSignal.timeout(5000) }).then((r) => r.ok ? r.json() : null),
+    fetch(`${base}/history?max_items=30`, { signal: AbortSignal.timeout(5000) }).then((r) => r.ok ? r.json() : null),
+  ]);
+
+  const sys   = sysRes.status   === 'fulfilled' ? sysRes.value   as Record<string, unknown> | null : null;
+  const queue = queueRes.status === 'fulfilled' ? queueRes.value as Record<string, unknown> | null : null;
+  const hist  = histRes.status  === 'fulfilled' ? histRes.value  as Record<string, unknown> | null : null;
+
+  const parseQueue = (arr: unknown[]): Array<{ number: number; promptId: string }> =>
+    (arr ?? []).map((item) => {
+      const a = item as unknown[];
+      return { number: a[0] as number, promptId: a[1] as string };
+    });
+
+  const histSummary = hist
+    ? Object.entries(hist).map(([promptId, entry]) => {
+        const e = entry as Record<string, unknown>;
+        const status  = e.status as Record<string, unknown> | undefined;
+        const outputs = e.outputs as Record<string, Record<string, unknown>> | undefined;
+        let outputCount = 0;
+        if (outputs) {
+          for (const node of Object.values(outputs)) {
+            for (const val of Object.values(node)) {
+              if (Array.isArray(val)) outputCount += val.length;
+            }
+          }
+        }
+        const messages = status?.messages as Array<[string, Record<string, unknown>]> | undefined;
+        const errMsg = messages?.find(([t]) => t === 'execution_error')?.[1]?.exception_message as string | undefined;
+        return {
+          promptId,
+          status:      (status?.status_str as string) ?? 'unknown',
+          completed:   !!(status?.completed),
+          outputCount,
+          error:       errMsg,
+        };
+      })
+    : [];
+
+  const runningArr = (queue?.queue_running as unknown[]) ?? [];
+  const pendingArr = (queue?.queue_pending as unknown[]) ?? [];
+
+  res.json({
+    reachable:    sys !== null,
+    error:        sys === null ? 'ComfyUI unreachable' : undefined,
+    system:       (sys?.system as Record<string, unknown>) ?? null,
+    devices:      (sys?.devices as unknown[]) ?? [],
+    queue: {
+      running:      runningArr.length,
+      pending:      pendingArr.length,
+      runningItems: parseQueue(runningArr),
+      pendingItems: parseQueue(pendingArr),
+    },
+    history: histSummary,
+  });
+});
+
 // GET /api/comfyui/models — installed models by type
 // Pulls the relevant loader nodes out of /object_info to give a clean summary
 // instead of dumping the entire (very large) object_info payload.

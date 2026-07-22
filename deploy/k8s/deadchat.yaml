@@ -5,6 +5,38 @@ metadata:
   name: deadchat
 ---
 apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: deadchat-data-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /opt/deadchat-data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deadchat-data
+  namespace: deadchat
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: deadchat-config
@@ -70,9 +102,8 @@ spec:
               memory: 512Mi
       volumes:
         - name: data
-          hostPath:
-            path: /opt/deadchat-data
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: deadchat-data
 ---
 apiVersion: v1
 kind: Service

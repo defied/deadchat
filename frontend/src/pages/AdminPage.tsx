@@ -8,13 +8,14 @@ import { UsageChart } from '../components/admin/UsageChart';
 import { ModelsPanel } from '../components/admin/ModelsPanel';
 import { ModelPricingPanel } from '../components/admin/ModelPricingPanel';
 import { LiveStatsPanel } from '../components/admin/LiveStatsPanel';
+import { ComfyUIStatsPanel } from '../components/admin/ComfyUIStatsPanel';
 import { AgentsPanel } from '../components/admin/AgentsPanel';
 import type { User } from '../api/auth';
 import type { UsageSummary } from '../api/users';
 import * as usersApi from '../api/users';
-import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot } from 'lucide-react';
+import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot, Image } from 'lucide-react';
 
-type Tab = 'users' | 'usage' | 'pricing' | 'models' | 'live' | 'agents';
+type Tab = 'users' | 'usage' | 'pricing' | 'models' | 'live' | 'comfyui' | 'agents';
 
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>('users');
@@ -184,6 +185,12 @@ export function AdminPage() {
             label="Live"
           />
           <TabButton
+            active={tab === 'comfyui'}
+            onClick={() => setTab('comfyui')}
+            icon={<Image size={14} />}
+            label="ComfyUI"
+          />
+          <TabButton
             active={tab === 'agents'}
             onClick={() => setTab('agents')}
             icon={<Bot size={14} />}
@@ -223,6 +230,10 @@ export function AdminPage() {
 
         {tab === 'live' && (
           <LiveStatsPanel />
+        )}
+
+        {tab === 'comfyui' && (
+          <ComfyUIStatsPanel />
         )}
 
         {tab === 'agents' && (
