@@ -65,6 +65,14 @@ export class LocalComfyuiProvider implements MediaProvider {
     if (isVideo) {
       // Wan 2.2 T2V 14B: MoE (high-noise + low-noise expert models). Full-quality
       // settings per the official Comfy-Org template - see DEFAULT_WAN_WORKFLOW comment.
+      // The workflow graph only works with Wan checkpoints; anything else (e.g. a
+      // leftover LTX-Video model from a stale provider config) silently produces a
+      // broken hybrid graph instead of erroring, so reject it up front.
+      if (!/wan/i.test(effectiveModel)) {
+        throw new Error(
+          `Video model "${effectiveModel}" is not a Wan 2.2 checkpoint. Only Wan T2V models are supported by the current video workflow.`
+        );
+      }
       if (!extra.VAE) extra.VAE = 'wan_2.1_vae.safetensors';
       if (!extra.CLIP1) extra.CLIP1 = 'umt5_xxl_fp8_e4m3fn_scaled.safetensors';
       if (!extra.FRAMES) extra.FRAMES = '81';

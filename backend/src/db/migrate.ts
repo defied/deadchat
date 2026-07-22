@@ -51,6 +51,7 @@ export function runMigrations(): void {
   seedDefaultAgents();
   patchAgentFlags();
   seedDefaultProviders();
+  patchStaleVideoProviderModel();
 }
 
 function seedDefaultAgents(): void {
@@ -77,6 +78,35 @@ function patchAgentFlags(): void {
   db.prepare(
     "UPDATE agent_library SET agentic = 1 WHERE name = 'Media Workflow Setup' AND agentic = 0"
   ).run();
+}
+
+// Already-provisioned databases (providers table non-empty) never re-run seedDefaultProviders,
+// so they kept the pre-Wan-2.2 LTX-Video default after the video workflow moved to Wan-only.
+// That combination builds a broken hybrid ComfyUI graph (LTXV weights loaded into a Wan-shaped
+// sampler) instead of erroring, so patch it forward explicitly.
+function patchStaleVideoProviderModel(): void {
+  const tableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='providers'"
+  ).get();
+  if (!tableExists) return;
+
+  const rows = db.prepare(
+    "SELECT id, config FROM providers WHERE kind = 'local_comfyui' AND capability = 'video'"
+  ).all() as Array<{ id: number; config: string }>;
+
+  for (const row of rows) {
+    let cfg: Record<string, unknown>;
+    try {
+      cfg = JSON.parse(row.config);
+    } catch {
+      continue;
+    }
+    if (cfg.defaultModel === 'ltxv-2b-0.9.8-distilled-fp8.safetensors') {
+      cfg.defaultModel = 'wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors';
+      db.prepare('UPDATE providers SET config = ? WHERE id = ?').run(JSON.stringify(cfg), row.id);
+      console.log(`[migrate] Patched stale LTX-Video default model on provider ${row.id} -> Wan 2.2`);
+    }
+  }
 }
 
 function seedDefaultProviders(): void {

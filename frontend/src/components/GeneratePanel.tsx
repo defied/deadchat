@@ -4,6 +4,7 @@ import client from '../api/client';
 import { generateImage, generateVideo, getJob, type Job } from '../api/jobs';
 import { listMedia, type MediaItem } from '../api/media';
 import { MediaImage } from './MediaImage';
+import { MediaVideo } from './MediaVideo';
 
 type Tab = 'generate' | 'gallery';
 type GenType = 'image' | 'video';
@@ -13,6 +14,7 @@ interface GenerateModels { image: string[]; video: string[] }
 interface ActiveJob {
   id: number;
   type: GenType;
+  prompt: string;
   status: Job['status'];
   progress: number;
   mediaId?: number;
@@ -23,7 +25,15 @@ interface ActiveJob {
 }
 
 const IMAGE_DEFAULTS = { steps: 20, cfg: 7.0, width: 1024, height: 1024 };
-const VIDEO_DEFAULTS = { steps: 8,  cfg: 1.0, width: 512,  height: 512, frames: 65, fps: 24 };
+// Wan 2.2 T2V 14B (the only supported video backend) — see backend/src/services/providers/localComfyui.ts
+const VIDEO_DEFAULTS = { steps: 20, cfg: 3.5, width: 512,  height: 512, frames: 81, fps: 16 };
+
+// Wan 2.2 requires (frames-1) % 4 === 0. Round the requested duration to the nearest valid frame count.
+function framesForDuration(durationSec: number, fps: number): number {
+  const raw = Math.max(5, Math.round(durationSec * fps));
+  const rem = (raw - 1) % 4;
+  return rem === 0 ? raw : raw + (4 - rem);
+}
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -89,6 +99,7 @@ export function GeneratePanel() {
   const [seed, setSeed] = useState('');
   const [frames, setFrames] = useState(VIDEO_DEFAULTS.frames);
   const [fps, setFps] = useState(VIDEO_DEFAULTS.fps);
+  const [duration, setDuration] = useState(VIDEO_DEFAULTS.frames / VIDEO_DEFAULTS.fps);
 
   const [models, setModels] = useState<GenerateModels>({ image: [], video: [] });
   const [submitting, setSubmitting] = useState(false);
@@ -116,19 +127,28 @@ export function GeneratePanel() {
     setHeight(d.height);
     setSteps(d.steps);
     setCfg(d.cfg);
-    setFrames(VIDEO_DEFAULTS.frames);
+    if (genType === 'video') {
+      setFrames(VIDEO_DEFAULTS.frames);
+      setFps(VIDEO_DEFAULTS.fps);
+      setDuration(VIDEO_DEFAULTS.frames / VIDEO_DEFAULTS.fps);
+    }
     setModel('');
   }, [genType]);
 
-  useEffect(() => {
-    if (genType !== 'video' || !model) return;
-    const isWan = /wan/i.test(model);
-    setSteps(isWan ? 20 : 8);
-    setCfg(isWan ? 5.0 : 1.0);
-    setFrames(isWan ? 81 : 65);
-    setWidth(isWan ? 832 : 512);
-    setHeight(isWan ? 480 : 512);
-  }, [model, genType]);
+  const handleDurationChange = (sec: number) => {
+    setDuration(sec);
+    setFrames(framesForDuration(sec, fps));
+  };
+
+  const handleFpsChange = (newFps: number) => {
+    setFps(newFps);
+    setFrames(framesForDuration(duration, newFps));
+  };
+
+  const handleFramesChange = (newFrames: number) => {
+    setFrames(newFrames);
+    setDuration(+(newFrames / fps).toFixed(2));
+  };
 
   useEffect(() => {
     client.get<GenerateModels>('/api/comfyui/generate-models')
@@ -207,13 +227,13 @@ export function GeneratePanel() {
       const entry: ActiveJob = {
         id: resp.job_id,
         type: genType,
+        prompt: prompt.trim(),
         status: 'queued',
         progress: 0,
         createdAt: Date.now(),
         videoMeta: genType === 'video' ? { frames, fps } : undefined,
       };
       setActiveJobs((prev) => [entry, ...prev]);
-      setPrompt('');
       startPolling(resp.job_id);
     } catch (e: unknown) {
       const ae = e as { response?: { data?: { error?: string } }; message?: string };
@@ -286,6 +306,14 @@ export function GeneratePanel() {
             </Field>
           </div>
 
+          {genType === 'video' && (
+            <Field label={`Duration (seconds) — ${frames} frames @ ${fps}fps`}>
+              <input type="number" value={duration} onChange={(e) => handleDurationChange(Number(e.target.value))}
+                min={0.5} max={16} step={0.5} style={inputStyle} />
+            </Field>
+          )}
+
+          {/* Advanced toggle */}
           <button
             onClick={() => setShowAdvanced((v) => !v)}
             style={{
@@ -311,12 +339,12 @@ export function GeneratePanel() {
               </div>
               {genType === 'video' && (
                 <div style={{ display: 'flex', gap: 12 }}>
-                  <Field label="Frames (n-1 divisible by 8)">
-                    <input type="number" value={frames} onChange={(e) => setFrames(Number(e.target.value))}
-                      min={25} max={257} step={8} style={inputStyle} />
+                  <Field label="Frames (n-1 divisible by 4)">
+                    <input type="number" value={frames} onChange={(e) => handleFramesChange(Number(e.target.value))}
+                      min={5} max={257} step={4} style={inputStyle} />
                   </Field>
                   <Field label="FPS">
-                    <input type="number" value={fps} onChange={(e) => setFps(Number(e.target.value))}
+                    <input type="number" value={fps} onChange={(e) => handleFpsChange(Number(e.target.value))}
                       min={8} max={60} style={inputStyle} />
                   </Field>
                 </div>
@@ -376,7 +404,7 @@ export function GeneratePanel() {
                 <div style={{ aspectRatio: '1/1', overflow: 'hidden', background: '#1e1e2e' }}>
                   {item.type === 'image'
                     ? <MediaImage mediaId={item.id} alt={item.prompt ?? 'Generated image'} />
-                    : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-text-dim)' }}><Film size={32} /></div>}
+                    : <MediaVideo mediaId={item.id} className="gallery-video" />}
                 </div>
                 <div style={{ padding: '6px 8px' }}>
                   <div style={{ fontSize: 11, color: 'var(--color-text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.prompt || item.filename}</div>
@@ -432,6 +460,10 @@ function JobCard({ job }: { job: ActiveJob }) {
           {job.status}
         </span>
       </div>
+
+      {job.prompt && (
+        <div style={{ fontSize: 12, color: 'var(--color-text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{job.prompt}</div>
+      )}
 
       {/* Live progress section */}
       {isActive && (
@@ -511,7 +543,9 @@ function JobCard({ job }: { job: ActiveJob }) {
       )}
 
       {job.status === 'succeeded' && job.mediaId && (
-        <MediaImage mediaId={job.mediaId} />
+        job.type === 'video'
+          ? <MediaVideo mediaId={job.mediaId} />
+          : <MediaImage mediaId={job.mediaId} />
       )}
     </div>
   );

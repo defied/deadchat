@@ -17,8 +17,8 @@ export interface MediaItem {
 }
 
 export async function listMedia(params?: { type?: 'image' | 'video'; limit?: number; offset?: number }): Promise<MediaItem[]> {
-  const { data } = await client.get<{ media: MediaItem[] }>('/api/media', { params });
-  return data.media;
+  const { data } = await client.get<MediaItem[]>('/api/media', { params });
+  return data;
 }
 
 export function getMediaUrl(id: number): string {

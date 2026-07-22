@@ -30,7 +30,11 @@ router.get('/status', authenticate, async (_req: Request, res: Response): Promis
 });
 
 // GET /api/comfyui/generate-models — image and video model lists for the generate UI
-const VIDEO_MODEL_RE = /ltx|ltxv|wan|animatediff|video|animate/i;
+// Video generation only supports the Wan 2.2 T2V workflow (see localComfyui.ts) — legacy
+// checkpoints (LTX-Video, AnimateDiff, etc.) are excluded from both lists since neither
+// workflow can load them correctly.
+const VIDEO_MODEL_RE = /wan/i;
+const LEGACY_VIDEO_MODEL_RE = /ltx|ltxv|animatediff|animate/i;
 router.get('/generate-models', authenticate, async (_req: Request, res: Response): Promise<void> => {
   try {
     const r = await fetch(`${getComfyuiUrl()}/object_info`, { signal: AbortSignal.timeout(10_000) });
@@ -44,7 +48,7 @@ router.get('/generate-models', authenticate, async (_req: Request, res: Response
     const unets = pickList('UNETLoader', 'unet_name');
     const ckpts = pickList('CheckpointLoaderSimple', 'ckpt_name');
     res.json({
-      image: [...unets.filter((m) => !VIDEO_MODEL_RE.test(m)), ...ckpts],
+      image: [...unets.filter((m) => !VIDEO_MODEL_RE.test(m) && !LEGACY_VIDEO_MODEL_RE.test(m)), ...ckpts],
       video: unets.filter((m) => VIDEO_MODEL_RE.test(m)),
     });
   } catch (err: any) {
