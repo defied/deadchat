@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Image, Film, Loader, CheckCircle, XCircle, RefreshCw, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Image, Film, Loader, CheckCircle, XCircle, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import client from '../api/client';
-import { generateImage, generateVideo, pollJob, type Job } from '../api/jobs';
+import { generateImage, generateVideo, getJob, type Job } from '../api/jobs';
 import { listMedia, type MediaItem } from '../api/media';
 import { MediaImage } from './MediaImage';
 
@@ -17,10 +17,24 @@ interface ActiveJob {
   progress: number;
   mediaId?: number;
   error?: string;
+  createdAt: number;
+  startedAt?: number;
+  videoMeta?: { frames: number; fps: number };
 }
 
 const IMAGE_DEFAULTS = { steps: 20, cfg: 7.0, width: 1024, height: 1024 };
 const VIDEO_DEFAULTS = { steps: 8,  cfg: 1.0, width: 512,  height: 512, frames: 65, fps: 24 };
+
+const POLL_INTERVAL_MS = 2000;
+
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${m % 60}m`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
 
 function StatusIcon({ status }: { status: Job['status'] }) {
   if (status === 'succeeded') return <CheckCircle size={14} color="var(--color-success, #22c55e)" />;
@@ -64,13 +78,11 @@ export function GeneratePanel() {
   const [tab, setTab] = useState<Tab>('generate');
   const [genType, setGenType] = useState<GenType>('image');
 
-  // Core params
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState('');
   const [width, setWidth] = useState(IMAGE_DEFAULTS.width);
   const [height, setHeight] = useState(IMAGE_DEFAULTS.height);
 
-  // Advanced params
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [steps, setSteps] = useState(IMAGE_DEFAULTS.steps);
   const [cfg, setCfg] = useState(IMAGE_DEFAULTS.cfg);
@@ -78,7 +90,6 @@ export function GeneratePanel() {
   const [frames, setFrames] = useState(VIDEO_DEFAULTS.frames);
   const [fps, setFps] = useState(VIDEO_DEFAULTS.fps);
 
-  // State
   const [models, setModels] = useState<GenerateModels>({ image: [], video: [] });
   const [submitting, setSubmitting] = useState(false);
   const [activeJobs, setActiveJobs] = useState<ActiveJob[]>([]);
@@ -86,7 +97,19 @@ export function GeneratePanel() {
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // When type changes, reset dimension/param defaults and clear model selection
+  // Ticks every second to drive live elapsed-time and ETA display.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Map of jobId → cleanup function for active polling intervals.
+  const pollCleanups = useRef<Map<number, () => void>>(new Map());
+  useEffect(() => {
+    return () => { pollCleanups.current.forEach((fn) => fn()); };
+  }, []);
+
   useEffect(() => {
     const d = genType === 'image' ? IMAGE_DEFAULTS : VIDEO_DEFAULTS;
     setWidth(d.width);
@@ -97,7 +120,6 @@ export function GeneratePanel() {
     setModel('');
   }, [genType]);
 
-  // When a video model is selected, apply its specific defaults
   useEffect(() => {
     if (genType !== 'video' || !model) return;
     const isWan = /wan/i.test(model);
@@ -108,11 +130,10 @@ export function GeneratePanel() {
     setHeight(isWan ? 480 : 512);
   }, [model, genType]);
 
-  // Fetch available models once
   useEffect(() => {
     client.get<GenerateModels>('/api/comfyui/generate-models')
       .then(({ data }) => setModels(data))
-      .catch(() => {/* silently ignore */});
+      .catch(() => {});
   }, []);
 
   const loadGallery = useCallback(async () => {
@@ -128,6 +149,49 @@ export function GeneratePanel() {
     if (tab === 'gallery') loadGallery();
   }, [tab, loadGallery]);
 
+  const startPolling = useCallback((jobId: number) => {
+    let active = true;
+
+    const poll = async () => {
+      if (!active) return;
+      try {
+        const job = await getJob(jobId);
+        if (!active) return;
+
+        setActiveJobs((prev) => prev.map((j) => {
+          if (j.id !== jobId) return j;
+          const startedAt = job.started_at ? new Date(job.started_at).getTime() : j.startedAt;
+          const updates: Partial<ActiveJob> = { status: job.status, progress: job.progress, startedAt };
+          if (job.status === 'succeeded') {
+            try {
+              const r = job.result ? JSON.parse(job.result) : null;
+              updates.mediaId = r?.media_ids?.[0] ?? r?.media_id;
+            } catch { /* ignore */ }
+          }
+          if (job.error) updates.error = job.error;
+          return { ...j, ...updates };
+        }));
+
+        if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled') {
+          active = false;
+          clearInterval(intervalId);
+          pollCleanups.current.delete(jobId);
+          if (job.status === 'succeeded') loadGallery();
+        }
+      } catch { /* retry on next tick */ }
+    };
+
+    poll();
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+
+    const cleanup = () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+    pollCleanups.current.set(jobId, cleanup);
+    return cleanup;
+  }, [loadGallery]);
+
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
     setSubmitting(true);
@@ -140,25 +204,17 @@ export function GeneratePanel() {
         ? await generateImage({ prompt: prompt.trim(), width, height, steps, cfg, seed: seedVal, model: modelVal })
         : await generateVideo({ prompt: prompt.trim(), width, height, steps, cfg, seed: seedVal, model: modelVal, frames, fps });
 
-      const entry: ActiveJob = { id: resp.job_id, type: genType, status: 'queued', progress: 0 };
+      const entry: ActiveJob = {
+        id: resp.job_id,
+        type: genType,
+        status: 'queued',
+        progress: 0,
+        createdAt: Date.now(),
+        videoMeta: genType === 'video' ? { frames, fps } : undefined,
+      };
       setActiveJobs((prev) => [entry, ...prev]);
       setPrompt('');
-
-      pollJob(resp.job_id).then((finalJob) => {
-        setActiveJobs((prev) => prev.map((j) => {
-          if (j.id !== resp.job_id) return j;
-          let mediaId: number | undefined;
-          try {
-            const r = finalJob.result ? JSON.parse(finalJob.result) : null;
-            mediaId = r?.media_ids?.[0] ?? r?.media_id;
-          } catch { /* ignore */ }
-          return { ...j, status: finalJob.status, progress: 100, mediaId, error: finalJob.error ?? undefined };
-        }));
-        if (finalJob.status === 'succeeded') loadGallery();
-      }).catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : 'Poll error';
-        setActiveJobs((prev) => prev.map((j) => j.id !== resp.job_id ? j : { ...j, status: 'failed', error: msg }));
-      });
+      startPolling(resp.job_id);
     } catch (e: unknown) {
       const ae = e as { response?: { data?: { error?: string } }; message?: string };
       setError(ae?.response?.data?.error || ae?.message || 'Failed to submit job');
@@ -187,7 +243,6 @@ export function GeneratePanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '20px 24px', gap: 16 }}>
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}>
         <button style={tabStyle('generate')} onClick={() => setTab('generate')}>Generate</button>
         <button style={tabStyle('gallery')} onClick={() => setTab('gallery')}>Gallery</button>
@@ -195,29 +250,20 @@ export function GeneratePanel() {
 
       {tab === 'generate' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, overflowY: 'auto' }}>
-          {/* Type */}
           <div style={{ display: 'flex', gap: 8 }}>
             <button style={typeBtn('image')} onClick={() => setGenType('image')}><Image size={16} /> Image</button>
             <button style={typeBtn('video')} onClick={() => setGenType('video')}><Film size={16} /> Video</button>
           </div>
 
-          {/* Model */}
           {availableModels.length > 0 && (
             <Field label="Model">
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
+              <select value={model} onChange={(e) => setModel(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
                 <option value="">Default</option>
-                {availableModels.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
+                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </Field>
           )}
 
-          {/* Prompt */}
           <Field label="Prompt">
             <textarea
               value={prompt}
@@ -229,7 +275,6 @@ export function GeneratePanel() {
             />
           </Field>
 
-          {/* Dimensions */}
           <div style={{ display: 'flex', gap: 12 }}>
             <Field label="Width">
               <input type="number" value={width} onChange={(e) => setWidth(Number(e.target.value))}
@@ -241,7 +286,6 @@ export function GeneratePanel() {
             </Field>
           </div>
 
-          {/* Advanced toggle */}
           <button
             onClick={() => setShowAdvanced((v) => !v)}
             style={{
@@ -265,7 +309,6 @@ export function GeneratePanel() {
                     min={0.5} max={genType === 'image' ? 15 : 5} step={0.5} style={inputStyle} />
                 </Field>
               </div>
-
               {genType === 'video' && (
                 <div style={{ display: 'flex', gap: 12 }}>
                   <Field label="Frames (n-1 divisible by 8)">
@@ -278,7 +321,6 @@ export function GeneratePanel() {
                   </Field>
                 </div>
               )}
-
               <Field label="Seed (empty = random)">
                 <input type="number" value={seed} onChange={(e) => setSeed(e.target.value)}
                   placeholder="Random" style={inputStyle} />
@@ -292,7 +334,6 @@ export function GeneratePanel() {
             </div>
           )}
 
-          {/* Submit */}
           <button
             onClick={handleSubmit}
             disabled={submitting || !prompt.trim()}
@@ -308,30 +349,10 @@ export function GeneratePanel() {
             {submitting ? 'Queuing…' : `Generate ${genType === 'image' ? 'Image' : 'Video'}`}
           </button>
 
-          {/* Active jobs */}
           {activeJobs.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 11, color: 'var(--color-text-dim)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Jobs</div>
-              {activeJobs.map((job) => (
-                <div key={job.id} style={{ padding: '10px 12px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StatusIcon status={job.status} />
-                    <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', flex: 1 }}>{job.type} #{job.id}</span>
-                    <span style={{ fontSize: 11, color: 'var(--color-text-dim)', textTransform: 'capitalize' }}>{job.status}</span>
-                  </div>
-                  {(job.status === 'queued' || job.status === 'running') && (
-                    <div style={{ height: 3, background: 'var(--color-border)', borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: job.status === 'running' ? `${job.progress || 10}%` : '5%', background: 'var(--color-accent)', borderRadius: 2, transition: 'width 0.5s ease', animation: job.status === 'queued' ? 'pulse 1.5s infinite' : undefined }} />
-                    </div>
-                  )}
-                  {job.status === 'failed' && job.error && (
-                    <div style={{ fontSize: 12, color: 'var(--color-error, #ef4444)' }}>{job.error}</div>
-                  )}
-                  {job.status === 'succeeded' && job.mediaId && (
-                    <MediaImage mediaId={job.mediaId} />
-                  )}
-                </div>
-              ))}
+              {activeJobs.map((job) => <JobCard key={job.id} job={job} />)}
             </div>
           )}
         </div>
@@ -365,6 +386,132 @@ export function GeneratePanel() {
             ))}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function JobCard({ job }: { job: ActiveJob }) {
+  const now = Date.now();
+  const isActive = job.status === 'queued' || job.status === 'running';
+
+  const referenceTime = job.startedAt ?? job.createdAt;
+  const elapsedMs = now - referenceTime;
+  const elapsedLabel = formatElapsed(Math.max(0, elapsedMs));
+
+  let etaLabel: string | null = null;
+  if (job.status === 'running' && job.startedAt && job.progress > 2) {
+    const runningMs = now - job.startedAt;
+    const estimatedTotalMs = runningMs / (job.progress / 100);
+    const remainingMs = estimatedTotalMs - runningMs;
+    if (remainingMs > 0) etaLabel = formatElapsed(remainingMs);
+  }
+
+  const barWidth = job.status === 'running'
+    ? Math.max(2, Math.min(99, job.progress))
+    : job.status === 'queued'
+      ? 0
+      : 100;
+
+  return (
+    <div style={{
+      padding: '10px 12px',
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 'var(--radius)',
+      display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <StatusIcon status={job.status} />
+        <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', flex: 1 }}>
+          {job.type === 'video' ? <Film size={12} style={{ display: 'inline', marginRight: 4 }} /> : null}
+          {job.type} #{job.id}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--color-text-dim)', textTransform: 'capitalize' }}>
+          {job.status}
+        </span>
+      </div>
+
+      {/* Live progress section */}
+      {isActive && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* Progress bar */}
+          <div style={{ height: 4, background: 'var(--color-border)', borderRadius: 2, overflow: 'hidden' }}>
+            {job.status === 'queued' ? (
+              <div style={{
+                height: '100%', width: '100%',
+                background: `linear-gradient(90deg, transparent 0%, var(--color-accent) 50%, transparent 100%)`,
+                animation: 'shimmer 1.5s infinite',
+                backgroundSize: '200% 100%',
+              }} />
+            ) : (
+              <div style={{
+                height: '100%',
+                width: `${barWidth}%`,
+                background: 'var(--color-accent)',
+                borderRadius: 2,
+                transition: 'width 0.8s ease',
+              }} />
+            )}
+          </div>
+
+          {/* Metrics row */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)',
+          }}>
+            <span>
+              {job.status === 'queued'
+                ? 'waiting in queue…'
+                : job.progress > 0
+                  ? `${job.progress.toFixed(0)}% complete`
+                  : 'starting…'}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Clock size={10} />
+              {elapsedLabel}
+              {etaLabel && (
+                <span style={{ color: 'var(--color-text-secondary)', marginLeft: 4 }}>
+                  · ~{etaLabel} left
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* Video-specific info */}
+          {job.type === 'video' && job.videoMeta && (
+            <div style={{
+              fontSize: 11, color: 'var(--color-text-dim)',
+              paddingTop: 4, borderTop: '1px solid var(--color-border)',
+            }}>
+              {job.videoMeta.frames} frames · {job.videoMeta.fps} fps
+              {' · '}~{(job.videoMeta.frames / job.videoMeta.fps).toFixed(1)}s of video
+              {job.status === 'running' && etaLabel == null && job.progress === 0 && (
+                <span style={{ marginLeft: 8, opacity: 0.7 }}>loading model…</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Elapsed time for finished jobs */}
+      {!isActive && job.startedAt && (
+        <div style={{ fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+          Took {formatElapsed(
+            (job.status === 'succeeded' || job.status === 'failed' || job.status === 'canceled')
+              ? elapsedMs
+              : elapsedMs
+          )}
+        </div>
+      )}
+
+      {job.status === 'failed' && job.error && (
+        <div style={{ fontSize: 12, color: 'var(--color-error, #ef4444)' }}>{job.error}</div>
+      )}
+
+      {job.status === 'succeeded' && job.mediaId && (
+        <MediaImage mediaId={job.mediaId} />
       )}
     </div>
   );

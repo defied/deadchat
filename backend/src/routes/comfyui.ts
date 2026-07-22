@@ -53,8 +53,9 @@ router.get('/generate-models', authenticate, async (_req: Request, res: Response
 });
 
 // ── Admin-only ───────────────────────────────────────────────────────────────
+// authenticate must run before adminOnly so req.user is populated first.
 
-router.use(adminOnly);
+router.use(authenticate, adminOnly);
 
 // GET /api/comfyui/live-stats — aggregated system stats, VRAM, queue, recent history
 router.get('/live-stats', authenticate, async (_req: Request, res: Response): Promise<void> => {
