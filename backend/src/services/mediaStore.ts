@@ -83,3 +83,15 @@ export function listMedia(userId: number, limit = 50, offset = 0): Media[] {
     'SELECT * FROM media WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
   ).all(userId, limit, offset) as Media[];
 }
+
+export function deleteMedia(id: number, requestingUserId: number, isAdmin: boolean): boolean {
+  const media = getMedia(id);
+  if (!media) return false;
+  if (!isAdmin && media.user_id !== requestingUserId) return false;
+
+  const filePath = getMediaPath(media.filename);
+  try { fs.unlinkSync(filePath); } catch { /* file already gone — still remove DB row */ }
+
+  db.prepare('DELETE FROM media WHERE id = ?').run(id);
+  return true;
+}

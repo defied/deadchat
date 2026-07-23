@@ -31,3 +31,7 @@ export async function fetchMediaBlobUrl(id: number): Promise<string> {
   const resp = await client.get<Blob>(`/api/media/${id}`, { responseType: 'blob' });
   return URL.createObjectURL(resp.data);
 }
+
+export async function deleteMedia(id: number): Promise<void> {
+  await client.delete(`/api/media/${id}`);
+}

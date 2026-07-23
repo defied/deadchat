@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import { authenticate } from '../middleware/auth';
-import { getMedia, getMediaPath, listMedia } from '../services/mediaStore';
+import { getMedia, getMediaPath, listMedia, deleteMedia } from '../services/mediaStore';
 
 const router = Router();
 
@@ -51,6 +51,16 @@ router.get('/:id', (req: Request, res: Response): void => {
     res.writeHead(200);
     fs.createReadStream(filePath).pipe(res);
   }
+});
+
+// DELETE /api/media/:id — delete media item + file from disk
+router.delete('/:id', (req: Request, res: Response): void => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+
+  const ok = deleteMedia(id, req.user!.id, req.user!.role === 'admin');
+  if (!ok) { res.status(404).json({ error: 'Not found or forbidden' }); return; }
+  res.json({ deleted: true });
 });
 
 export default router;
