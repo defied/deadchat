@@ -7,12 +7,16 @@ import type { Provider, MediaCapability } from '../../types/models';
 import type { MediaProvider } from './types';
 import { LocalComfyuiProvider } from './localComfyui';
 import { GenericHttpProvider } from './genericHttp';
+import { LocalTtsProvider } from './localTts';
 
 function buildProvider(row: Provider): MediaProvider {
   const cfg = row.config ? JSON.parse(row.config) as Record<string, unknown> : {};
+  if (row.base_url) cfg.baseUrl = row.base_url;
   if (row.kind === 'local_comfyui') {
-    if (row.base_url) cfg.baseUrl = row.base_url;
     return new LocalComfyuiProvider(row.capability, cfg);
+  }
+  if (row.kind === 'local_tts') {
+    return new LocalTtsProvider(cfg);
   }
   return new GenericHttpProvider(row.capability, cfg, row.secrets ?? null);
 }

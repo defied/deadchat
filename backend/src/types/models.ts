@@ -81,7 +81,7 @@ export interface RefreshToken {
   created_at: string;
 }
 
-export type JobType = 'image' | 'video' | 'agent';
+export type JobType = 'image' | 'video' | 'agent' | 'tts';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface Job {
@@ -106,8 +106,8 @@ export interface Job {
   finished_at: string | null;
 }
 
-export type ProviderKind = 'local_comfyui' | 'generic_http';
-export type MediaCapability = 'image' | 'video';
+export type ProviderKind = 'local_comfyui' | 'generic_http' | 'local_tts';
+export type MediaCapability = 'image' | 'video' | 'tts';
 
 export interface Provider {
   id: number;
@@ -124,7 +124,7 @@ export interface Provider {
   updated_at: string;
 }
 
-export type MediaType = 'image' | 'video';
+export type MediaType = 'image' | 'video' | 'audio';
 
 export interface Media {
   id: number;
@@ -182,6 +182,25 @@ export interface DurationEstimate {
   avg_duration_s: number | null;
   last_duration_s: number | null;
   updated_at: string;
+}
+
+export type CharacterAssetRole = 'portrait' | 'voice';
+
+export interface Character {
+  id: number;
+  user_id: number | null;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CharacterAsset {
+  id: number;
+  character_id: number;
+  asset_id: number;
+  role: CharacterAssetRole;
+  created_at: string;
 }
 
 export interface Schedule {

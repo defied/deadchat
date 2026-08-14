@@ -1,12 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader, AlertCircle } from 'lucide-react';
-import { createAsset, listAssets, type CreativeAsset } from '../api/assets';
-import { AssetCard } from './AssetCard';
-
-// Phase 1 of the movie-studio pipeline: only 'character_portrait' has a
-// registered handler on the backend today. More asset types (voice, scene,
-// 3D environment, shot render) plug into the same UI as their handlers land.
-const ASSET_TYPE = 'character_portrait';
+import { createCharacter, listCharacters, type CharacterDetail } from '../api/characters';
+import { CharacterCard } from './CharacterCard';
 
 const inputStyle: React.CSSProperties = {
   background: 'var(--color-surface)',
@@ -22,15 +17,15 @@ const inputStyle: React.CSSProperties = {
 
 export function AssetPipelinePanel() {
   const [name, setName] = useState('');
-  const [prompt, setPrompt] = useState('');
+  const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [assets, setAssets] = useState<CreativeAsset[]>([]);
+  const [characters, setCharacters] = useState<CharacterDetail[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      setAssets(await listAssets());
+      setCharacters(await listCharacters());
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
@@ -39,17 +34,17 @@ export function AssetPipelinePanel() {
   useEffect(() => { refresh(); }, [refresh]);
 
   const handleCreate = async () => {
-    if (!prompt.trim()) return;
+    if (!name.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
-      await createAsset(ASSET_TYPE, { prompt: prompt.trim() }, name.trim() || undefined);
-      setPrompt('');
+      await createCharacter(name.trim(), description.trim() || undefined);
       setName('');
+      setDescription('');
       await refresh();
     } catch (e: unknown) {
       const ae = e as { response?: { data?: { error?: string } }; message?: string };
-      setError(ae?.response?.data?.error || ae?.message || 'Failed to create asset');
+      setError(ae?.response?.data?.error || ae?.message || 'Failed to create character');
     } finally {
       setSubmitting(false);
     }
@@ -60,8 +55,8 @@ export function AssetPipelinePanel() {
       <div>
         <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text)' }}>Character Studio</div>
         <div style={{ fontSize: 12, color: 'var(--color-text-dim)', marginTop: 4 }}>
-          Every character starts as a fast, cheap draft. Review it, request changes, then approve to
-          render the full-quality final.
+          Create a character, then generate a portrait and clone a voice for it. Everything starts as a
+          fast, cheap draft — review it, request changes, then approve to render the full-quality final.
         </div>
       </div>
 
@@ -69,16 +64,15 @@ export function AssetPipelinePanel() {
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Character name (optional)"
+          placeholder="Character name"
           style={inputStyle}
         />
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Describe the character's appearance…"
-          rows={3}
-          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
-          onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleCreate(); }}
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description (optional)"
+          style={inputStyle}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
         />
         {error && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-error, #ef4444)', fontSize: 13 }}>
@@ -87,28 +81,28 @@ export function AssetPipelinePanel() {
         )}
         <button
           onClick={handleCreate}
-          disabled={submitting || !prompt.trim()}
+          disabled={submitting || !name.trim()}
           style={{
             padding: '10px 20px', background: 'var(--color-accent)', border: 'none',
             borderRadius: 'var(--radius)', color: '#fff', fontSize: 13, fontWeight: 600,
-            cursor: submitting || !prompt.trim() ? 'not-allowed' : 'pointer',
-            opacity: submitting || !prompt.trim() ? 0.6 : 1,
+            cursor: submitting || !name.trim() ? 'not-allowed' : 'pointer',
+            opacity: submitting || !name.trim() ? 0.6 : 1,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, alignSelf: 'flex-start',
           }}
         >
           {submitting && <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />}
-          {submitting ? 'Queuing draft…' : 'Generate draft'}
+          {submitting ? 'Creating…' : 'New character'}
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto' }}>
         {loading && <Loader size={18} style={{ animation: 'spin 1s linear infinite' }} />}
-        {!loading && assets.length === 0 && (
+        {!loading && characters.length === 0 && (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-dim)', fontSize: 14 }}>
-            No characters yet. Describe one above to get started.
+            No characters yet. Create one above to get started.
           </div>
         )}
-        {assets.map((a) => <AssetCard key={a.id} assetId={a.id} />)}
+        {characters.map((c) => <CharacterCard key={c.id} character={c} onChange={refresh} />)}
       </div>
     </div>
   );

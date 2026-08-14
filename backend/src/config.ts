@@ -13,6 +13,7 @@ export const config = {
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'),
   // Media generation
   comfyuiUrl: process.env.COMFYUI_URL || 'http://192.168.0.106:8188',
+  ttsUrl: process.env.TTS_URL || 'http://192.168.0.106:8020',
   mediaDir: process.env.MEDIA_DIR || './data/media',
   secretsKey: process.env.SECRETS_KEY || '',
   runWorker: process.env.RUN_WORKER !== 'false',

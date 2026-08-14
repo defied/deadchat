@@ -19,6 +19,7 @@ backend:
     ollamaUrl: "http://192.168.0.106:11434"
     ollamaModel: "gemma4"
     maxFileSize: "10485760"
+    ttsUrl: "http://192.168.0.106:8020"
   jwtSecret: "changeme-generate-a-real-secret"
 
 storage:

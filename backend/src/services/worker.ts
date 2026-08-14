@@ -1,14 +1,15 @@
 // Single-instance job worker. Claims one heavy job at a time, ensuring the
 // shared 24 GB GPU is never double-booked between ComfyUI and Ollama.
 
+import fs from 'fs';
 import { claimNext, updateProgress, setExternalRef, complete, fail, resetStaleRunningJobs } from './jobQueue';
-import { saveMedia } from './mediaStore';
+import { saveMedia, getMedia, getMediaPath } from './mediaStore';
 import { selectProvider } from './providers/registry';
 import { evictModel } from './ollama';
 import { freeMemory } from './comfyui';
 import * as assetPipeline from './assetPipeline';
 import { config } from '../config';
-import type { Job } from '../types/models';
+import type { Job, JobType, MediaType } from '../types/models';
 
 const POLL_INTERVAL_MS = 1_000;
 let running = false;
@@ -43,7 +44,7 @@ async function processJob(job: Job): Promise<void> {
   const params = JSON.parse(job.params) as Record<string, unknown>;
 
   try {
-    if (job.type === 'image' || job.type === 'video') {
+    if (job.type === 'image' || job.type === 'video' || job.type === 'tts') {
       await processMediaJob(job, params);
     } else if (job.type === 'agent') {
       await processAgentJob(job, params);
@@ -58,19 +59,31 @@ async function processJob(job: Job): Promise<void> {
   }
 }
 
+// Which capabilities need the Ollama LLM evicted from VRAM before they run.
+// Generalized from a video-only hardcoded check now that TTS is a third
+// consumer sharing the same GPU.
+const EVICT_OLLAMA_BEFORE: JobType[] = ['video', 'tts'];
+
+const MEDIA_TYPE_FOR_CAPABILITY: Record<'image' | 'video' | 'tts', MediaType> = {
+  image: 'image',
+  video: 'video',
+  tts: 'audio',
+};
+
 async function processMediaJob(
   job: Job,
   params: Record<string, unknown>
 ): Promise<void> {
-  const capability = job.type as 'image' | 'video';
+  const capability = job.type as 'image' | 'video' | 'tts';
 
-  // Evict the LLM before video jobs to free VRAM for the diffusion model.
-  if (capability === 'video') {
-    console.log(`[worker] Evicting Ollama model before video job ${job.id}`);
+  if (EVICT_OLLAMA_BEFORE.includes(job.type)) {
+    console.log(`[worker] Evicting Ollama model before ${capability} job ${job.id}`);
     await evictModel(config.ollamaModel);
-    // Also free any lingering ComfyUI memory from prior image jobs
-    await freeMemory();
   }
+  // Free any lingering ComfyUI VRAM before every media job, not just video -
+  // previously image jobs left Flux resident indefinitely, which tightens
+  // the margin now that TTS also needs headroom on the same card.
+  await freeMemory();
 
   const provider = await selectProvider(capability);
   console.log(`[worker] Using provider ${provider.id} for job ${job.id}`);
@@ -78,6 +91,17 @@ async function processMediaJob(
   const extra: Record<string, string> = {};
   if (params.frames) extra.FRAMES = String(params.frames);
   if (params.fps) extra.FPS = String(params.fps);
+  if (params.language) extra.LANGUAGE = String(params.language);
+
+  let inputFiles: Array<{ field: string; bytes: Buffer; mime: string; filename?: string }> | undefined;
+  if (capability === 'tts') {
+    const referenceMediaId = params.referenceMediaId as number | undefined;
+    if (!referenceMediaId) throw new Error('tts job is missing referenceMediaId');
+    const referenceMedia = getMedia(referenceMediaId);
+    if (!referenceMedia) throw new Error(`Reference media ${referenceMediaId} not found`);
+    const bytes = fs.readFileSync(getMediaPath(referenceMedia.filename));
+    inputFiles = [{ field: 'reference_audio', bytes, mime: referenceMedia.mime, filename: referenceMedia.filename }];
+  }
 
   const result = await provider.generate(
     {
@@ -89,6 +113,7 @@ async function processMediaJob(
       cfg: params.cfg as number | undefined,
       model: params.model as string | undefined,
       extra: Object.keys(extra).length ? extra : undefined,
+      inputFiles,
     },
     (p) => updateProgress(job.id, p)
   );
@@ -99,7 +124,7 @@ async function processMediaJob(
     const media = saveMedia({
       userId: job.user_id ?? undefined,
       jobId: job.id,
-      type: capability,
+      type: MEDIA_TYPE_FOR_CAPABILITY[capability],
       bytes: file.bytes,
       mime: file.mime,
       originalFilename: file.filename,
@@ -113,10 +138,8 @@ async function processMediaJob(
   console.log(`[worker] Job ${job.id} succeeded, media_ids=${mediaIds.join(',')}`);
   if (job.asset_id != null) assetPipeline.onJobFinished(job.id);
 
-  // After video, free VRAM so the LLM can reload on next use
-  if (capability === 'video') {
-    await freeMemory();
-  }
+  // Free VRAM after generation too, so the LLM can reload on next use.
+  await freeMemory();
 }
 
 async function processAgentJob(

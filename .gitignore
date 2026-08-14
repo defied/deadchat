@@ -7,3 +7,6 @@ data/
 .DS_Store
 *.tsbuildinfo
 frontend/vite.config.d.ts
+.venv/
+__pycache__/
+*.pyc

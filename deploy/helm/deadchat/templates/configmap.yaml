@@ -8,3 +8,4 @@ data:
   OLLAMA_URL: {{ .Values.backend.env.ollamaUrl | quote }}
   OLLAMA_MODEL: {{ .Values.backend.env.ollamaModel | quote }}
   MAX_FILE_SIZE: {{ .Values.backend.env.maxFileSize | quote }}
+  TTS_URL: {{ .Values.backend.env.ttsUrl | quote }}

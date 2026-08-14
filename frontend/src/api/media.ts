@@ -4,7 +4,7 @@ export interface MediaItem {
   id: number;
   user_id: number | null;
   job_id: number | null;
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
   filename: string;
   mime: string;
   size_bytes: number;

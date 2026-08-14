@@ -1,5 +1,6 @@
 import type { AssetTypeHandler } from './types';
 import { characterPortraitHandler } from './characterPortraitHandler';
+import { characterVoiceHandler } from './characterVoiceHandler';
 
 const handlers = new Map<string, AssetTypeHandler>();
 
@@ -8,6 +9,7 @@ function register(handler: AssetTypeHandler): void {
 }
 
 register(characterPortraitHandler);
+register(characterVoiceHandler);
 
 export function getHandler(assetType: string): AssetTypeHandler {
   const handler = handlers.get(assetType);

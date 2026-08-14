@@ -5,11 +5,17 @@ import {
   type AssetDetail, type AssetEstimate, type AssetStage,
 } from '../api/assets';
 import { MediaImage } from './MediaImage';
+import { MediaAudio } from './MediaAudio';
 import { JobProgress, type ProgressStatus } from './JobProgress';
 
 const POLL_INTERVAL_MS = 2000;
 
 const ACTIVE_STAGES: AssetStage[] = ['draft_queued', 'draft_running', 'final_queued', 'final_running'];
+
+// AssetCard is generic across asset types, but the preview media isn't
+// always an image - character_voice produces audio. Add future
+// audio-producing asset types here.
+const AUDIO_ASSET_TYPES = new Set(['character_voice']);
 
 // Maps a creative_assets.stage onto the queued/running/succeeded/failed/canceled
 // vocabulary JobProgress already understands, so the same progress bar/ETA UI
@@ -129,7 +135,11 @@ export function AssetCard({ assetId }: { assetId: number }) {
         />
       )}
 
-      {previewMediaId != null && <MediaImage mediaId={previewMediaId} alt={prompt || asset.asset_type} />}
+      {previewMediaId != null && (
+        AUDIO_ASSET_TYPES.has(asset.asset_type)
+          ? <MediaAudio mediaId={previewMediaId} />
+          : <MediaImage mediaId={previewMediaId} alt={prompt || asset.asset_type} />
+      )}
 
       {asset.stage === 'failed' && asset.error && (
         <div style={{ fontSize: 12, color: 'var(--color-error, #ef4444)' }}>{asset.error}</div>

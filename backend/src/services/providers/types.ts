@@ -9,6 +9,9 @@ export interface GenerateRequest {
   cfg?: number;
   model?: string;
   extra?: Record<string, string>;
+  // Binary input (e.g. a reference voice clip for TTS cloning). Only
+  // LocalTtsProvider reads this today; other providers ignore it.
+  inputFiles?: Array<{ field: string; bytes: Buffer; mime: string; filename?: string }>;
 }
 
 export interface GenerateFile {

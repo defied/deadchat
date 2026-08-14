@@ -47,6 +47,11 @@ spec:
                 configMapKeyRef:
                   name: {{ include "deadchat.fullname" . }}-config
                   key: MAX_FILE_SIZE
+            - name: TTS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "deadchat.fullname" . }}-config
+                  key: TTS_URL
             - name: DB_PATH
               value: /data/deadchat.db
             - name: UPLOAD_DIR

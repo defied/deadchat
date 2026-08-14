@@ -32,6 +32,12 @@ function extFromMime(mime: string): string {
     'image/gif': '.gif',
     'video/mp4': '.mp4',
     'video/webm': '.webm',
+    'audio/wav': '.wav',
+    'audio/x-wav': '.wav',
+    'audio/mpeg': '.mp3',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/webm': '.webm',
   };
   return map[mime] ?? '.bin';
 }

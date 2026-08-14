@@ -52,6 +52,7 @@ export function runMigrations(): void {
   patchAgentFlags();
   seedDefaultProviders();
   patchStaleVideoProviderModel();
+  seedDefaultTtsProvider();
 }
 
 function seedDefaultAgents(): void {
@@ -143,6 +144,29 @@ function seedDefaultProviders(): void {
     JSON.stringify({ defaultModel: 'wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors' })
   );
   console.log('[migrate] Seeded 2 default providers.');
+}
+
+// Runs unconditionally (not gated on the whole table being empty, unlike
+// seedDefaultProviders() above) so it also backfills a TTS provider row onto
+// databases that already had image/video providers before this capability
+// existed - checks for this specific row, not "is providers empty".
+function seedDefaultTtsProvider(): void {
+  const tableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='providers'"
+  ).get();
+  if (!tableExists) return;
+
+  const existing = db.prepare(
+    "SELECT id FROM providers WHERE kind = 'local_tts' AND capability = 'tts'"
+  ).get();
+  if (existing) return;
+
+  console.log('[migrate] Seeding default TTS provider...');
+  db.prepare(`
+    INSERT INTO providers (name, kind, capability, enabled, is_default, priority, base_url, config)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run('Local TTS', 'local_tts', 'tts', 1, 1, 100, 'http://192.168.0.106:8020', '{}');
+  console.log('[migrate] Seeded default TTS provider.');
 }
 
 const DEFAULT_LIBRARY_AGENTS: Array<{ name: string; description: string; system_prompt: string }> = [
