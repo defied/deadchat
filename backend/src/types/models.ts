@@ -99,6 +99,8 @@ export interface Job {
   attempts: number;
   agent_run_id: number | null;
   external_ref: string | null;
+  asset_id: number | null;
+  asset_stage: 'draft' | 'final' | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -139,6 +141,47 @@ export interface Media {
   provider_id: number | null;
   meta: string | null;
   created_at: string;
+}
+
+export type AssetStage =
+  | 'draft_queued' | 'draft_running' | 'awaiting_review' | 'revision_requested'
+  | 'approved' | 'final_queued' | 'final_running' | 'final_ready' | 'failed' | 'canceled';
+
+export interface CreativeAsset {
+  id: number;
+  user_id: number | null;
+  asset_type: string;
+  name: string | null;
+  stage: AssetStage;
+  quality_tier: string | null;
+  params: string;
+  draft_media_id: number | null;
+  final_media_id: number | null;
+  parent_asset_id: number | null;
+  latest_job_id: number | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetRevision {
+  id: number;
+  asset_id: number;
+  job_id: number | null;
+  note: string;
+  params_before: string;
+  params_after: string | null;
+  created_by: number | null;
+  created_at: string;
+}
+
+export interface DurationEstimate {
+  id: number;
+  bucket_key: string;
+  sample_count: number;
+  avg_duration_s: number | null;
+  last_duration_s: number | null;
+  updated_at: string;
 }
 
 export interface Schedule {

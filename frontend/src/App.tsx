@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ChatPage } from './pages/ChatPage';
 import { AdminPage } from './pages/AdminPage';
 import { GeneratePage } from './pages/GeneratePage';
+import { AssetsPage } from './pages/AssetsPage';
 import { TokensPage } from './pages/TokensPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -57,6 +58,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <GeneratePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assets"
+          element={
+            <ProtectedRoute>
+              <AssetsPage />
             </ProtectedRoute>
           }
         />

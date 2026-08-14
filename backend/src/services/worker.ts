@@ -6,6 +6,7 @@ import { saveMedia } from './mediaStore';
 import { selectProvider } from './providers/registry';
 import { evictModel } from './ollama';
 import { freeMemory } from './comfyui';
+import * as assetPipeline from './assetPipeline';
 import { config } from '../config';
 import type { Job } from '../types/models';
 
@@ -25,6 +26,7 @@ async function loop(): Promise<void> {
     try {
       const job = claimNext();
       if (job) {
+        if (job.asset_id != null) assetPipeline.onJobStarted(job);
         await processJob(job);
       } else {
         await sleep(POLL_INTERVAL_MS);
@@ -52,6 +54,7 @@ async function processJob(job: Job): Promise<void> {
     const errMsg = e instanceof Error ? e.message : String(e);
     console.error(`[worker] Job ${job.id} failed: ${errMsg}`);
     fail(job.id, errMsg);
+    if (job.asset_id != null) assetPipeline.onJobFinished(job.id);
   }
 }
 
@@ -108,6 +111,7 @@ async function processMediaJob(
 
   complete(job.id, { media_ids: mediaIds, meta: result.meta });
   console.log(`[worker] Job ${job.id} succeeded, media_ids=${mediaIds.join(',')}`);
+  if (job.asset_id != null) assetPipeline.onJobFinished(job.id);
 
   // After video, free VRAM so the LLM can reload on next use
   if (capability === 'video') {

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Image, Film, Loader, CheckCircle, XCircle, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Clock, Aperture, Trash2 } from 'lucide-react';
+import { Image, Film, Loader, CheckCircle, XCircle, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Aperture, Trash2 } from 'lucide-react';
 import client from '../api/client';
 import { generateImage, generateVideo, getJob, type Job } from '../api/jobs';
 import { listMedia, deleteMedia, type MediaItem } from '../api/media';
 import { MediaImage } from './MediaImage';
 import { MediaVideo } from './MediaVideo';
 import { MediaLightbox } from './MediaLightbox';
+import { JobProgress } from './JobProgress';
 
 type Tab = 'generate' | 'gallery';
 type GenType = 'image' | 'video';
@@ -121,15 +122,6 @@ function framesForDuration(durationSec: number, fps: number): number {
 }
 
 const POLL_INTERVAL_MS = 2000;
-
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${m % 60}m`;
-  if (m > 0) return `${m}m ${s % 60}s`;
-  return `${s}s`;
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -688,19 +680,7 @@ function GalleryCard({ item, onOpen, onDelete }: { item: MediaItem; onOpen: () =
 // ── Job card ──────────────────────────────────────────────────────────────────
 
 function JobCard({ job }: { job: ActiveJob }) {
-  const now = Date.now();
   const isActive = job.status === 'queued' || job.status === 'running';
-  const elapsedMs = now - (job.startedAt ?? job.createdAt);
-  const elapsedLabel = formatElapsed(Math.max(0, elapsedMs));
-
-  let etaLabel: string | null = null;
-  if (job.status === 'running' && job.startedAt && job.progress > 2) {
-    const runningMs = now - job.startedAt;
-    const remaining = (runningMs / (job.progress / 100)) - runningMs;
-    if (remaining > 0) etaLabel = formatElapsed(remaining);
-  }
-
-  const barWidth = job.status === 'running' ? Math.max(2, Math.min(99, job.progress)) : 100;
 
   return (
     <div style={{ padding: '10px 12px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -717,37 +697,24 @@ function JobCard({ job }: { job: ActiveJob }) {
         <div style={{ fontSize: 12, color: 'var(--color-text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{job.prompt}</div>
       )}
 
-      {isActive && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ height: 4, background: 'var(--color-border)', borderRadius: 2, overflow: 'hidden' }}>
-            {job.status === 'queued' ? (
-              <div style={{ height: '100%', width: '100%', background: 'linear-gradient(90deg, transparent 0%, var(--color-accent) 50%, transparent 100%)', animation: 'shimmer 1.5s infinite', backgroundSize: '200% 100%' }} />
-            ) : (
-              <div style={{ height: '100%', width: `${barWidth}%`, background: 'var(--color-accent)', borderRadius: 2, transition: 'width 0.8s ease' }} />
-            )}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-dim)' }}>
-            <span>
-              {job.status === 'queued' ? 'waiting in queue…' : job.progress > 0 ? `${job.progress.toFixed(0)}% complete` : 'starting…'}
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Clock size={10} />
-              {elapsedLabel}
-              {etaLabel && <span style={{ color: 'var(--color-text-secondary)', marginLeft: 4 }}>· ~{etaLabel} left</span>}
-            </span>
-          </div>
-          {job.type === 'video' && job.videoMeta && (
-            <div style={{ fontSize: 11, color: 'var(--color-text-dim)', paddingTop: 4, borderTop: '1px solid var(--color-border)' }}>
-              {job.videoMeta.frames} frames · {job.videoMeta.fps}fps · ~{(job.videoMeta.frames / job.videoMeta.fps).toFixed(1)}s
-              {job.status === 'running' && !etaLabel && job.progress === 0 && <span style={{ marginLeft: 8, opacity: 0.7 }}>loading model…</span>}
-            </div>
-          )}
-        </div>
-      )}
+      <JobProgress
+        status={job.status}
+        progressPct={job.progress}
+        startedAt={job.startedAt}
+        createdAt={job.createdAt}
+      />
 
-      {!isActive && job.startedAt && (
-        <div style={{ fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-          Took {elapsedLabel}
+      {/* Video-specific info */}
+      {isActive && job.type === 'video' && job.videoMeta && (
+        <div style={{
+          fontSize: 11, color: 'var(--color-text-dim)',
+          paddingTop: 4, borderTop: '1px solid var(--color-border)',
+        }}>
+          {job.videoMeta.frames} frames · {job.videoMeta.fps} fps
+          {' · '}~{(job.videoMeta.frames / job.videoMeta.fps).toFixed(1)}s of video
+          {job.status === 'running' && job.progress === 0 && (
+            <span style={{ marginLeft: 8, opacity: 0.7 }}>loading model…</span>
+          )}
         </div>
       )}
 

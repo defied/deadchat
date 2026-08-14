@@ -11,6 +11,8 @@ export interface EnqueueOptions {
   priority?: number;
   heavy?: boolean;
   agentRunId?: number;
+  assetId?: number;
+  assetStage?: 'draft' | 'final';
 }
 
 // On startup, any job stuck in 'running' means the server crashed mid-job.
@@ -30,8 +32,8 @@ export function enqueue(
   opts: EnqueueOptions = {}
 ): number {
   const result = db.prepare(`
-    INSERT INTO jobs (user_id, type, params, priority, heavy, provider_id, agent_run_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO jobs (user_id, type, params, priority, heavy, provider_id, agent_run_id, asset_id, asset_stage)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     opts.userId ?? null,
     type,
@@ -39,7 +41,9 @@ export function enqueue(
     opts.priority ?? 0,
     opts.heavy !== false ? 1 : 0,
     opts.providerId ?? null,
-    opts.agentRunId ?? null
+    opts.agentRunId ?? null,
+    opts.assetId ?? null,
+    opts.assetStage ?? null
   );
   return result.lastInsertRowid as number;
 }

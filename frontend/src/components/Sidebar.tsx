@@ -1,4 +1,4 @@
-import { Plus, Trash2, MessageSquare, Image, Shield, Key, Bot } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Image, Shield, Key, Bot, Clapperboard } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import type { ChatSession } from '../api/chat';
@@ -143,6 +143,12 @@ export function Sidebar({
           label="Generate"
           active={location.pathname === '/generate'}
           onClick={() => navigate('/generate')}
+        />
+        <NavItem
+          icon={<Clapperboard size={16} />}
+          label="Studio"
+          active={location.pathname === '/assets'}
+          onClick={() => navigate('/assets')}
         />
         <NavItem
           icon={<Bot size={16} />}
