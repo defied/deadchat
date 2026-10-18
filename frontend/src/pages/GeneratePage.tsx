@@ -1,11 +1,9 @@
-import { Layout } from '../components/Layout';
-import { Sidebar } from '../components/Sidebar';
 import { GeneratePanel } from '../components/GeneratePanel';
 
 export function GeneratePage() {
   return (
-    <Layout sidebar={<Sidebar />}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <GeneratePanel />
-    </Layout>
+    </div>
   );
 }

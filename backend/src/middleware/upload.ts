@@ -47,12 +47,22 @@ const storage = multer.diskStorage({
   },
 });
 
+// Browsers report inconsistent MIME types for source files (.ts → video/mp2t,
+// .sh → application/x-sh, .yaml → ''), so also accept by extension.
+const ALLOWED_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp', '.tiff', '.heic', '.heif',
+  '.txt', '.md', '.csv', '.pdf', '.json', '.yaml', '.yml', '.xml', '.html', '.css',
+  '.js', '.ts', '.tsx', '.jsx', '.py', '.sql', '.sh', '.rb', '.go', '.rs', '.java',
+  '.cpp', '.c', '.h', '.toml', '.ini', '.log',
+]);
+
 function fileFilter(
   _req: Express.Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ): void {
-  if (ALLOWED_MIMETYPES.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ALLOWED_MIMETYPES.includes(file.mimetype) || ALLOWED_EXTENSIONS.has(ext)) {
     cb(null, true);
   } else {
     cb(new Error(`File type ${file.mimetype} is not allowed`));

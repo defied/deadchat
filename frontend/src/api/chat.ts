@@ -1,10 +1,13 @@
 import client from './client';
 
 export interface ChatSession {
-  id: string;
+  id: number;
   title: string;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string | null;
+  /** Per-chat model override; null = server default. */
+  model: string | null;
+  message_count?: number;
   // Agent snapshot — present only when the session was created with one.
   agent_source?: 'library' | 'user' | null;
   agent_id?: number | null;
@@ -12,18 +15,45 @@ export interface ChatSession {
   agent_agentic?: number;
 }
 
-export interface ChatMessage {
+export interface Attachment {
   id: string;
-  sessionId: string;
-  role: 'user' | 'assistant';
+  filename: string;
+  url: string;
+  type: string;
+  size?: number;
+}
+
+export interface ChatMessage {
+  id: number | string;
+  session_id: number;
+  role: 'user' | 'assistant' | 'system';
   content: string;
-  attachments?: Array<{
-    id: string;
-    filename: string;
-    url: string;
-    type: string;
-  }>;
-  createdAt: string;
+  thinking?: string | null;
+  attachments?: Attachment[];
+  created_at: string;
+  /** Client-only: message failed / is an error notice, not persisted. */
+  local?: 'error' | 'pending';
+}
+
+export interface ChatModel {
+  name: string;
+  parameterSize: string | null;
+  family: string | null;
+  sizeBytes: number;
+  modifiedAt: string | null;
+  capabilities: string[];
+  contextLength: number | null;
+}
+
+export interface ChatModelsResponse {
+  models: ChatModel[];
+  defaultModel: string;
+  reachable: boolean;
+}
+
+export async function getChatModels(): Promise<ChatModelsResponse> {
+  const { data } = await client.get<ChatModelsResponse>('/api/chat/models');
+  return data;
 }
 
 export async function getSessions(): Promise<ChatSession[]> {
@@ -31,46 +61,50 @@ export async function getSessions(): Promise<ChatSession[]> {
   return data.sessions;
 }
 
-export async function createSession(
-  title?: string,
-  agent?: { source: 'library' | 'user'; id: number } | null,
-): Promise<ChatSession> {
-  const body: Record<string, unknown> = { title: title || 'New Chat' };
-  if (agent) {
-    body.agentSource = agent.source;
-    body.agentId = agent.id;
+export async function createSession(input: {
+  title?: string;
+  agent?: { source: 'library' | 'user'; id: number } | null;
+  model?: string | null;
+} = {}): Promise<ChatSession> {
+  const body: Record<string, unknown> = {};
+  if (input.title) body.title = input.title;
+  if (input.agent) {
+    body.agentSource = input.agent.source;
+    body.agentId = input.agent.id;
   }
+  if (input.model) body.model = input.model;
   const { data } = await client.post<{ session: ChatSession }>('/api/chat/sessions', body);
   return data.session;
 }
 
-export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
-  const { data } = await client.get<{ messages: ChatMessage[] }>(
-    `/api/chat/sessions/${sessionId}/messages`
-  );
-  return data.messages.map((msg) => {
-    let attachments = msg.attachments;
-    if (typeof attachments === 'string') {
-      try {
-        const parsed = JSON.parse(attachments);
-        // DB stores as array of URL strings — normalize to objects
-        if (Array.isArray(parsed)) {
-          attachments = parsed.filter(Boolean).map((item: any, i: number) =>
-            typeof item === 'string'
-              ? { id: String(i), filename: item.split('/').pop() || 'file', url: item, type: '' }
-              : item
-          );
-        } else {
-          attachments = undefined;
-        }
-      } catch {
-        attachments = undefined;
-      }
-    }
-    return { ...msg, attachments: attachments || undefined };
-  });
+export async function updateSession(
+  id: number,
+  patch: { title?: string; model?: string | null },
+): Promise<ChatSession> {
+  const { data } = await client.patch<{ session: ChatSession }>(`/api/chat/sessions/${id}`, patch);
+  return data.session;
 }
 
-export async function deleteSession(sessionId: string): Promise<void> {
+export async function getMessages(sessionId: number): Promise<{ messages: ChatMessage[]; generating: boolean }> {
+  const { data } = await client.get<{ messages: ChatMessage[]; generating?: boolean }>(
+    `/api/chat/sessions/${sessionId}/messages`
+  );
+  return { messages: data.messages, generating: !!data.generating };
+}
+
+export async function deleteSession(sessionId: number): Promise<void> {
   await client.delete(`/api/chat/sessions/${sessionId}`);
+}
+
+export async function uploadAttachment(file: File): Promise<Attachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await client.post<{ attachment: Attachment }>('/api/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data.attachment;
+}
+
+export function isImageAttachment(a: Attachment): boolean {
+  return a.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(a.id);
 }

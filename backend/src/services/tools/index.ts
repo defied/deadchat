@@ -14,7 +14,18 @@ import {
 
 export interface ToolContext {
   userId?: number;
+  /** Role of the user the agent acts for. Admin-only tools are hidden otherwise. */
+  role?: string;
   agentRunId?: number;
+}
+
+/** Tools that change server configuration — only exposed to admins. */
+const ADMIN_TOOL_NAMES = new Set<string>([...CONFIG_TOOL_NAMES]);
+
+/** Tool definitions an agent acting for `role` may see. Undefined role = system/scheduler (full set). */
+export function toolsForRole(role?: string): AnthropicTool[] {
+  if (role === undefined || role === 'admin') return ALL_TOOL_DEFS;
+  return ALL_TOOL_DEFS.filter((t) => !ADMIN_TOOL_NAMES.has(t.name));
 }
 
 export const ALL_TOOL_DEFS: AnthropicTool[] = [
@@ -34,6 +45,9 @@ export async function dispatchTool(
   input: Record<string, unknown>,
   ctx: ToolContext
 ): Promise<Record<string, unknown>> {
+  if (ADMIN_TOOL_NAMES.has(name) && ctx.role !== undefined && ctx.role !== 'admin') {
+    return { error: `Tool ${name} requires an admin account` };
+  }
   switch (name) {
     case 'ping_backends':
       return handlePingBackends();

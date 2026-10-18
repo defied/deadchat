@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Edit2, Trash2, RefreshCw } from 'lucide-react';
-import { AgentEditor } from '../AgentEditor';
+import { AgentEditor, type AgentSaveData } from '../AgentEditor';
 import * as agentsApi from '../../api/agents';
 import type { LibraryAgent } from '../../api/agents';
 
@@ -29,7 +29,7 @@ export function AgentsPanel() {
   const handleCreate = () => { setEditing(null); setEditorOpen(true); };
   const handleEdit = (a: LibraryAgent) => { setEditing(a); setEditorOpen(true); };
 
-  const handleSave = async (data: { name: string; description: string; system_prompt: string }) => {
+  const handleSave = async (data: AgentSaveData) => {
     if (editing) {
       await agentsApi.updateLibraryAgent(editing.id, data);
     } else {

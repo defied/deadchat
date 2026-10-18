@@ -31,8 +31,24 @@ app.use(cors());
 app.use(express.json({ limit: '32mb' }));
 app.use(express.urlencoded({ extended: true, limit: '32mb' }));
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.resolve(config.uploadDir)));
+// Serve uploaded chat attachments. /api/uploads is what the UI uses (it is
+// routed to the backend by both the ingress and the frontend nginx);
+// /uploads is kept for older links.
+// Uploads are user-controlled content on our origin: sandbox them so an
+// uploaded .html/.svg can never run script in the app's context.
+const uploadsStatic = express.static(path.resolve(config.uploadDir), {
+  maxAge: '7d',
+  index: false,
+  setHeaders(res, filePath) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
+    if (/\.(html?|svg|xml|js|mjs)$/i.test(filePath)) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    }
+  },
+});
+app.use('/api/uploads', uploadsStatic);
+app.use('/uploads', uploadsStatic);
 
 // Media files are served through the /api/media route (with Range support + auth)
 

@@ -17,7 +17,10 @@ export interface Session {
   agent_name: string | null;
   system_prompt: string | null;
   agent_agentic: number;
+  /** Per-chat model override; NULL = admin-selected active model. */
+  model: string | null;
   created_at: string;
+  updated_at: string | null;
 }
 
 export interface LibraryAgent {
@@ -49,6 +52,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   attachments: string | null;
+  thinking: string | null;
   created_at: string;
 }
 
