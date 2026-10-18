@@ -85,7 +85,7 @@ export function AgentPicker({ onPick, onCancel }: AgentPickerProps) {
           padding: '14px 18px', borderBottom: '1px solid var(--color-border)',
         }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
-            Start a new chat
+            Choose an agent
           </div>
           <button onClick={onCancel} style={iconBtn} aria-label="Close">
             <X size={16} />

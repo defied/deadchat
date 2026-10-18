@@ -17,7 +17,7 @@ backend:
     port: 3000
   env:
     ollamaUrl: "http://192.168.0.106:11434"
-    ollamaModel: "gemma4"
+    ollamaModel: "qwen3.8:27b"
     maxFileSize: "10485760"
     ttsUrl: "http://192.168.0.106:8020"
   jwtSecret: "changeme-generate-a-real-secret"

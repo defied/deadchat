@@ -33,20 +33,21 @@ router.get('/mine', (req: Request, res: Response): void => {
 });
 
 router.post('/mine', (req: Request, res: Response): void => {
-  const { name, description, system_prompt, source_library_id } = req.body || {};
+  const { name, description, system_prompt, source_library_id, agentic } = req.body || {};
   if (!name || typeof name !== 'string' || !system_prompt || typeof system_prompt !== 'string') {
     res.status(400).json({ error: 'name and system_prompt are required strings' });
     return;
   }
   const result = db.prepare(
-    `INSERT INTO user_agents (user_id, name, description, system_prompt, source_library_id)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO user_agents (user_id, name, description, system_prompt, source_library_id, agentic)
+     VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     req.user!.id,
     name.trim(),
     String(description || '').trim(),
     system_prompt,
     typeof source_library_id === 'number' ? source_library_id : null,
+    agentic ? 1 : 0,
   );
   const agent = db.prepare('SELECT * FROM user_agents WHERE id = ?').get(result.lastInsertRowid) as UserAgent;
   res.status(201).json({ agent });
@@ -59,16 +60,16 @@ router.put('/mine/:id', (req: Request, res: Response): void => {
   ).get(id, req.user!.id);
   if (!existing) { res.status(404).json({ error: 'Agent not found' }); return; }
 
-  const { name, description, system_prompt } = req.body || {};
+  const { name, description, system_prompt, agentic } = req.body || {};
   if (!name || typeof name !== 'string' || !system_prompt || typeof system_prompt !== 'string') {
     res.status(400).json({ error: 'name and system_prompt are required strings' });
     return;
   }
   db.prepare(
     `UPDATE user_agents
-     SET name = ?, description = ?, system_prompt = ?, updated_at = datetime('now')
+     SET name = ?, description = ?, system_prompt = ?, agentic = COALESCE(?, agentic), updated_at = datetime('now')
      WHERE id = ?`
-  ).run(name.trim(), String(description || '').trim(), system_prompt, id);
+  ).run(name.trim(), String(description || '').trim(), system_prompt, agentic === undefined ? null : agentic ? 1 : 0, id);
 
   const agent = db.prepare('SELECT * FROM user_agents WHERE id = ?').get(id) as UserAgent;
   res.json({ agent });
@@ -91,9 +92,9 @@ router.post('/mine/clone-library/:id', (req: Request, res: Response): void => {
   if (!src) { res.status(404).json({ error: 'Library agent not found' }); return; }
 
   const result = db.prepare(
-    `INSERT INTO user_agents (user_id, name, description, system_prompt, source_library_id)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(req.user!.id, src.name, src.description, src.system_prompt, libId);
+    `INSERT INTO user_agents (user_id, name, description, system_prompt, source_library_id, agentic)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(req.user!.id, src.name, src.description, src.system_prompt, libId, src.agentic || 0);
   const agent = db.prepare('SELECT * FROM user_agents WHERE id = ?').get(result.lastInsertRowid) as UserAgent;
   res.status(201).json({ agent });
 });
@@ -101,15 +102,15 @@ router.post('/mine/clone-library/:id', (req: Request, res: Response): void => {
 // ─── Library writes (admin-only) ───────────────────────────────────────────
 
 router.post('/library', adminOnly, (req: Request, res: Response): void => {
-  const { name, description, system_prompt } = req.body || {};
+  const { name, description, system_prompt, agentic } = req.body || {};
   if (!name || typeof name !== 'string' || !system_prompt || typeof system_prompt !== 'string') {
     res.status(400).json({ error: 'name and system_prompt are required strings' });
     return;
   }
   const result = db.prepare(
-    `INSERT INTO agent_library (name, description, system_prompt, created_by_user_id)
-     VALUES (?, ?, ?, ?)`
-  ).run(name.trim(), String(description || '').trim(), system_prompt, req.user!.id);
+    `INSERT INTO agent_library (name, description, system_prompt, created_by_user_id, agentic)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(name.trim(), String(description || '').trim(), system_prompt, req.user!.id, agentic ? 1 : 0);
   const agent = db.prepare('SELECT * FROM agent_library WHERE id = ?').get(result.lastInsertRowid) as LibraryAgent;
   res.status(201).json({ agent });
 });
@@ -119,16 +120,16 @@ router.put('/library/:id', adminOnly, (req: Request, res: Response): void => {
   const existing = db.prepare('SELECT id FROM agent_library WHERE id = ?').get(id);
   if (!existing) { res.status(404).json({ error: 'Library agent not found' }); return; }
 
-  const { name, description, system_prompt } = req.body || {};
+  const { name, description, system_prompt, agentic } = req.body || {};
   if (!name || typeof name !== 'string' || !system_prompt || typeof system_prompt !== 'string') {
     res.status(400).json({ error: 'name and system_prompt are required strings' });
     return;
   }
   db.prepare(
     `UPDATE agent_library
-     SET name = ?, description = ?, system_prompt = ?, updated_at = datetime('now')
+     SET name = ?, description = ?, system_prompt = ?, agentic = COALESCE(?, agentic), updated_at = datetime('now')
      WHERE id = ?`
-  ).run(name.trim(), String(description || '').trim(), system_prompt, id);
+  ).run(name.trim(), String(description || '').trim(), system_prompt, agentic === undefined ? null : agentic ? 1 : 0, id);
 
   const agent = db.prepare('SELECT * FROM agent_library WHERE id = ?').get(id) as LibraryAgent;
   res.json({ agent });

@@ -43,7 +43,8 @@ metadata:
   namespace: deadchat
 data:
   OLLAMA_URL: "http://192.168.0.106:11434"
-  OLLAMA_MODEL: "gemma4"
+  OLLAMA_MODEL: "qwen3.8:27b"
+  CHAT_NUM_CTX: "32768"
   MAX_FILE_SIZE: "10485760"
   DB_PATH: "/data/deadchat.db"
   UPLOAD_DIR: "/data/uploads"

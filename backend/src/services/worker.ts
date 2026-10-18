@@ -5,7 +5,7 @@ import fs from 'fs';
 import { claimNext, updateProgress, setExternalRef, complete, fail, resetStaleRunningJobs } from './jobQueue';
 import { saveMedia, getMedia, getMediaPath } from './mediaStore';
 import { selectProvider } from './providers/registry';
-import { evictModel } from './ollama';
+import { evictAllModels } from './ollama';
 import { freeMemory } from './comfyui';
 import * as assetPipeline from './assetPipeline';
 import { config } from '../config';
@@ -78,7 +78,7 @@ async function processMediaJob(
 
   if (EVICT_OLLAMA_BEFORE.includes(job.type)) {
     console.log(`[worker] Evicting Ollama model before ${capability} job ${job.id}`);
-    await evictModel(config.ollamaModel);
+    await evictAllModels();
   }
   // Free any lingering ComfyUI VRAM before every media job, not just video -
   // previously image jobs left Flux resident indefinitely, which tightens
@@ -148,13 +148,21 @@ async function processAgentJob(
 ): Promise<void> {
   // Dynamically import to avoid circular dependency at module load time
   const { runAgentLoop } = await import('./agentLoop');
+  const { getActiveModel } = await import('./chatModels');
+  const { default: db } = await import('../db/connection');
+
+  // Scheduled agents act with the permissions of the user who owns the job.
+  const owner = job.user_id != null
+    ? (db.prepare('SELECT role FROM users WHERE id = ?').get(job.user_id) as { role: string } | undefined)
+    : undefined;
 
   const result = await runAgentLoop({
-    model: (params.model as string | undefined) ?? config.ollamaModel,
+    model: (params.model as string | undefined) ?? getActiveModel(),
     systemPrompt: (params.systemPrompt as string | undefined) ?? '',
     userGoal: (params.goal as string) ?? '',
     ctx: {
       userId: job.user_id ?? undefined,
+      role: owner?.role ?? (job.user_id != null ? 'user' : undefined),
       agentRunId: job.id,
     },
   });

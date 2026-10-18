@@ -5,6 +5,7 @@ import type { OllamaChatRequest, OllamaChatResponse as OllamaApiResponse } from 
 export interface OllamaMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /** Base64-encoded images (no data: prefix) for vision-capable models. */
   images?: string[];
 }
 
@@ -14,8 +15,10 @@ interface OllamaChatResponse {
   message: {
     role: string;
     content: string;
+    thinking?: string;
   };
   done: boolean;
+  done_reason?: string;
   total_duration?: number;
   load_duration?: number;
   prompt_eval_count?: number;
@@ -26,7 +29,10 @@ interface OllamaChatResponse {
 
 export interface ChatStreamChunk {
   content: string;
+  /** Reasoning tokens from thinking-capable models (qwen3.x, gemma4, ...). */
+  thinking: string;
   done: boolean;
+  doneReason?: string;
   model?: string;
   promptTokens?: number;
   evalTokens?: number;
@@ -36,18 +42,45 @@ export interface ChatStreamChunk {
   evalDurationNs?: number;
 }
 
+export interface ChatStreamOptions {
+  /** Ollama `options` (temperature, num_ctx, ...). Usually from model settings. */
+  options?: Record<string, unknown>;
+  signal?: AbortSignal;
+}
+
+function toChunk(parsed: OllamaChatResponse): ChatStreamChunk {
+  return {
+    content: parsed.message?.content ?? '',
+    thinking: parsed.message?.thinking ?? '',
+    done: parsed.done,
+    doneReason: parsed.done_reason,
+    model: parsed.model,
+    promptTokens: parsed.prompt_eval_count,
+    evalTokens: parsed.eval_count,
+    totalDurationNs: parsed.total_duration,
+    loadDurationNs: parsed.load_duration,
+    promptEvalDurationNs: parsed.prompt_eval_duration,
+    evalDurationNs: parsed.eval_duration,
+  };
+}
+
 export async function* chatStream(
   messages: OllamaMessage[],
-  model?: string
+  model?: string,
+  opts: ChatStreamOptions = {},
 ): AsyncGenerator<ChatStreamChunk> {
+  const body: Record<string, unknown> = {
+    model: model || config.ollamaModel,
+    messages,
+    stream: true,
+  };
+  if (opts.options && Object.keys(opts.options).length > 0) body.options = opts.options;
+
   const response = await fetch(`${getOllamaUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: model || config.ollamaModel,
-      messages,
-      stream: true,
-    }),
+    body: JSON.stringify(body),
+    signal: opts.signal,
   });
 
   if (!response.ok) {
@@ -63,48 +96,38 @@ export async function* chatStream(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const parsed: OllamaChatResponse = JSON.parse(line);
-        yield {
-          content: parsed.message.content,
-          done: parsed.done,
-          model: parsed.model,
-          promptTokens: parsed.prompt_eval_count,
-          evalTokens: parsed.eval_count,
-          totalDurationNs: parsed.total_duration,
-          loadDurationNs: parsed.load_duration,
-          promptEvalDurationNs: parsed.prompt_eval_duration,
-          evalDurationNs: parsed.eval_duration,
-        };
-      } catch {
-        // Skip malformed JSON lines
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let parsed: OllamaChatResponse & { error?: string };
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue; // Skip malformed JSON lines
+        }
+        if (parsed.error) throw new Error(parsed.error);
+        yield toChunk(parsed);
       }
     }
-  }
 
-  // Process remaining buffer
-  if (buffer.trim()) {
-    try {
-      const parsed: OllamaChatResponse = JSON.parse(buffer);
-      yield {
-        content: parsed.message.content,
-        done: parsed.done,
-        promptTokens: parsed.prompt_eval_count,
-        evalTokens: parsed.eval_count,
-      };
-    } catch {
-      // Skip malformed JSON
+    if (buffer.trim()) {
+      try {
+        const parsed: OllamaChatResponse = JSON.parse(buffer);
+        yield toChunk(parsed);
+      } catch {
+        // Skip malformed JSON
+      }
     }
+  } finally {
+    reader.cancel().catch(() => {});
   }
 }
 
@@ -155,12 +178,13 @@ export async function generateImage(
 
 // Full request/response pass-through for the agent loop, which constructs the
 // Ollama request via anthropicToOllamaRequest (includes tools, keep_alive, etc.).
-export async function chatSyncRaw(req: OllamaChatRequest): Promise<OllamaApiResponse> {
+export async function chatSyncRaw(req: OllamaChatRequest, signal?: AbortSignal): Promise<OllamaApiResponse> {
   const body = { ...req, stream: false };
   const response = await fetch(`${getOllamaUrl()}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
@@ -182,6 +206,18 @@ export async function evictModel(model: string): Promise<void> {
     });
   } catch {
     // Best-effort — don't block the job if eviction fails
+  }
+}
+
+// Evict every model Ollama currently has loaded (frees VRAM for ComfyUI).
+export async function evictAllModels(): Promise<void> {
+  try {
+    const r = await fetch(`${getOllamaUrl()}/api/ps`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return;
+    const data = (await r.json()) as { models?: Array<{ name: string }> };
+    await Promise.all((data.models ?? []).map((m) => evictModel(m.name)));
+  } catch {
+    // Best-effort
   }
 }
 

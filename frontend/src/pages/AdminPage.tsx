@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Layout } from '../components/Layout';
-import { Sidebar } from '../components/Sidebar';
+import { Navigate, useParams } from 'react-router-dom';
+import { PageHeader, RouteTabs, Alert, errorMessage } from '../components/ui';
 import { UserTable } from '../components/admin/UserTable';
 import { UserForm } from '../components/admin/UserForm';
 import { PasswordReset } from '../components/admin/PasswordReset';
@@ -13,12 +13,33 @@ import { AgentsPanel } from '../components/admin/AgentsPanel';
 import type { User } from '../api/auth';
 import type { UsageSummary } from '../api/users';
 import * as usersApi from '../api/users';
-import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot, Image } from 'lucide-react';
+import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot, Image, Shield } from 'lucide-react';
 
-type Tab = 'users' | 'usage' | 'pricing' | 'models' | 'live' | 'comfyui' | 'agents';
+const TABS = [
+  { id: 'users', label: 'Users', icon: <Users size={14} /> },
+  { id: 'models', label: 'Models', icon: <Cpu size={14} /> },
+  { id: 'agents', label: 'Agent library', icon: <Bot size={14} /> },
+  { id: 'usage', label: 'Usage', icon: <BarChart3 size={14} /> },
+  { id: 'pricing', label: 'Pricing', icon: <DollarSign size={14} /> },
+  { id: 'live', label: 'Ollama live', icon: <Activity size={14} /> },
+  { id: 'comfyui', label: 'ComfyUI', icon: <Image size={14} /> },
+] as const;
+type Tab = (typeof TABS)[number]['id'];
+
+const SUBTITLES: Record<Tab, string> = {
+  users: 'Accounts, roles and passwords.',
+  models: 'Install, configure and choose the default chat model.',
+  agents: 'Starter agents every user can chat with or copy.',
+  usage: 'Requests and tokens per user and model.',
+  pricing: 'Per-model prices used to estimate cost in Usage.',
+  live: 'What Ollama is running right now: VRAM, throughput, recent requests.',
+  comfyui: 'Image/video backend: queue, VRAM and history.',
+};
 
 export function AdminPage() {
-  const [tab, setTab] = useState<Tab>('users');
+  const params = useParams();
+  const tab = (params.tab ?? 'users') as Tab;
+  const [error, setError] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [usageData, setUsageData] = useState<UsageSummary | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
@@ -30,8 +51,8 @@ export function AdminPage() {
     try {
       const data = await usersApi.getUsers();
       setUsers(data);
-    } catch {
-      // Handle silently
+    } catch (err) {
+      setError(errorMessage(err));
     }
   }, []);
 
@@ -40,8 +61,8 @@ export function AdminPage() {
     try {
       const data = await usersApi.getUsageSummary();
       setUsageData(data);
-    } catch {
-      // Handle silently
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setUsageLoading(false);
     }
@@ -91,8 +112,8 @@ export function AdminPage() {
       setShowForm(false);
       setEditingUser(null);
       loadUsers();
-    } catch {
-      // Handle error
+    } catch (err) {
+      setError(errorMessage(err));
     }
   };
 
@@ -101,8 +122,8 @@ export function AdminPage() {
     try {
       await usersApi.deleteUser(id);
       loadUsers();
-    } catch {
-      // Handle error
+    } catch (err) {
+      setError(errorMessage(err));
     }
   };
 
@@ -110,190 +131,67 @@ export function AdminPage() {
     try {
       await usersApi.resetPassword(userId, newPassword);
       setPasswordResetUser(null);
-    } catch {
-      // Handle error
+    } catch (err) {
+      setError(errorMessage(err));
     }
   };
 
-  return (
-    <Layout sidebar={<Sidebar />}>
-      <div style={{ padding: 24, height: '100%', overflowY: 'auto' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 20,
-          }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text)' }}>
-            Admin
-          </h2>
+  if (!TABS.some((t) => t.id === tab)) return <Navigate to="/admin/users" replace />;
 
-          {tab === 'users' && (
-            <button
-              onClick={handleCreate}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '8px 14px',
-                border: 'none',
-                color: '#fff',
-                background: 'var(--color-accent)',
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: 'pointer',
-                borderRadius: 'var(--radius)',
-              }}
-            >
-              <Plus size={14} />
-              New user
+  return (
+    <div className="page">
+      <PageHeader
+        icon={<Shield size={20} />}
+        title="Admin"
+        subtitle={SUBTITLES[tab]}
+        actions={
+          tab === 'users' && (
+            <button className="btn btn-primary" onClick={handleCreate}>
+              <Plus size={14} /> New user
             </button>
-          )}
-        </div>
+          )
+        }
+      />
 
-        <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
-          <TabButton
-            active={tab === 'users'}
-            onClick={() => setTab('users')}
-            icon={<Users size={14} />}
-            label="Users"
-          />
-          <TabButton
-            active={tab === 'usage'}
-            onClick={() => setTab('usage')}
-            icon={<BarChart3 size={14} />}
-            label="Usage"
-          />
-          <TabButton
-            active={tab === 'pricing'}
-            onClick={() => setTab('pricing')}
-            icon={<DollarSign size={14} />}
-            label="Pricing"
-          />
-          <TabButton
-            active={tab === 'models'}
-            onClick={() => setTab('models')}
-            icon={<Cpu size={14} />}
-            label="Models"
-          />
-          <TabButton
-            active={tab === 'live'}
-            onClick={() => setTab('live')}
-            icon={<Activity size={14} />}
-            label="Live"
-          />
-          <TabButton
-            active={tab === 'comfyui'}
-            onClick={() => setTab('comfyui')}
-            icon={<Image size={14} />}
-            label="ComfyUI"
-          />
-          <TabButton
-            active={tab === 'agents'}
-            onClick={() => setTab('agents')}
-            icon={<Bot size={14} />}
-            label="Agents"
+      <RouteTabs tabs={TABS.map((t) => ({ to: `/admin/${t.id}`, label: t.label, icon: t.icon }))} />
+
+      {error && <Alert onClose={() => setError('')}>{error}</Alert>}
+
+      {tab === 'users' && (
+        <div className="table-wrap">
+          <UserTable
+            users={users}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onResetPassword={setPasswordResetUser}
           />
         </div>
+      )}
+      {tab === 'usage' && <UsageChart data={usageData} loading={usageLoading} />}
+      {tab === 'pricing' && <ModelPricingPanel />}
+      {tab === 'models' && <ModelsPanel />}
+      {tab === 'live' && <LiveStatsPanel />}
+      {tab === 'comfyui' && <ComfyUIStatsPanel />}
+      {tab === 'agents' && <AgentsPanel />}
 
-        {tab === 'users' && (
-          <div
-            style={{
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-              background: 'var(--color-surface)',
-            }}
-          >
-            <UserTable
-              users={users}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onResetPassword={setPasswordResetUser}
-            />
-          </div>
-        )}
+      {showForm && (
+        <UserForm
+          user={editingUser}
+          onSave={handleSave}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingUser(null);
+          }}
+        />
+      )}
 
-        {tab === 'usage' && (
-          <UsageChart data={usageData} loading={usageLoading} />
-        )}
-
-        {tab === 'pricing' && (
-          <ModelPricingPanel />
-        )}
-
-        {tab === 'models' && (
-          <ModelsPanel />
-        )}
-
-        {tab === 'live' && (
-          <LiveStatsPanel />
-        )}
-
-        {tab === 'comfyui' && (
-          <ComfyUIStatsPanel />
-        )}
-
-        {tab === 'agents' && (
-          <AgentsPanel />
-        )}
-
-        {showForm && (
-          <UserForm
-            user={editingUser}
-            onSave={handleSave}
-            onCancel={() => {
-              setShowForm(false);
-              setEditingUser(null);
-            }}
-          />
-        )}
-
-        {passwordResetUser && (
-          <PasswordReset
-            user={passwordResetUser}
-            onSave={handlePasswordReset}
-            onCancel={() => setPasswordResetUser(null)}
-          />
-        )}
-      </div>
-    </Layout>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 16px',
-        border: active ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid var(--color-border)',
-        background: active ? 'var(--color-accent-dim)' : 'transparent',
-        color: active ? 'var(--color-accent-light)' : 'var(--color-text-dim)',
-        borderRadius: 'var(--radius)',
-        cursor: 'pointer',
-        fontSize: 13,
-        fontWeight: active ? 500 : 400,
-        transition: 'all 0.15s',
-      }}
-    >
-      {icon}
-      {label}
-    </button>
+      {passwordResetUser && (
+        <PasswordReset
+          user={passwordResetUser}
+          onSave={handlePasswordReset}
+          onCancel={() => setPasswordResetUser(null)}
+        />
+      )}
+    </div>
   );
 }

@@ -1,15 +1,17 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LoginForm } from '../components/LoginForm';
 import { useAuth } from '../hooks/useAuth';
 
 export function LoginPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from || '/chat';
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/');
+      navigate(from, { replace: true });
     }
   }, [user, loading, navigate]);
 

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
+import { errorMessage } from './ui';
 
 export function LoginForm() {
   const [username, setUsername] = useState('');
@@ -10,6 +11,8 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from || '/chat';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,14 +21,9 @@ export function LoginForm() {
     setLoading(true);
     try {
       await login(username.trim(), password);
-      navigate('/');
+      navigate(from, { replace: true });
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { message?: string } } };
-        setError(axiosErr.response?.data?.message || 'Login failed');
-      } else {
-        setError('Login failed');
-      }
+      setError(errorMessage(err, 'Login failed'));
     } finally {
       setLoading(false);
     }

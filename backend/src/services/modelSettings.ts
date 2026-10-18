@@ -1,4 +1,5 @@
 import db from '../db/connection';
+import { config } from '../config';
 
 export interface ModelSettingsRow {
   model: string;
@@ -74,4 +75,14 @@ export function getEnabledModels(): string[] {
 export function getOptionsForModel(model: string): Record<string, unknown> {
   const s = getModelSettings(model);
   return s?.enabled ? s.options : {};
+}
+
+/**
+ * Options for DeadChat's own chat UI: admin per-model settings, falling back
+ * to a VRAM-friendly context window (config.chatNumCtx) when none is set.
+ */
+export function getChatOptions(model: string): Record<string, unknown> {
+  const opts = { ...getOptionsForModel(model) };
+  if (opts.num_ctx === undefined && config.chatNumCtx > 0) opts.num_ctx = config.chatNumCtx;
+  return opts;
 }

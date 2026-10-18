@@ -1,7 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { authenticateWs, WsUser } from './auth';
-import { handleChatMessage } from './chatHandler';
+import { handleChatMessage, cancelGeneration } from './chatHandler';
 
 export function createWebSocketServer(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -29,6 +29,11 @@ export function createWebSocketServer(server: HttpServer): WebSocketServer {
         case 'chat':
           await handleChatMessage(ws, user, data);
           break;
+        case 'cancel':
+          if (!cancelGeneration(user, Number(data.sessionId))) {
+            ws.send(JSON.stringify({ type: 'error', sessionId: data.sessionId, message: 'Nothing to stop' }));
+          }
+          break;
         case 'ping':
           ws.send(JSON.stringify({ type: 'pong' }));
           break;
@@ -48,6 +53,22 @@ export function createWebSocketServer(server: HttpServer): WebSocketServer {
     // Send connected confirmation
     ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username } }));
   });
+
+  // Heartbeat: terminate sockets that stop answering pings (dead proxies,
+  // sleeping laptops) so we don't keep streaming into the void.
+  const alive = new WeakMap<WebSocket, boolean>();
+  wss.on('connection', (ws) => {
+    alive.set(ws, true);
+    ws.on('pong', () => alive.set(ws, true));
+  });
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (alive.get(ws) === false) { ws.terminate(); continue; }
+      alive.set(ws, false);
+      ws.ping();
+    }
+  }, 30_000);
+  wss.on('close', () => clearInterval(heartbeat));
 
   console.log('[ws] WebSocket server attached at /ws');
   return wss;

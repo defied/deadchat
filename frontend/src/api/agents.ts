@@ -42,6 +42,7 @@ export async function createLibraryAgent(input: {
   name: string;
   description: string;
   system_prompt: string;
+  agentic?: boolean;
 }): Promise<LibraryAgent> {
   const { data } = await client.post<{ agent: LibraryAgent }>('/api/agents/library', input);
   return data.agent;
@@ -51,6 +52,7 @@ export async function updateLibraryAgent(id: number, input: {
   name: string;
   description: string;
   system_prompt: string;
+  agentic?: boolean;
 }): Promise<LibraryAgent> {
   const { data } = await client.put<{ agent: LibraryAgent }>(`/api/agents/library/${id}`, input);
   return data.agent;
@@ -72,6 +74,7 @@ export async function createMine(input: {
   description: string;
   system_prompt: string;
   source_library_id?: number | null;
+  agentic?: boolean;
 }): Promise<UserAgent> {
   const { data } = await client.post<{ agent: UserAgent }>('/api/agents/mine', input);
   return data.agent;
@@ -81,6 +84,7 @@ export async function updateMine(id: number, input: {
   name: string;
   description: string;
   system_prompt: string;
+  agentic?: boolean;
 }): Promise<UserAgent> {
   const { data } = await client.put<{ agent: UserAgent }>(`/api/agents/mine/${id}`, input);
   return data.agent;

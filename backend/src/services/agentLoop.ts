@@ -7,8 +7,9 @@ import {
   anthropicToOllamaRequest,
   ollamaToAnthropicResponse,
 } from './anthropicTranslate';
-import { ALL_TOOL_DEFS, ALL_TOOL_NAMES, dispatchTool, ToolContext } from './tools/index';
+import { ALL_TOOL_DEFS, dispatchTool, toolsForRole, ToolContext } from './tools/index';
 import type { AnthropicMessage, AnthropicContentBlock } from '../types/anthropic';
+import { getChatOptions } from './modelSettings';
 
 export type AgentEventType = 'tool_call' | 'tool_result' | 'agent_step';
 
@@ -34,6 +35,8 @@ export interface AgentLoopOptions {
   tools?: typeof ALL_TOOL_DEFS;
   ctx: ToolContext;
   onEvent?: (event: AgentEvent) => void;
+  /** Abort between/within steps (user pressed Stop). */
+  signal?: AbortSignal;
 }
 
 export interface AgentLoopResult {
@@ -50,9 +53,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     history,
     maxSteps = 20,
     maxTokens = 4096,
-    tools = ALL_TOOL_DEFS,
     ctx,
+    tools = toolsForRole(ctx.role),
     onEvent,
+    signal,
   } = opts;
 
   const toolNames = tools.map((t) => t.name);
@@ -65,6 +69,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
   let stopReason = 'end_turn';
 
   while (steps < maxSteps) {
+    if (signal?.aborted) { stopReason = 'cancelled'; break; }
     steps++;
 
     const anthropicReq = {
@@ -77,7 +82,8 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     };
 
     const ollamaReq = anthropicToOllamaRequest(anthropicReq);
-    const ollamaResp = await chatSyncRaw(ollamaReq);
+    ollamaReq.options = { ...getChatOptions(model), ...(ollamaReq.options ?? {}) };
+    const ollamaResp = await chatSyncRaw(ollamaReq, signal);
     const anthResp = ollamaToAnthropicResponse(ollamaResp, model, undefined, toolNames);
 
     stopReason = anthResp.stop_reason;

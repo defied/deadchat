@@ -1,5 +1,4 @@
 import { IncomingMessage } from 'http';
-import url from 'url';
 import { verifyToken, AccessTokenPayload } from '../services/auth';
 
 export interface WsUser {
@@ -10,8 +9,7 @@ export interface WsUser {
 
 export function authenticateWs(request: IncomingMessage): WsUser | null {
   try {
-    const parsed = url.parse(request.url || '', true);
-    const token = parsed.query.token as string;
+    const token = new URL(request.url || '', 'http://localhost').searchParams.get('token');
 
     if (!token) {
       return null;

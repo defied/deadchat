@@ -19,6 +19,19 @@ cp .env.example .env
 npm run dev
 ```
 
+## Using DeadChat
+
+| Page | Path | What it's for |
+|---|---|---|
+| Chat | `/chat`, `/chat/:id` | Chat with local models. Pick an agent and a model per chat; attach images (vision models) or text/code files; reasoning from thinking models is shown collapsed; **Stop** keeps the partial reply. |
+| Agents | `/agents` | Saved system prompts. "Can use tools" agents run a plan → tool → observe loop (image/video generation, backend checks). |
+| Generate | `/generate` | Image and video generation via ComfyUI, plus the gallery. |
+| Studio | `/studio` | Characters: portraits and cloned voices. |
+| API access | `/tokens` | Tokens and copy-paste setup for Claude Code, OpenAI-compatible tools and the Ollama API. |
+| Admin | `/admin/:tab` | Users, models, agent library, usage, pricing, Ollama live stats, ComfyUI. |
+
+The default chat model is `OLLAMA_MODEL` (currently `qwen3.8:27b`) unless an admin picks one in Admin → Models. Web chats use a 32k context window by default (`CHAT_NUM_CTX`) so a 27B model stays fully on a 24 GB GPU; set `num_ctx` per model in Admin → Models to override.
+
 ## Docker Compose
 
 ```bash
@@ -63,7 +76,7 @@ DeadChat exposes three API surfaces under API-token auth (`Authorization: Bearer
 ```bash
 export ANTHROPIC_BASE_URL="https://deadchat.deadplanet.net"
 export ANTHROPIC_AUTH_TOKEN="dc_live_..."
-export ANTHROPIC_MODEL="qwen3.6"   # any model exposed by your Ollama
+export ANTHROPIC_MODEL="qwen3.8:27b"   # any model exposed by your Ollama
 claude
 ```
 
