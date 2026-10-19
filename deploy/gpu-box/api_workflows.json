@@ -1,0 +1,4258 @@
+{
+ "image_z_image_turbo": {
+  "api": {
+   "9": {
+    "inputs": {
+     "filename_prefix": "z-image-turbo",
+     "images": [
+      "57:8",
+      0
+     ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+     "title": "Save Image"
+    }
+   },
+   "57:30": {
+    "inputs": {
+     "clip_name": "qwen_3_4b.safetensors",
+     "type": "lumina2",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "57:29": {
+    "inputs": {
+     "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "57:33": {
+    "inputs": {
+     "conditioning": [
+      "57:27",
+      0
+     ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+     "title": "Conditioning Zero Out"
+    }
+   },
+   "57:8": {
+    "inputs": {
+     "samples": [
+      "57:3",
+      0
+     ],
+     "vae": [
+      "57:29",
+      0
+     ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+     "title": "VAE Decode"
+    }
+   },
+   "57:28": {
+    "inputs": {
+     "unet_name": "z_image_turbo_bf16.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "57:27": {
+    "inputs": {
+     "text": "Latina female with thick wavy hair, harbor boats and pastel houses behind. Breezy seaside light, warm tones, cinematic close-up. ",
+     "clip": [
+      "57:30",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Prompt)"
+    }
+   },
+   "57:13": {
+    "inputs": {
+     "width": 1024,
+     "height": 1024,
+     "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+     "title": "EmptySD3LatentImage"
+    }
+   },
+   "57:11": {
+    "inputs": {
+     "shift": 3,
+     "sampling": "flow",
+     "model": [
+      "57:28",
+      0
+     ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+     "title": "ModelSamplingAuraFlow"
+    }
+   },
+   "57:3": {
+    "inputs": {
+     "seed": 0,
+     "steps": 8,
+     "cfg": 1,
+     "sampler_name": "res_multistep",
+     "scheduler": "simple",
+     "denoise": 1,
+     "model": [
+      "57:11",
+      0
+     ],
+     "positive": [
+      "57:27",
+      0
+     ],
+     "negative": [
+      "57:33",
+      0
+     ],
+     "latent_image": [
+      "57:13",
+      0
+     ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+     "title": "KSampler"
+    }
+   }
+  }
+ },
+ "image_qwen_Image_2512": {
+  "api": {
+   "60": {
+    "inputs": {
+     "filename_prefix": "Qwen-Image-2512",
+     "images": [
+      "238:231",
+      0
+     ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+     "title": "Save Image"
+    }
+   },
+   "238:219": {
+    "inputs": {
+     "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+     "type": "qwen_image",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "238:220": {
+    "inputs": {
+     "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "238:222": {
+    "inputs": {
+     "shift": 3.1000000000000005,
+     "sampling": "flow",
+     "model": [
+      "238:233",
+      0
+     ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+     "title": "ModelSamplingAuraFlow"
+    }
+   },
+   "238:226": {
+    "inputs": {
+     "unet_name": "qwen_image_2512_fp8_e4m3fn.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "238:227": {
+    "inputs": {
+     "text": "Urban alleyway at dusk. Tall, statuesque high-fashion model striding elegantly, mid distant full body shot from an angular perspective, cinematic/editorial with bold contrasts and tactile materials. They wear a rose-gold metallic trench coat with deconstructed elements over a black long-sleeved turtleneck with subtle texture; paired with forest-green pleated pants with raw hems and a soft texture. Long braided dark hair, medium complexion. They carry a vibrant yellow designer handbag with geometric details and a structured silhouette. White architectural sneakers with bold geometric cutouts. Bold, high-contrast, tactile, urban-grit meets high-fashion impact, extreme clarity, extreme layering, post-processing with transparent light-transmitting ultra-smooth high-definition film effect, removing all noise and grain, removing all blur, removing all vintage feel, removing all roughness, drawn with 32K pixel precision, unparalleled fine line drawing of every single detail, the entire image like a brand new photograph, photorealistic\n",
+     "clip": [
+      "238:219",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Positive Prompt)"
+    }
+   },
+   "238:228": {
+    "inputs": {
+     "text": "\u4f4e\u5206\u8fa8\u7387\uff0c\u4f4e\u753b\u8d28\uff0c\u80a2\u4f53\u7578\u5f62\uff0c\u624b\u6307\u7578\u5f62\uff0c\u753b\u9762\u8fc7\u9971\u548c\uff0c\u8721\u50cf\u611f\uff0c\u4eba\u8138\u65e0\u7ec6\u8282\uff0c\u8fc7\u5ea6\u5149\u6ed1\uff0c\u753b\u9762\u5177\u6709AI\u611f\u3002\u6784\u56fe\u6df7\u4e71\u3002\u6587\u5b57\u6a21\u7cca\uff0c\u626d\u66f2",
+     "clip": [
+      "238:219",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Negative Prompt)"
+    }
+   },
+   "238:231": {
+    "inputs": {
+     "samples": [
+      "238:230",
+      0
+     ],
+     "vae": [
+      "238:220",
+      0
+     ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+     "title": "VAE Decode"
+    }
+   },
+   "238:232": {
+    "inputs": {
+     "width": 1328,
+     "height": 1328,
+     "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+     "title": "EmptySD3LatentImage"
+    }
+   },
+   "238:230": {
+    "inputs": {
+     "seed": 464857551335368,
+     "steps": [
+      "238:240",
+      0
+     ],
+     "cfg": [
+      "238:243",
+      0
+     ],
+     "sampler_name": "euler",
+     "scheduler": "simple",
+     "denoise": 1,
+     "model": [
+      "238:222",
+      0
+     ],
+     "positive": [
+      "238:227",
+      0
+     ],
+     "negative": [
+      "238:228",
+      0
+     ],
+     "latent_image": [
+      "238:232",
+      0
+     ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+     "title": "KSampler"
+    }
+   },
+   "238:224": {
+    "inputs": {
+     "value": 50
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Int (Steps)"
+    }
+   },
+   "238:223": {
+    "inputs": {
+     "value": 4
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+     "title": "Float (CFG)"
+    }
+   },
+   "238:229": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Enable 4 Steps LoRA?"
+    }
+   },
+   "238:225": {
+    "inputs": {
+     "value": 4
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Int (Steps)"
+    }
+   },
+   "238:218": {
+    "inputs": {
+     "value": 1
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+     "title": "Float (CFG)"
+    }
+   },
+   "238:221": {
+    "inputs": {
+     "lora_name": "Qwen-Image-2512-Lightning-4steps-V1.0-fp32.safetensors",
+     "strength_model": 1,
+     "model": [
+      "238:226",
+      0
+     ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+     "title": "Load LoRA"
+    }
+   },
+   "238:233": {
+    "inputs": {
+     "switch": [
+      "238:229",
+      0
+     ],
+     "on_false": [
+      "238:226",
+      0
+     ],
+     "on_true": [
+      "238:221",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (model)"
+    }
+   },
+   "238:240": {
+    "inputs": {
+     "switch": [
+      "238:229",
+      0
+     ],
+     "on_false": [
+      "238:224",
+      0
+     ],
+     "on_true": [
+      "238:225",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (steps)"
+    }
+   },
+   "238:243": {
+    "inputs": {
+     "switch": [
+      "238:229",
+      0
+     ],
+     "on_false": [
+      "238:223",
+      0
+     ],
+     "on_true": [
+      "238:218",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (cfg)"
+    }
+   }
+  }
+ },
+ "image_flux2_fp8": {
+  "api": {
+   "9": {
+    "inputs": {
+     "filename_prefix": "Flux2",
+     "images": [
+      "62:8",
+      0
+     ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+     "title": "Save Image"
+    }
+   },
+   "42": {
+    "inputs": {
+     "image": "image_flux2_input_ref_image.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "46": {
+    "inputs": {
+     "image": "image_flux2_input_Illustration.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "62:48": {
+    "inputs": {
+     "steps": [
+      "62:94",
+      0
+     ],
+     "width": [
+      "62:66",
+      0
+     ],
+     "height": [
+      "62:66",
+      1
+     ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+     "title": "Flux2Scheduler"
+    }
+   },
+   "62:22": {
+    "inputs": {
+     "model": [
+      "62:93",
+      0
+     ],
+     "conditioning": [
+      "62:39",
+      0
+     ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+     "title": "Basic Guider"
+    }
+   },
+   "62:10": {
+    "inputs": {
+     "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "62:40": {
+    "inputs": {
+     "pixels": [
+      "62:41",
+      0
+     ],
+     "vae": [
+      "62:10",
+      0
+     ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+     "title": "VAE Encode"
+    }
+   },
+   "62:44": {
+    "inputs": {
+     "pixels": [
+      "62:45",
+      0
+     ],
+     "vae": [
+      "62:10",
+      0
+     ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+     "title": "VAE Encode"
+    }
+   },
+   "62:41": {
+    "inputs": {
+     "upscale_method": "area",
+     "megapixels": 1,
+     "resolution_steps": 1,
+     "image": [
+      "46",
+      0
+     ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+     "title": "Scale Image to Total Pixels"
+    }
+   },
+   "62:26": {
+    "inputs": {
+     "guidance": 4,
+     "conditioning": [
+      "62:6",
+      0
+     ]
+    },
+    "class_type": "FluxGuidance",
+    "_meta": {
+     "title": "FluxGuidance"
+    }
+   },
+   "62:8": {
+    "inputs": {
+     "samples": [
+      "62:13",
+      0
+     ],
+     "vae": [
+      "62:10",
+      0
+     ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+     "title": "VAE Decode"
+    }
+   },
+   "62:13": {
+    "inputs": {
+     "noise": [
+      "62:25",
+      0
+     ],
+     "guider": [
+      "62:22",
+      0
+     ],
+     "sampler": [
+      "62:16",
+      0
+     ],
+     "sigmas": [
+      "62:48",
+      0
+     ],
+     "latent_image": [
+      "62:47",
+      0
+     ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+     "title": "SamplerCustomAdvanced"
+    }
+   },
+   "62:16": {
+    "inputs": {
+     "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+     "title": "KSamplerSelect"
+    }
+   },
+   "62:43": {
+    "inputs": {
+     "conditioning": [
+      "62:26",
+      0
+     ],
+     "latent": [
+      "62:44",
+      0
+     ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+     "title": "Set Reference Latent"
+    }
+   },
+   "62:39": {
+    "inputs": {
+     "conditioning": [
+      "62:43",
+      0
+     ],
+     "latent": [
+      "62:40",
+      0
+     ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+     "title": "Set Reference Latent"
+    }
+   },
+   "62:12": {
+    "inputs": {
+     "unet_name": "flux2_dev_fp8mixed.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "62:6": {
+    "inputs": {
+     "text": "Apply the design from Reference Image 1 onto objects in Reference Image 2.\n",
+     "clip": [
+      "62:38",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Positive Prompt)"
+    }
+   },
+   "62:25": {
+    "inputs": {
+     "noise_seed": 315616751694460
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+     "title": "RandomNoise"
+    }
+   },
+   "62:45": {
+    "inputs": {
+     "upscale_method": "area",
+     "megapixels": 1,
+     "resolution_steps": 1,
+     "image": [
+      "42",
+      0
+     ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+     "title": "Scale Image to Total Pixels"
+    }
+   },
+   "62:66": {
+    "inputs": {
+     "image": [
+      "62:45",
+      0
+     ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+     "title": "Get Image Size"
+    }
+   },
+   "62:47": {
+    "inputs": {
+     "width": [
+      "62:66",
+      0
+     ],
+     "height": [
+      "62:66",
+      1
+     ],
+     "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+     "title": "Empty Flux 2 Latent"
+    }
+   },
+   "62:38": {
+    "inputs": {
+     "clip_name": "mistral_3_small_flux2_fp8.safetensors",
+     "type": "flux2",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "62:88": {
+    "inputs": {
+     "lora_name": "Flux2TurboComfyv2.safetensors",
+     "strength_model": 1,
+     "model": [
+      "62:12",
+      0
+     ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+     "title": "Load LoRA"
+    }
+   },
+   "62:90": {
+    "inputs": {
+     "value": 20
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Step"
+    }
+   },
+   "62:92": {
+    "inputs": {
+     "value": 8
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Step"
+    }
+   },
+   "62:93": {
+    "inputs": {
+     "switch": [
+      "62:95",
+      0
+     ],
+     "on_false": [
+      "62:12",
+      0
+     ],
+     "on_true": [
+      "62:88",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (Model)"
+    }
+   },
+   "62:94": {
+    "inputs": {
+     "switch": [
+      "62:95",
+      0
+     ],
+     "on_false": [
+      "62:90",
+      0
+     ],
+     "on_true": [
+      "62:92",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (Step)"
+    }
+   },
+   "62:95": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Enable 8steps LoRA"
+    }
+   }
+  }
+ },
+ "video_wan2_2_5B_ti2v": {
+  "api": {
+   "3": {
+    "inputs": {
+     "seed": 898471028164125,
+     "steps": 20,
+     "cfg": 5,
+     "sampler_name": "uni_pc",
+     "scheduler": "simple",
+     "denoise": 1,
+     "model": [
+      "48",
+      0
+     ],
+     "positive": [
+      "6",
+      0
+     ],
+     "negative": [
+      "7",
+      0
+     ],
+     "latent_image": [
+      "55",
+      0
+     ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+     "title": "KSampler"
+    }
+   },
+   "6": {
+    "inputs": {
+     "text": "Low contrast. In a retro 1970s-style subway station, a street musician plays in dim colors and rough textures. He wears an old jacket, playing guitar with focus. Commuters hurry by, and a small crowd gathers to listen. The camera slowly moves right, capturing the blend of music and city noise, with old subway signs and mottled walls in the background.",
+     "clip": [
+      "38",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Positive Prompt)"
+    }
+   },
+   "7": {
+    "inputs": {
+     "text": "\u8272\u8c03\u8273\u4e3d\uff0c\u8fc7\u66dd\uff0c\u9759\u6001\uff0c\u7ec6\u8282\u6a21\u7cca\u4e0d\u6e05\uff0c\u5b57\u5e55\uff0c\u98ce\u683c\uff0c\u4f5c\u54c1\uff0c\u753b\u4f5c\uff0c\u753b\u9762\uff0c\u9759\u6b62\uff0c\u6574\u4f53\u53d1\u7070\uff0c\u6700\u5dee\u8d28\u91cf\uff0c\u4f4e\u8d28\u91cf\uff0cJPEG\u538b\u7f29\u6b8b\u7559\uff0c\u4e11\u964b\u7684\uff0c\u6b8b\u7f3a\u7684\uff0c\u591a\u4f59\u7684\u624b\u6307\uff0c\u753b\u5f97\u4e0d\u597d\u7684\u624b\u90e8\uff0c\u753b\u5f97\u4e0d\u597d\u7684\u8138\u90e8\uff0c\u7578\u5f62\u7684\uff0c\u6bc1\u5bb9\u7684\uff0c\u5f62\u6001\u7578\u5f62\u7684\u80a2\u4f53\uff0c\u624b\u6307\u878d\u5408\uff0c\u9759\u6b62\u4e0d\u52a8\u7684\u753b\u9762\uff0c\u6742\u4e71\u7684\u80cc\u666f\uff0c\u4e09\u6761\u817f\uff0c\u80cc\u666f\u4eba\u5f88\u591a\uff0c\u5012\u7740\u8d70",
+     "clip": [
+      "38",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Negative Prompt)"
+    }
+   },
+   "8": {
+    "inputs": {
+     "samples": [
+      "3",
+      0
+     ],
+     "vae": [
+      "39",
+      0
+     ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+     "title": "VAE Decode"
+    }
+   },
+   "37": {
+    "inputs": {
+     "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "38": {
+    "inputs": {
+     "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+     "type": "wan",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "39": {
+    "inputs": {
+     "vae_name": "wan2.2_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "48": {
+    "inputs": {
+     "shift": 8,
+     "model": [
+      "37",
+      0
+     ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+     "title": "ModelSamplingSD3"
+    }
+   },
+   "55": {
+    "inputs": {
+     "width": 1280,
+     "height": 704,
+     "length": 121,
+     "batch_size": 1,
+     "vae": [
+      "39",
+      0
+     ]
+    },
+    "class_type": "Wan22ImageToVideoLatent",
+    "_meta": {
+     "title": "Wan22ImageToVideoLatent"
+    }
+   },
+   "57": {
+    "inputs": {
+     "fps": 24,
+     "bit_depth": "auto",
+     "color_space": "sRGB",
+     "codec": "none",
+     "images": [
+      "8",
+      0
+     ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+     "title": "Create Video"
+    }
+   },
+   "58": {
+    "inputs": {
+     "filename_prefix": "video/ComfyUI",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "57",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   }
+  }
+ },
+ "video_wan2_2_14B_i2v": {
+  "api": {
+   "97": {
+    "inputs": {
+     "image": "video_wan2_2_14B_i2v_input_image.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "108": {
+    "inputs": {
+     "filename_prefix": "video/Wan2.2_i2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "129:94",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "129:98": {
+    "inputs": {
+     "width": 640,
+     "height": 640,
+     "length": [
+      "129:163",
+      1
+     ],
+     "batch_size": 1,
+     "positive": [
+      "129:93",
+      0
+     ],
+     "negative": [
+      "129:89",
+      0
+     ],
+     "vae": [
+      "129:90",
+      0
+     ],
+     "start_image": [
+      "97",
+      0
+     ]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": {
+     "title": "WanImageToVideo"
+    }
+   },
+   "129:94": {
+    "inputs": {
+     "fps": [
+      "129:162",
+      0
+     ],
+     "bit_depth": 8,
+     "color_space": "sRGB",
+     "codec": "none",
+     "images": [
+      "129:87",
+      0
+     ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+     "title": "Create Video"
+    }
+   },
+   "129:104": {
+    "inputs": {
+     "shift": 5.000000000000001,
+     "model": [
+      "129:116",
+      0
+     ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+     "title": "ModelSamplingSD3"
+    }
+   },
+   "129:89": {
+    "inputs": {
+     "text": "\u8272\u8c03\u8273\u4e3d\uff0c\u8fc7\u66dd\uff0c\u9759\u6001\uff0c\u7ec6\u8282\u6a21\u7cca\u4e0d\u6e05\uff0c\u5b57\u5e55\uff0c\u98ce\u683c\uff0c\u4f5c\u54c1\uff0c\u753b\u4f5c\uff0c\u753b\u9762\uff0c\u9759\u6b62\uff0c\u6574\u4f53\u53d1\u7070\uff0c\u6700\u5dee\u8d28\u91cf\uff0c\u4f4e\u8d28\u91cf\uff0cJPEG\u538b\u7f29\u6b8b\u7559\uff0c\u4e11\u964b\u7684\uff0c\u6b8b\u7f3a\u7684\uff0c\u591a\u4f59\u7684\u624b\u6307\uff0c\u753b\u5f97\u4e0d\u597d\u7684\u624b\u90e8\uff0c\u753b\u5f97\u4e0d\u597d\u7684\u8138\u90e8\uff0c\u7578\u5f62\u7684\uff0c\u6bc1\u5bb9\u7684\uff0c\u5f62\u6001\u7578\u5f62\u7684\u80a2\u4f53\uff0c\u624b\u6307\u878d\u5408\uff0c\u9759\u6b62\u4e0d\u52a8\u7684\u753b\u9762\uff0c\u6742\u4e71\u7684\u80cc\u666f\uff0c\u4e09\u6761\u817f\uff0c\u80cc\u666f\u4eba\u5f88\u591a\uff0c\u5012\u7740\u8d70",
+     "clip": [
+      "129:84",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Negative Prompt)"
+    }
+   },
+   "129:128": {
+    "inputs": {
+     "value": 20
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Int (Steps)"
+    }
+   },
+   "129:87": {
+    "inputs": {
+     "samples": [
+      "129:85",
+      0
+     ],
+     "vae": [
+      "129:90",
+      0
+     ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+     "title": "VAE Decode"
+    }
+   },
+   "129:93": {
+    "inputs": {
+     "text": "The white dragon warrior stands still, eyes full of determination and strength. The camera slowly moves closer or circles around the warrior, highlighting the powerful presence and heroic spirit of the character.",
+     "clip": [
+      "129:84",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Positive Prompt)"
+    }
+   },
+   "129:131": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Enable 4steps LoRA?"
+    }
+   },
+   "129:90": {
+    "inputs": {
+     "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "129:84": {
+    "inputs": {
+     "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+     "type": "wan",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "129:96": {
+    "inputs": {
+     "unet_name": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "129:95": {
+    "inputs": {
+     "unet_name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "129:127": {
+    "inputs": {
+     "value": 10
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Int (split_step)"
+    }
+   },
+   "129:126": {
+    "inputs": {
+     "value": 3.5
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+     "title": "Float (CFG)"
+    }
+   },
+   "129:102": {
+    "inputs": {
+     "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+     "strength_model": 1.0000000000000002,
+     "model": [
+      "129:96",
+      0
+     ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+     "title": "Load LoRA"
+    }
+   },
+   "129:101": {
+    "inputs": {
+     "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+     "strength_model": 1.0000000000000002,
+     "model": [
+      "129:95",
+      0
+     ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+     "title": "Load LoRA"
+    }
+   },
+   "129:86": {
+    "inputs": {
+     "add_noise": "enable",
+     "noise_seed": 264244520398999,
+     "steps": [
+      "129:119",
+      0
+     ],
+     "cfg": [
+      "129:120",
+      0
+     ],
+     "sampler_name": "euler",
+     "scheduler": "simple",
+     "start_at_step": 0,
+     "end_at_step": [
+      "129:125",
+      0
+     ],
+     "return_with_leftover_noise": "enable",
+     "model": [
+      "129:104",
+      0
+     ],
+     "positive": [
+      "129:98",
+      0
+     ],
+     "negative": [
+      "129:98",
+      1
+     ],
+     "latent_image": [
+      "129:98",
+      2
+     ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+     "title": "KSampler (Advanced)"
+    }
+   },
+   "129:85": {
+    "inputs": {
+     "add_noise": "disable",
+     "noise_seed": 0,
+     "steps": [
+      "129:119",
+      0
+     ],
+     "cfg": [
+      "129:120",
+      0
+     ],
+     "sampler_name": "euler",
+     "scheduler": "simple",
+     "start_at_step": [
+      "129:125",
+      0
+     ],
+     "end_at_step": [
+      "129:119",
+      0
+     ],
+     "return_with_leftover_noise": "disable",
+     "model": [
+      "129:103",
+      0
+     ],
+     "positive": [
+      "129:98",
+      0
+     ],
+     "negative": [
+      "129:98",
+      1
+     ],
+     "latent_image": [
+      "129:86",
+      0
+     ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+     "title": "KSampler (Advanced)"
+    }
+   },
+   "129:122": {
+    "inputs": {
+     "value": 1
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+     "title": "Float (CFG)"
+    }
+   },
+   "129:124": {
+    "inputs": {
+     "value": 2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Int (split_step)"
+    }
+   },
+   "129:118": {
+    "inputs": {
+     "value": 4
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Int (Steps)"
+    }
+   },
+   "129:116": {
+    "inputs": {
+     "switch": [
+      "129:131",
+      0
+     ],
+     "on_false": [
+      "129:95",
+      0
+     ],
+     "on_true": [
+      "129:101",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (Model)"
+    }
+   },
+   "129:125": {
+    "inputs": {
+     "switch": [
+      "129:131",
+      0
+     ],
+     "on_false": [
+      "129:127",
+      0
+     ],
+     "on_true": [
+      "129:124",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (Split Step)"
+    }
+   },
+   "129:119": {
+    "inputs": {
+     "switch": [
+      "129:131",
+      0
+     ],
+     "on_false": [
+      "129:128",
+      0
+     ],
+     "on_true": [
+      "129:118",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (Steps)"
+    }
+   },
+   "129:120": {
+    "inputs": {
+     "switch": [
+      "129:131",
+      0
+     ],
+     "on_false": [
+      "129:126",
+      0
+     ],
+     "on_true": [
+      "129:122",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (CFG)"
+    }
+   },
+   "129:103": {
+    "inputs": {
+     "shift": 5.000000000000001,
+     "model": [
+      "129:117",
+      0
+     ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+     "title": "ModelSamplingSD3"
+    }
+   },
+   "129:117": {
+    "inputs": {
+     "switch": [
+      "129:131",
+      0
+     ],
+     "on_false": [
+      "129:96",
+      0
+     ],
+     "on_true": [
+      "129:102",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch (Model)"
+    }
+   },
+   "129:161": {
+    "inputs": {
+     "value": 5
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+     "title": "Float (Duration)"
+    }
+   },
+   "129:162": {
+    "inputs": {
+     "value": 16
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+     "title": "Float (FPS)"
+    }
+   },
+   "129:163": {
+    "inputs": {
+     "expression": "floor (a * b + 1)",
+     "values.a": [
+      "129:161",
+      0
+     ],
+     "values.b": [
+      "129:162",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression"
+    }
+   }
+  }
+ },
+ "api_seedance2_5_t2v": {
+  "api": {
+   "2": {
+    "inputs": {
+     "filename_prefix": "video/Seedance2.5_t2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "9",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "9": {
+    "inputs": {
+     "model": "Seedance 2.5",
+     "model.prompt": "Classic western comedy, live-action, spaghetti western look, golden hour desert. Two bank robbers stumble out of a bank with sacks of cash, only to find a llama sheriff in a star and cowboy hat blocking their way. The llama tips its hat; the robbers drop the sacks and raise their hands. Slow motion, Morricone style guitar music, no black frames, no text overlays.",
+     "model.resolution": "720p",
+     "model.ratio": "16:9",
+     "model.duration": 5,
+     "model.generate_audio": true,
+     "model.output_format": "mp4",
+     "seed": 0,
+     "watermark": false
+    },
+    "class_type": "ByteDance2TextToVideoNode",
+    "_meta": {
+     "title": "ByteDance Seedance 2.5 Text to Video"
+    }
+   }
+  }
+ },
+ "api_seedance2_5_t2v_1080p": {
+  "api": {
+   "10": {
+    "inputs": {
+     "filename_prefix": "video/Seedance2.5_t2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "11",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "11": {
+    "inputs": {
+     "model": "Seedance 2.5",
+     "model.prompt": "1990s American courtroom drama scene, live-action, film grain, wood-paneled courtroom. A hippo lawyer in a pinstripe suit stands before the jury, slowly straightening his tie, then slams his paw on the table, making the water jug jump, and points dramatically at a tiny bird witness on the stand. He delivers his closing argument in slow motion, jowls wobbling with each word, then adjusts his glasses with a satisfied nod. Low angle heroic shot, dusty sunlight through blinds, tense 90s courtroom score, no black frames, no text overlays.\n",
+     "model.resolution": "1080p",
+     "model.ratio": "16:9",
+     "model.duration": 5,
+     "model.generate_audio": true,
+     "model.output_format": "mp4",
+     "seed": 1153176796,
+     "watermark": false
+    },
+    "class_type": "ByteDance2TextToVideoNode",
+    "_meta": {
+     "title": "ByteDance Seedance 2.5 Text to Video"
+    }
+   }
+  }
+ },
+ "api_seedance2_5_i2v_1080p": {
+  "api": {
+   "2": {
+    "inputs": {
+     "image": "cosmoscape.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "7": {
+    "inputs": {
+     "filename_prefix": "video/Seedance2.5_i2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "9",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "9": {
+    "inputs": {
+     "model": "Seedance 2.5",
+     "model.prompt": "Epic cinematic hard sci-fi one-take shot, 5-second sequence, based on the reference scene.\n\nLone astronaut stands on a rocky cliff edge beside a colossal alien ring megastructure. Twin suns glow in the distant sky, creating dramatic golden god rays through thick atmospheric mist.\n\nThe astronaut slowly moves forward toward the massive ring structure. Camera follows with a smooth low-angle dolly push-in, maintaining epic scale and weight.\n\nThe giant segmented ring begins to revolve slowly around its central axis. Hexagonal metal panels shift incrementally, and orange glowing circuit lines pulse along the ring frame.\n\nThe astronaut passes through the ring-shaped space. The camera gradually reveals a breathtakingly vast cosmic megastructure extending into deep space.\n\nMassive orbital frameworks, distant mechanical spires, floating dust particles, volumetric mist, and dramatic god rays create an overwhelming sense of scale.\n\nSlow smooth motion, IMAX 35mm anamorphic film look, deep depth of field, hyperrealistic, subtle film grain, dramatic twilight lighting.\n\nNo fast movement, no jerky camera, no scene cuts, no distorted structures, no deformed astronaut.",
+     "model.resolution": "1080p",
+     "model.ratio": "adaptive",
+     "model.duration": 5,
+     "model.generate_audio": true,
+     "model.task_type": "reference",
+     "model.output_format": "mp4",
+     "model.auto_downscale": true,
+     "model.auto_upscale": false,
+     "seed": 0,
+     "watermark": false,
+     "model.reference_images.image_1": [
+      "2",
+      0
+     ]
+    },
+    "class_type": "ByteDance2ReferenceNodeV2",
+    "_meta": {
+     "title": "ByteDance Seedance 2.5 Reference to Video"
+    }
+   }
+  }
+ },
+ "api_wan3_0_t2v": {
+  "api": {
+   "3": {
+    "inputs": {
+     "model": "wan3.0-video",
+     "model.prompt": "Generate a 5-second, 16:9 ultra-widescreen plush universe adventure clip: a spaceship crafted entirely from plush fabric, buttons, zippers, and polyester stuffing blasts off from a yarn planet, then is swallowed whole by a colossal deep-blue shaggy plush whale, tumbling into a wondrous plush toy world inside its mouth.\n\nVisual style: hyper-detailed plush textures, cinematic cosmic scale, an endearing aesthetic juxtaposed against tense action, exaggerated FPV camera work, realistic soft-body physics; yarn strands, buttons, and cotton fluff rendered crisp and sharp.\n\nSubject: three small plush animals (a rabbit, a fox, and a crow) piloting a zipper ship with stitched seams and button-covered instrument panels; the whale has deep-blue shaggy fur and glass-button eyes.\n\nStoryboard:\n[0-2.5s] Launch: inside the cockpit a red warning button blinks rapidly, the rabbit pulls down an oversized zipper lever, and the front hatch splits open like a cloth sack; the camera rockets backward out of the ship as it blasts off from a knitted crater on the yarn planet, thrusters trailing plumes of white cotton fluff.\n[2.5-5s] Swallowed whole: a fuzzy nebula parts and the colossal whale opens its gaping maw, engulfing the ship; inside, the whale's mouth turns out to be a colossal plush toy world: huge soft fuzzy teeth line the cavity like pillars, suspended building blocks, stuffed dolls, and jingling bells collide midair, and the ship sprints low over the tongue's surface as its plush pile ripples violently; the camera tumbles continuously, freezing on the ship threading through a jungle of plush toys toward a glowing zipper skyline deep inside the whale.",
+     "model.resolution": "720P",
+     "model.ratio": "adaptive",
+     "model.duration": "auto",
+     "model.audio": true,
+     "model.prompt_extend": true,
+     "seed": 1954056574,
+     "watermark": false
+    },
+    "class_type": "Wan3ReferenceToVideoApi",
+    "_meta": {
+     "title": "Wan 3.0 Reference to Video"
+    }
+   },
+   "4": {
+    "inputs": {
+     "filename_prefix": "video/Wan3.0",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "3",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   }
+  }
+ },
+ "api_wan3_0_i2v": {
+  "api": {
+   "5": {
+    "inputs": {
+     "model": "wan3.0-video",
+     "model.prompt": "Generate a 5-second, 16:9 video using the input image as the first frame: a giant black beetle carrying bundled cargo and a hooded rider strides steadily across a slope carpeted in bright red moss, passing through a mist-shrouded alien fantasy landscape.\n\nMotion (keep the composition and subjects unchanged, animate only these elements):\n- The beetle's six segmented legs step alternately, pressing soft dents into the fluffy red moss, its body bobbing gently with each stride; its huge antennae sway slightly as it probes the air\n- The rider's robe drifts backward in the oncoming wind, the long staff staying pointed forward\n- The bundled cargo bobs gently with each step, ropes swaying\n- The mist ahead surges slowly and parts as the beetle pushes through, wisps flowing between its legs; fine spores and particles drift in the air above the red moss\n- The fog over the rocky peaks in the background rolls slowly\n\nCamera: keep the original side view with a slight low angle, slow lateral tracking shot following the beetle's forward motion, moving steadily from left to right across 5 seconds; no cuts, no rotation.\n\nAudio design: layered ambience: the dull thud of beetle feet on moss, soft rustle of drifting mist, distant wind through the valley, faint creak of shell joints; no dialogue, no music or a single restrained low string note.\n\nNegative constraints: do not change the subjects' shapes or the composition, no new characters, no text, no subtitles, no black frames, no camera shake, no excessive distortion.",
+     "model.resolution": "720P",
+     "model.ratio": "adaptive",
+     "model.duration": "auto",
+     "model.audio": true,
+     "model.prompt_extend": true,
+     "seed": 1032549103,
+     "watermark": false,
+     "first_frame": [
+      "6",
+      0
+     ]
+    },
+    "class_type": "Wan3ImageToVideoApi",
+    "_meta": {
+     "title": "Wan 3.0 Image to Video"
+    }
+   },
+   "6": {
+    "inputs": {
+     "image": "beetle_rider.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "8": {
+    "inputs": {
+     "filename_prefix": "video/Wan3.0",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "5",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   }
+  }
+ },
+ "api_kling_o3_t2v": {
+  "api": {
+   "14": {
+    "inputs": {
+     "filename_prefix": "video/kling_o3_t2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "15",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "15": {
+    "inputs": {
+     "model_name": "kling-v3-omni",
+     "prompt": "Dynamic follow shot. A woman in a red coat walks through a crowded Tokyo street. The camera moves forward with her, side-following view. The background is full of rushing crowds and neon lights, creating a strong sense of contrast. Cold color tone, cinematic composition, sharp focus on the character, realistic street texture.\n",
+     "aspect_ratio": "16:9",
+     "duration": 5,
+     "resolution": "720p",
+     "storyboards": "disabled",
+     "generate_audio": true,
+     "seed": 0
+    },
+    "class_type": "KlingOmniProTextToVideoNode",
+    "_meta": {
+     "title": "Kling 3.0 Omni Text to Video"
+    }
+   }
+  }
+ },
+ "api_kling_o3_i2v": {
+  "api": {
+   "17": {
+    "inputs": {
+     "image": "chasing_the_light.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "20": {
+    "inputs": {
+     "filename_prefix": "video/kling_o3_i2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "21",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "21": {
+    "inputs": {
+     "model_name": "kling-v3-omni",
+     "prompt": "Wide shot of a free\u2011spirited young woman running toward the camera through a sun\u2011drenched field, white birds exploding upward all around her like symbols of freedom. Her hair and dress are caught by the wind, captured with crisp focus on her face and light motion blur in the foreground flowers and wings. Vivid colors, bright clear sky, optimistic, uplifting cinematic tone.\n",
+     "aspect_ratio": "16:9",
+     "duration": 5,
+     "resolution": "720p",
+     "storyboards": "disabled",
+     "generate_audio": true,
+     "seed": 0,
+     "reference_images": [
+      "17",
+      0
+     ]
+    },
+    "class_type": "KlingOmniProImageToVideoNode",
+    "_meta": {
+     "title": "Kling 3.0 Omni Image to Video"
+    }
+   }
+  }
+ },
+ "api_minimax_h3_max_t2v": {
+  "api": {
+   "2": {
+    "inputs": {
+     "filename_prefix": "video/video/MiniMax_H3_t2v_768P",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "31",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "7": {
+    "inputs": {
+     "model": "MiniMax H3",
+     "model.prompt": [
+      "14",
+      0
+     ],
+     "model.duration": 5,
+     "model.ratio": "adaptive"
+    },
+    "class_type": "MinimaxHailuo03ContextIRNode",
+    "_meta": {
+     "title": "MiniMax H3 Context IR (Prompt Enhancer)"
+    }
+   },
+   "8": {
+    "inputs": {
+     "filename_prefix": "H3_prompt",
+     "format": "txt",
+     "text": [
+      "12",
+      0
+     ]
+    },
+    "class_type": "SaveText",
+    "_meta": {
+     "title": "Save Text"
+    }
+   },
+   "10": {
+    "inputs": {
+     "model": "MiniMax H3",
+     "model.prompt": [
+      "8",
+      0
+     ],
+     "model.resolution": "2K",
+     "watermark": false,
+     "video": [
+      "2",
+      0
+     ]
+    },
+    "class_type": "MinimaxHailuo03RegenerateNode",
+    "_meta": {
+     "title": "MiniMax H3 Regenerate to 2K"
+    }
+   },
+   "11": {
+    "inputs": {
+     "filename_prefix": "video/Minimax_h3_max",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "13",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "12": {
+    "inputs": {
+     "switch": [
+      "18",
+      0
+     ],
+     "on_false": [
+      "14",
+      0
+     ],
+     "on_true": [
+      "7",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "If/Else Switch"
+    }
+   },
+   "13": {
+    "inputs": {
+     "switch": [
+      "19",
+      0
+     ],
+     "on_false": [
+      "31",
+      0
+     ],
+     "on_true": [
+      "10",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "If/Else Switch"
+    }
+   },
+   "14": {
+    "inputs": {
+     "value": "[Global Lock]: High-energy music video, theme \"INSTANT\": the world is slow, we are fast. 5 seconds, 16:9, third person, protagonist a young woman in a black sporty windbreaker. Aesthetic: night-city speed, neon and headlight trails, teal-orange contrast grade, heavy grain, subtle motion blur. Five shots, four hard cuts on a 140 BPM grid, constant motion inside every shot, crisp editing. Lyrics as spatial graphic layer: oversized type, hugging architecture, motion-trailing, max one line per shot.\n\nShot 1 (0.0s-0.8s): Ground-level tracking shot, the protagonist sprinting down a night street, sneakers slapping puddles into spray, neon streaking into light trails behind her. Oversized cyan type \"SLOW WORLD\" sweeps across from the left.\nCut: kick.\n\nShot 2 (0.8s-1.8s): A subway train roars into the station, window light bands streaking horizontally, the protagonist standing still against the crowd flow, only her hair and hem lifted by the draft, a moving-vs-still contrast. Glitchy white type \"YOU CRAWL\" flashes in as the train passes.\nCut: snare.\n\nShot 3 (1.8s-2.6s): Inside the car, one hand on the hanging strap, the train at full speed, tunnel lights streaking across her face as a high-speed light band, her eyes razor sharp into the lens. Ice-blue type \"I MOVE\" hugs the window glass with a reflective motion trail.\nCut: 808 hit.\n\nShot 4 (2.6s-3.8s): Aerial dive, she sprints across an intersection, traffic light trails weaving a net around her, the camera plunging from high altitude down to her run, windbreaker snapping. No text, pure visual burst.\nCut: closing accent.\n\nShot 5 (3.8s-5.0s): She bolts onto a footbridge, brakes, and turns to face the lens, the whole street's car lights smearing into a river of time behind her; oversized cyan type \"INSTANT\" smashes in, and the last beat freezes the frame. Audio: 140 BPM fast electronic beat, kick, snare, 808, and closing accent on the four cuts, city noise, wind, and train roar as the bed, the last beat dropping to silence leaving a single heartbeat.\nNegative hard locks: static shots, statically centered subtitles, dissolves, soft transitions, overused slow motion, subtitle bars, logos."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+     "title": "Text (Prompt)"
+    }
+   },
+   "18": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Boolean (Prompt Enhance)"
+    }
+   },
+   "19": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Boolean (Upscale to 2K)"
+    }
+   },
+   "31": {
+    "inputs": {
+     "model": "MiniMax H3 Max",
+     "model.prompt": [
+      "12",
+      0
+     ],
+     "model.resolution": "768P",
+     "model.ratio": "16:9",
+     "model.duration": 5,
+     "model.prompt_expansion_mode": "balanced",
+     "seed": 2967573614,
+     "watermark": false
+    },
+    "class_type": "MinimaxHailuo03TextToVideoNode",
+    "_meta": {
+     "title": "MiniMax H3 Text to Video"
+    }
+   }
+  }
+ },
+ "api_minimax_h3_max_i2v": {
+  "api": {
+   "2": {
+    "inputs": {
+     "filename_prefix": "video/video/MiniMax_H3_i2v_768P",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "24",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "7": {
+    "inputs": {
+     "model": "MiniMax H3",
+     "model.prompt": [
+      "14",
+      0
+     ],
+     "model.duration": 5,
+     "model.ratio": "adaptive",
+     "model.reference_images.image_1": [
+      "25",
+      0
+     ]
+    },
+    "class_type": "MinimaxHailuo03ContextIRNode",
+    "_meta": {
+     "title": "MiniMax H3 Context IR (Prompt Enhancer)"
+    }
+   },
+   "8": {
+    "inputs": {
+     "filename_prefix": "H3_prompt",
+     "format": "txt",
+     "text": [
+      "12",
+      0
+     ]
+    },
+    "class_type": "SaveText",
+    "_meta": {
+     "title": "Save Text"
+    }
+   },
+   "10": {
+    "inputs": {
+     "model": "MiniMax H3",
+     "model.prompt": [
+      "8",
+      0
+     ],
+     "model.resolution": "2K",
+     "watermark": false,
+     "video": [
+      "2",
+      0
+     ],
+     "model.reference_images.image_1": [
+      "25",
+      0
+     ]
+    },
+    "class_type": "MinimaxHailuo03RegenerateNode",
+    "_meta": {
+     "title": "MiniMax H3 Regenerate to 2K"
+    }
+   },
+   "11": {
+    "inputs": {
+     "filename_prefix": "video/Minimax_h3_max",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "13",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "12": {
+    "inputs": {
+     "switch": [
+      "18",
+      0
+     ],
+     "on_false": [
+      "14",
+      0
+     ],
+     "on_true": [
+      "7",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "If/Else Switch"
+    }
+   },
+   "13": {
+    "inputs": {
+     "switch": [
+      "19",
+      0
+     ],
+     "on_false": [
+      "24",
+      0
+     ],
+     "on_true": [
+      "10",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "If/Else Switch"
+    }
+   },
+   "14": {
+    "inputs": {
+     "value": "[Product] An all-black chunky sneaker (chunky sole, all-black body, black laces) on black velvet, cold-white top-light system, photoreal product photography.\n\n[First frame A (Shot 1, use the reference image or generate per this)]\nAn all-black chunky sneaker floating over black velvet, one cold-white beam from the upper left, the silhouette rimmed with faint edge light, slightly-off frontal view, the shoe centered, vast black negative space around it, 16:9, no text.\n\n[First frame B (Shot 2, with background text layer)]\nThe same all-black chunky sneaker on the same black velvet with the same cold-white top-light system, restaged as a low-angle hero shot looking up: the sole tilted toward the lens, tread pattern and cold steel-gray edge highlight crisp, laces dropping into frame from above. Deep in the blurred darkness behind the shoe, a giant dark-gray sans-serif line \"BUILT IN THE DARK\" is barely visible: far larger than the product, partially occluded by the shoe, out of focus, extremely low luminance, as if printed on the background velvet. 16:9, photoreal product photography.\n\n[First frame C (Shot 3)]\nThe same all-black chunky sneaker on the same black velvet with the same cold-white top-light system, restaged at a 45-degree overhead-side angle: the shoe occupying the right two-thirds, a large area of black negative space on the left, 16:9, no text.\n\n[Shot 1 motion layer (I2V, first frame A)]\nStart from the first frame, inherit its content and lighting; motion only. Action: [0s-2s] Dust drifts upward in the beam, the key light breathing subtly; [2s-5s] The shoe rotates slowly by about 20 degrees as one rim highlight sweeps along the chunky sole from heel to toe, the velvet rippling once. No text. Camera: one slow constant push-in, subtle handheld breathing, no cuts. Audio: a low drone, one muffled kick at 2s, faint velvet rustle.\n\n[Shot 2 motion layer (I2V, first frame B)]\n\nStart from the first frame, inherit its content and lighting; motion only. Action: [0s-1.5s] One highlight sweeps across the tread while the giant dark-gray background type \"BUILT IN THE DARK\" slides very slowly right to left, always behind the shoe, defocused and low-luminance; [1.5s-3.5s] The shoe flips slowly along a diagonal from sole view toward its side profile, briefly occluding more of the background type mid-flip, creating a foreground-silhouette versus background-type interplay; [3.5s-5s] It settles into a breathing hover as the background type slides off the left frame edge, cropping out and fading. Camera: locked macro, no cuts. Audio: the drone continues, one woody click at 1.5s, subtle fabric friction during the flip. Background text rules: the type never crosses in front of the shoe, never covers any part of it, stays defocused and low-contrast throughout, existing purely as a depth layer.\n\n[Shot 3 motion layer (I2V, first frame C)]\nStart from the first frame, inherit its content and lighting; motion only. Action: [0s-1.5s] The shoe hovers with breathing motion as the rim light builds; [1.5s-2.5s] The first half of the copy fades into the left negative space; [2.5s-3.2s] The second half fades in while the first half shifts gently left within the same line; [3.2s-5s] The copy locks, the shoe settles, the frame holds. Text spelled out verbatim: \"Darkness in Motion\", SF Pro Display Semibold, one line, no wrapping, vertically centered left-aligned; \"Darkness in\" in white fading in at 1.5s, \"Motion\" in cold steel gray at 2.5s. Camera: one slow push-in, no cuts. Audio: the drone peaks, one crisp pluck at 1.5s; at 4.5s everything stops leaving the pluck tail.\n\n[Edit & finishing]\nThree 5-second I2V segments, two hard cuts aligned to the kick ending Shot 1 and the pluck opening Shot 3; one unified cool dark LUT across the film, an optional light grain overlay to hide batch differences. The product stays fully black throughout; only the lighting and the shoe's motion change. Copy rhythm: Shot 1 no text, Shot 2 background defocused type only, Shot 3 the main copy; at most one readable text layer on screen at any moment.\n\n[Negative list (all three segments)]\nno product color change, no extra light sources, no readable text besides the Shot 3 copy line, background text in Shot 2 must never overlap or occlude the shoe, no two text rows, no cuts within any single segment, no mirror floor reflections, no dissolve transitions, no logo."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+     "title": "Text (Prompt)"
+    }
+   },
+   "18": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Boolean (Prompt Enhance)"
+    }
+   },
+   "19": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Boolean (Upscale to 2K)"
+    }
+   },
+   "24": {
+    "inputs": {
+     "model": "MiniMax H3 Max",
+     "model.prompt": [
+      "12",
+      0
+     ],
+     "model.resolution": "768P",
+     "model.duration": 5,
+     "model.prompt_expansion_mode": "balanced",
+     "seed": 791669044,
+     "watermark": false,
+     "first_frame": [
+      "25",
+      0
+     ]
+    },
+    "class_type": "MinimaxHailuo03FirstLastFrameNode",
+    "_meta": {
+     "title": "MiniMax H3 First-Last-Frame to Video"
+    }
+   },
+   "25": {
+    "inputs": {
+     "image": "sneaker_black.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   }
+  }
+ },
+ "api_google_gemini_omni_flash_1_1_t2v": {
+  "api": {
+   "25": {
+    "inputs": {
+     "filename_prefix": "video/Omni_Flash_1.1",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "26",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "26": {
+    "inputs": {
+     "model": "Omni Flash 1.1",
+     "model.prompt": "A 5-second, 16:9 cinematic shot, photorealistic, golden hour cinematography. A vast empty palace hall, floor of worn dark wood, one enormous window pouring a single wide shaft of amber light across the center, dust drifting inside it. A barefoot dancer in a pale ivory dress steps into the beam and performs one slow full turn, her dress and long hair fanning out through the golden dust, then stills mid-pose as the light catches her face. Camera: slow push-in from a wide shot to a medium view. Look: amber, ivory, and deep shadow only, film grain. Audio: empty hall reverb, a soft fabric swirl, her calm breath, a single cello note swelling. No text overlays, no black frames.",
+     "model.resolution": "720p",
+     "model.aspect_ratio": "16:9",
+     "model.task_type": "auto",
+     "model.seed": 977218336
+    },
+    "class_type": "GeminiVideoOmniV2",
+    "_meta": {
+     "title": "Google Gemini Omni (Video)"
+    }
+   }
+  }
+ },
+ "api_google_gemini_omni_flash_1_1_i2v": {
+  "api": {
+   "7": {
+    "inputs": {
+     "model": "Omni Flash 1.1",
+     "model.prompt": "Use @Image1 as the first frame, keep the car and the blue studio set exactly unchanged in the opening shot. SHOT ONE (0-1.8s), macro close-up on the side mirror: the blue bodywork and mirror glass reflecting the sweeping floor beam, a thin wisp of haze drifting past. HARD CUT. SHOT TWO (1.8-3.4s), side tracking shot gliding along the car's flank: reflections flowing across the doors, the beam light strobing over the door handles. HARD CUT. SHOT THREE (3.4-5s), wide from behind the car pulling back: the full car centered in the blue studio void, the man leaning on the hood, the floor beam completing one final sweep and settling. Photorealistic fashion car commercial, deep blue palette consistent across all three shots. Audio: a crystalline tick on each cut, a smooth electronic groove building, a final soft bass note as the beam settles. No text overlays, no black frames, no camera shake.\n",
+     "model.resolution": "720p",
+     "model.aspect_ratio": "16:9",
+     "model.task_type": "image_to_video",
+     "model.seed": 348812024,
+     "model.images.image_1": [
+      "11",
+      0
+     ]
+    },
+    "class_type": "GeminiVideoOmniV2",
+    "_meta": {
+     "title": "Google Gemini Omni (Video)"
+    }
+   },
+   "8": {
+    "inputs": {
+     "filename_prefix": "video/Omni_Flash_1.1_i2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "7",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "11": {
+    "inputs": {
+     "image": "blue_studio_car.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   }
+  }
+ },
+ "api_luma_ray3_3_t2v": {
+  "api": {
+   "3": {
+    "inputs": {
+     "prompt": "Cinematic tracking shot of a fierce young woman in battle-worn chrome armor riding a massive white tiger with glowing blue neural stripes, galloping across a scorched futuristic battlefield, shattered mechs and burning wreckage behind them, dust and embers in the air, heroic and defiant, epic sci-fi fantasy, golden hour light, 4K, shallow depth of field",
+     "aspect_ratio": "1:1",
+     "resolution": "720p",
+     "duration": "5s",
+     "loop": false,
+     "seed": 953364548931126
+    },
+    "class_type": "LumaRay32TextToVideoNode",
+    "_meta": {
+     "title": "Luma Ray 3.2 Text to Video"
+    }
+   },
+   "6": {
+    "inputs": {
+     "filename_prefix": "video/Luma_Ray_3.2_T2V",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "3",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "8": {
+    "inputs": {
+     "source": [
+      "3",
+      1
+     ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+     "title": "Preview as Text (generation_id)"
+    }
+   }
+  }
+ },
+ "api_luma_ray3_3_i2v": {
+  "api": {
+   "8": {
+    "inputs": {
+     "source": [
+      "13",
+      1
+     ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+     "title": "Preview as Text (generation_id)"
+    }
+   },
+   "11": {
+    "inputs": {
+     "image": "cyber_cat.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "12": {
+    "inputs": {
+     "filename_prefix": "video/Luma_Ray_3.2_I2V",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "13",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "13": {
+    "inputs": {
+     "prompt": "Monochrome black and white mechanical robotic sphynx cat, seamless segmented metal skull, countless thick data cables flowing from neck like dreadlocks, glowing narrow vertical white slit eyes, sleek cybernetic feline body built like a cheetah for sprinting, full-body running sprint pose, low tracking parallel camera moves alongside the robot cat to capture dynamic fast running motion, camera slowly pull back wide to reveal the entire streamlined cyber cat body, futuristic cyberpunk city environment, towering neon-lit metallic skyscrapers, glowing circuit billboards, wet reflective asphalt ground with hologram reflections, dense tech wiring infrastructure, industrial sci-fi atmosphere, dramatic cinematic side lighting, high contrast monochrome, hyper detailed mechanical textures, scratch worn metal panels, intricate bolt and gear details, motion blur on paws and cable tails to emphasize speed, 8K ultra realistic, photorealistic, shallow dynamic motion blur, epic sci-fi cinematography, sharp industrial blueprint background subtle overlay texture, no text, no watermark",
+     "resolution": "720p",
+     "loop": false,
+     "seed": 569886435760230,
+     "start_frame": [
+      "11",
+      0
+     ]
+    },
+    "class_type": "LumaRay32ImageToVideoNode",
+    "_meta": {
+     "title": "Luma Ray 3.2 Image to Video"
+    }
+   }
+  }
+ },
+ "api_nano_banana_2_1_t2i": {
+  "api": {
+   "1": {
+    "inputs": {
+     "prompt": "Create an original high-fashion experimental poster for the image model Nano Banana 2.1. Square composition, pure black background.\nPlace one large, unmistakable ripe yellow banana at the center. Show its complete curved silhouette from stem to tip, with a natural peel, subtle brown details, and realistic texture. The banana is the hero object and occupies much of the frame.\nSurround it with only a few oversized transparent glass lenses and polished liquid-chrome forms. Use striking refractions and sharp reflections, but keep the banana\u2019s entire shape easy to recognize. Dramatic studio lighting, deep blacks, bright highlights, premium 3D fashion-campaign finish.\nMake the typography bold, graphic, and impossible to miss. Use solid bright-white letterforms with substantial weight, clean edges, and strong contrast against the black background. Avoid thin, delicate, outlined, or hairline fonts.\n\u201cNANO\u201d sits across the upper area in oversized, heavy geometric capitals. Space the letters deliberately and vary their placement slightly for an editorial rhythm.\n\u201cBANANA\u201d is the dominant typographic statement across the middle: very large, extra-bold condensed italic sans-serif, with tightly controlled spacing and a confident forward slant. Give it the impact of a luxury fashion masthead. Let it cross the composition, but position it so the banana remains visually clear; use selective layering where the banana passes in front of a small portion of the letters. Every letter must still be readable.\n\u201c2.1\u201d appears once, large and heavy in the lower right. Align it precisely with the poster\u2019s edges to anchor the composition.\nThe three elements must immediately read together as NANO BANANA 2.1. Create hierarchy through contrasting scale, weight, spacing, and alignment. Let one or two glass elements overlap small areas of the typography without obscuring any word.\nAdd only two small editorial labels, each appearing once: \u201cIMAGE\u201d and \u201cIMAGINATION\u201d. Set them in crisp, legible type beside a few thin white rules and precise graphic markers. No repeated small text or filler writing.\nPalette: pure black, bright white, banana yellow, transparent glass, and restrained chrome. Contemporary, glossy, bold, fashion-forward, and visually striking. Render all specified text exactly. No quotation marks, extra words, logos, or watermarks.",
+     "model": "Gemini Nano Banana 2.1",
+     "model.aspect_ratio": "auto",
+     "model.resolution": "1K",
+     "model.thinking_level": "MEDIUM",
+     "seed": 806403384898350,
+     "response_modalities": "IMAGE",
+     "system_prompt": "You are an expert image-generation engine. You must ALWAYS produce an image.\nInterpret all user input\u2014regardless of format, intent, or abstraction\u2014as literal visual directives for image composition.\nIf a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept.\nPrioritize generating the visual representation above any text, formatting, or conversational requests.",
+     "temperature": 1,
+     "top_p": 0.95
+    },
+    "class_type": "GeminiNanoBanana2V2",
+    "_meta": {
+     "title": "Nano Banana 2.1"
+    }
+   },
+   "3": {
+    "inputs": {
+     "filename_prefix": "Nano_Banana_2.1",
+     "format": "png",
+     "format.bit_depth": "8-bit",
+     "format.input_color_space": "sRGB",
+     "images": [
+      "1",
+      0
+     ]
+    },
+    "class_type": "SaveImageAdvanced",
+    "_meta": {
+     "title": "Save Image (Advanced)"
+    }
+   }
+  }
+ },
+ "api_openai_gpt_image_25_sunburst_t2i": {
+  "api": {
+   "269": {
+    "inputs": {
+     "filename_prefix": "GPT_image_2.5_sunburst_t2i",
+     "images": [
+      "271",
+      0
+     ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+     "title": "Save Image"
+    }
+   },
+   "271": {
+    "inputs": {
+     "prompt": "1:1 square editorial fashion poster, futuristic desert motorcycle rally scene. A rugged male biker with long dark hair and weathered leather jacket stands beside a giant black armored motorcycle in the center, surrounded by enormous rusty mechanical towers, glowing energy gates and drifting sandstorms. He has a confident expression, arms crossed, leaning slightly against the bike. Large oversized display typography spelling the exact text \u201cGPT IMAGE 2.5\u201d in bold industrial sans-serif font, burnt orange, letters weaving through the upper half of the frame, some behind the biker, some in front, overlapping motorcycle parts and desert towers, the only text in the scene. Small scattered graphic elements: circular speed badge upper right, rubber-stamp style icon lower left, thin wavy line doodles, tiny star icons, small crescent near bottom, vertical stack of colourful abstract symbols on right edge, small sun-shaped emblem bottom right. Short justified caption-style text block lower right, subtitle line above it in thin tracked-out caps. Asymmetric grid layout, burnt orange, black, desert beige and electric blue palette, hyperrealistic 3D render, cinematic depth of field, intricate details, soft grainy film texture, premium print quality.",
+     "model": "gpt-image-2.5-sunburst",
+     "model.size": "auto",
+     "model.custom_width": 1024,
+     "model.custom_height": 1024,
+     "model.background": "auto",
+     "model.quality": "low",
+     "n": 1,
+     "seed": 831748761
+    },
+    "class_type": "OpenAIGPTImageNodeV2",
+    "_meta": {
+     "title": "OpenAI GPT Image 2.5"
+    }
+   }
+  }
+ },
+ "api_bytedance_seedream_5_0_pro_t2i": {
+  "api": {
+   "2": {
+    "inputs": {
+     "filename_prefix": "Seedream5.0_Pro_T2I",
+     "format": "png",
+     "format.bit_depth": "8-bit",
+     "format.input_color_space": "sRGB",
+     "images": [
+      "3",
+      0
+     ]
+    },
+    "class_type": "SaveImageAdvanced",
+    "_meta": {
+     "title": "Save Image (Advanced)"
+    }
+   },
+   "3": {
+    "inputs": {
+     "prompt": "A sci-fi cyberpunk graphic design poster. In the center, a striking portrait of a female android with glossy, liquid chrome skin. A vivid swirling streak of neon orange, yellow, and pink liquid paint brush stroke horizontally covers her eyes, soft smudged color overlay with smooth flowing pigment texture, no cracks or broken facial surfaces. The background is a dark, textured charcoal gray. Behind the central figure, large bold white futuristic typography reads \"Seedream 5.0 Pro\" with a subtle digital glitch and halftone texture. The composition is decorated with technical HUD elements, thin white lines, geometric wireframe diagrams, barcodes, and small sci-fi text boxes. Semi-transparent glassy spheres with grid textures overlap the foreground, creating depth. The overall mood is high-tech, dystopian, and avant-garde.",
+     "model": "seedream 5.0 pro",
+     "model.size_preset": "(1K) 1024x1024 (1:1)",
+     "model.width": 2048,
+     "model.height": 2048,
+     "model.prompt_optimization": "standard",
+     "model.seed": 42,
+     "model.watermark": false,
+     "model.thinking": true
+    },
+    "class_type": "ByteDanceSeedreamNodeV3",
+    "_meta": {
+     "title": "ByteDance Seedream 4.5 & 5.0"
+    }
+   }
+  }
+ },
+ "api_flux2": {
+  "api": {
+   "12": {
+    "inputs": {
+     "filename_prefix": "Flux.2[pro]",
+     "images": [
+      "23",
+      0
+     ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+     "title": "Save Image"
+    }
+   },
+   "15": {
+    "inputs": {
+     "image": "api_flux2_input_image_1.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "16": {
+    "inputs": {
+     "image": "api_flux2_input_image_4.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "18": {
+    "inputs": {
+     "image": "api_flux2_input_image_3.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "19": {
+    "inputs": {
+     "image": "api_flux2_input_image_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load Image"
+    }
+   },
+   "23": {
+    "inputs": {
+     "prompt": "Create a photoshoot-style group portrait with four characters, each based on the four provided reference inputs .\nArrange all characters in a top-down, slightly elevated overhead view, similar to a drone or high-platform angle.\nCharacters stand loosely together on an open, clean ground plane, evenly spaced and \u201ctiled\u201d across the frame, all looking upward toward the camera.\nExpressions are natural and relaxed, as if posing for a professional editorial shoot.\nUse bright, soft lighting that casts clean shadows on the ground.\nPreserve each character\u2019s skin tone, clothing style, and proportions from the references.\nOverall aesthetic: modern, crisp, magazine-style group portrait.",
+     "model": "Flux.2 [pro]",
+     "model.width": 1920,
+     "model.height": 1088,
+     "seed": 0,
+     "model.images.image_1": [
+      "15",
+      0
+     ],
+     "model.images.image_2": [
+      "19",
+      0
+     ],
+     "model.images.image_3": [
+      "16",
+      0
+     ]
+    },
+    "class_type": "Flux2ImageNode",
+    "_meta": {
+     "title": "Flux.2 Image"
+    }
+   }
+  }
+ },
+ "api_ideogram_v4_5_t2i": {
+  "api": {
+   "1": {
+    "inputs": {
+     "model": "ideogram-4.5",
+     "model.prompt": "A square 1:1 magazine poster cover in a refined classical art collage style. Background is warm ivory textured paper with subtle grain, speckles, and a vintage print feel. At the center stands a blindfolded classical Greek marble statue bust of a serene woman with softly waved hair and flowing draped fabric over her shoulders, rendered in a black-and-white halftone dot print effect with fine engraved-line detailing and high contrast. Behind her, two fainter mirrored marble goddess heads peek out from layered torn paper pieces in deep midnight navy and muted antique gold, with rough ripped edges and delicate dripping paint streaks that melt downward. The large, elegant high-contrast serif headline \"Ideogram 4.5\" dominates the top of the layout. \"Ideogram\" is set in charcoal black and \"4.5\" in metallic antique gold, with the statue's head slightly overlapping the letters to create depth. Above the headline, small centered serif text reads \"HER VOICE WAS CARVED IN STONE / ONLY THE LIGHT REMEMBERS WHAT SHE SPOKE\". A vertical gold caption on the left reads \"A VISUAL ARTWORK\", and a vertical caption on the right reads \"DESIGNED BY IDEOGRAM 4.5\". At the lower left, a navy block holds large cream serif text reading \"ETERNAL MUSE\". Small four-pointed gold star sparkles sit in the corners. The composition is balanced and symmetrical, like a museum exhibition poster, and evokes an editorial luxury magazine cover. The palette is ivory, charcoal, navy, and gold only, with no red tones. The mood is timeless, poetic, and artistic, with soft studio lighting, crisp typography, and high detail.",
+     "model.size": "auto",
+     "model.quality": "medium",
+     "model.magic_prompt": "auto",
+     "model.seed": 388697105
+    },
+    "class_type": "IdeogramTextToImageApi",
+    "_meta": {
+     "title": "Ideogram 4.5 Text to Image"
+    }
+   },
+   "5": {
+    "inputs": {
+     "filename_prefix": "Ideogram4.5_t2i",
+     "format": "png",
+     "format.bit_depth": "8-bit",
+     "format.input_color_space": "sRGB",
+     "images": [
+      "1",
+      0
+     ]
+    },
+    "class_type": "SaveImageAdvanced",
+    "_meta": {
+     "title": "Save Image (Advanced)"
+    }
+   }
+  }
+ },
+ "api_recraft_v4_1_t2i": {
+  "api": {
+   "4": {
+    "inputs": {
+     "colors": [
+      "7",
+      0
+     ],
+     "background_color": [
+      "6",
+      0
+     ]
+    },
+    "class_type": "RecraftControls",
+    "_meta": {
+     "title": "Recraft Controls"
+    }
+   },
+   "5": {
+    "inputs": {
+     "filename_prefix": "Recraft_v4.1_t2i",
+     "images": [
+      "12",
+      0
+     ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+     "title": "Save Image"
+    }
+   },
+   "6": {
+    "inputs": {
+     "r": 0,
+     "g": 0,
+     "b": 0
+    },
+    "class_type": "RecraftColorRGB",
+    "_meta": {
+     "title": "Recraft Color RGB"
+    }
+   },
+   "7": {
+    "inputs": {
+     "r": 0,
+     "g": 0,
+     "b": 0
+    },
+    "class_type": "RecraftColorRGB",
+    "_meta": {
+     "title": "Recraft Color RGB"
+    }
+   },
+   "12": {
+    "inputs": {
+     "prompt": "portrait of a young man with a short buzzed platinum blonde fade haircut, silver mirrored wraparound futuristic sport sunglasses, small silver ear stud, wearing a black leather jacket with a raised collar, one hand gripping the collar near his chin, head tilted down, gaze lowered, upper body three-quarter view, slightly high camera angle, medium close-up, shallow depth of field, soft diffused studio lighting with gentle shadows, cool grey-blue gradient background, muted monochrome palette with cool tones, fine skin texture, subtle leather grain, matte finish, realistic fashion editorial photography, natural and clean look, sharp focus, high detail, 85mm lens",
+     "negative_prompt": "",
+     "model": "recraftv4_1",
+     "model.size": "1024x1024",
+     "n": 1,
+     "seed": 246357562083200,
+     "style_id": "",
+     "style_match": "precise"
+    },
+    "class_type": "RecraftV4TextToImageNode",
+    "_meta": {
+     "title": "Recraft V4 Text to Image"
+    }
+   }
+  }
+ },
+ "image_flux2_text_to_image": {
+  "api": {
+   "9": {
+    "inputs": {
+     "filename_prefix": "Flux2_dev",
+     "images": [
+      "98:8",
+      0
+     ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+     "title": "Save Image"
+    }
+   },
+   "98:22": {
+    "inputs": {
+     "model": [
+      "98:102",
+      0
+     ],
+     "conditioning": [
+      "98:26",
+      0
+     ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+     "title": "Basic Guider"
+    }
+   },
+   "98:26": {
+    "inputs": {
+     "guidance": 4,
+     "conditioning": [
+      "98:6",
+      0
+     ]
+    },
+    "class_type": "FluxGuidance",
+    "_meta": {
+     "title": "FluxGuidance"
+    }
+   },
+   "98:16": {
+    "inputs": {
+     "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+     "title": "KSamplerSelect"
+    }
+   },
+   "98:10": {
+    "inputs": {
+     "vae_name": "full_encoder_small_decoder.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "98:13": {
+    "inputs": {
+     "noise": [
+      "98:25",
+      0
+     ],
+     "guider": [
+      "98:22",
+      0
+     ],
+     "sampler": [
+      "98:16",
+      0
+     ],
+     "sigmas": [
+      "98:48",
+      0
+     ],
+     "latent_image": [
+      "98:47",
+      0
+     ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+     "title": "SamplerCustomAdvanced"
+    }
+   },
+   "98:8": {
+    "inputs": {
+     "samples": [
+      "98:13",
+      0
+     ],
+     "vae": [
+      "98:10",
+      0
+     ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+     "title": "VAE Decode"
+    }
+   },
+   "98:38": {
+    "inputs": {
+     "clip_name": "mistral_3_small_flux2_bf16.safetensors",
+     "type": "flux2",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "98:48": {
+    "inputs": {
+     "steps": [
+      "98:103",
+      0
+     ],
+     "width": 1024,
+     "height": 1024
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+     "title": "Flux2Scheduler"
+    }
+   },
+   "98:47": {
+    "inputs": {
+     "width": 1024,
+     "height": 1024,
+     "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+     "title": "Empty Flux 2 Latent"
+    }
+   },
+   "98:25": {
+    "inputs": {
+     "noise_seed": 1027111520328378
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+     "title": "RandomNoise"
+    }
+   },
+   "98:6": {
+    "inputs": {
+     "text": "high fashion, vintage couture, street photography, luxury fashion shoot, neo brutalist architecture, pastel paints",
+     "clip": [
+      "98:38",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Positive Prompt)"
+    }
+   },
+   "98:101": {
+    "inputs": {
+     "lora_name": "Flux_2-Turbo-LoRA_comfyui.safetensors",
+     "strength_model": 1,
+     "model": [
+      "98:12",
+      0
+     ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+     "title": "Load LoRA"
+    }
+   },
+   "98:102": {
+    "inputs": {
+     "switch": [
+      "98:104",
+      0
+     ],
+     "on_false": [
+      "98:12",
+      0
+     ],
+     "on_true": [
+      "98:101",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch(model)"
+    }
+   },
+   "98:100": {
+    "inputs": {
+     "value": 20
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Steps"
+    }
+   },
+   "98:99": {
+    "inputs": {
+     "value": 8
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Steps"
+    }
+   },
+   "98:103": {
+    "inputs": {
+     "switch": [
+      "98:104",
+      0
+     ],
+     "on_false": [
+      "98:100",
+      0
+     ],
+     "on_true": [
+      "98:99",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "Switch(steps)"
+    }
+   },
+   "98:104": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Enable Turbo LoRA"
+    }
+   },
+   "98:12": {
+    "inputs": {
+     "unet_name": "flux2_dev_fp8mixed.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   }
+  }
+ },
+ "video_ltx2_5_t2v": {
+  "api": {
+   "75": {
+    "inputs": {
+     "filename_prefix": "video/LTX_2.5_t2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "405:370",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "409": {
+    "inputs": {
+     "aspect_ratio": "16:9 (Widescreen)",
+     "megapixels": 0.9,
+     "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+     "title": "Resolution Selector"
+    }
+   },
+   "405:370": {
+    "inputs": {
+     "fps": [
+      "405:359",
+      0
+     ],
+     "bit_depth": 8,
+     "color_space": "sRGB",
+     "codec": "none",
+     "images": [
+      "405:374",
+      0
+     ],
+     "audio": [
+      "405:358",
+      0
+     ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+     "title": "Create Video"
+    }
+   },
+   "405:340": {
+    "inputs": {
+     "video_latent": [
+      "405:348",
+      0
+     ],
+     "audio_latent": [
+      "405:367",
+      1
+     ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+     "title": "Concat AV Latent"
+    }
+   },
+   "405:395": {
+    "inputs": {
+     "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+     "title": "ManualSigmas"
+    }
+   },
+   "405:348": {
+    "inputs": {
+     "samples": [
+      "405:367",
+      0
+     ],
+     "upscale_model": [
+      "405:371",
+      0
+     ],
+     "vae": [
+      "405:385",
+      0
+     ]
+    },
+    "class_type": "LTXVLatentUpsampler",
+    "_meta": {
+     "title": "LTXVLatentUpsampler"
+    }
+   },
+   "405:358": {
+    "inputs": {
+     "samples": [
+      "405:369",
+      1
+     ],
+     "audio_vae": [
+      "405:386",
+      0
+     ]
+    },
+    "class_type": "LTXVAudioVAEDecode",
+    "_meta": {
+     "title": "LTXV Audio VAE Decode"
+    }
+   },
+   "405:341": {
+    "inputs": {
+     "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+     "title": "KSamplerSelect"
+    }
+   },
+   "405:391": {
+    "inputs": {
+     "video_cfg": 1,
+     "audio_cfg": 1,
+     "model": [
+      "405:384",
+      0
+     ],
+     "positive": [
+      "405:365",
+      0
+     ],
+     "negative": [
+      "405:365",
+      1
+     ]
+    },
+    "class_type": "LTXVDualCFGGuider",
+    "_meta": {
+     "title": "LTXV Dual CFG Guider"
+    }
+   },
+   "405:368": {
+    "inputs": {
+     "noise": [
+      "405:338",
+      0
+     ],
+     "guider": [
+      "405:391",
+      0
+     ],
+     "sampler": [
+      "405:341",
+      0
+     ],
+     "sigmas": [
+      "405:395",
+      0
+     ],
+     "latent_image": [
+      "405:340",
+      0
+     ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+     "title": "SamplerCustomAdvanced"
+    }
+   },
+   "405:338": {
+    "inputs": {
+     "noise_seed": 42
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+     "title": "RandomNoise"
+    }
+   },
+   "405:367": {
+    "inputs": {
+     "av_latent": [
+      "405:344",
+      0
+     ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+     "title": "Separate AV Latent"
+    }
+   },
+   "405:369": {
+    "inputs": {
+     "av_latent": [
+      "405:368",
+      0
+     ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+     "title": "Separate AV Latent"
+    }
+   },
+   "405:374": {
+    "inputs": {
+     "tile_size": 512,
+     "overlap": 64,
+     "temporal_size": 64,
+     "temporal_overlap": 16,
+     "samples": [
+      "405:369",
+      0
+     ],
+     "vae": [
+      "405:385",
+      0
+     ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+     "title": "VAE Decode (Tiled)"
+    }
+   },
+   "405:344": {
+    "inputs": {
+     "noise": [
+      "405:339",
+      0
+     ],
+     "guider": [
+      "405:388",
+      0
+     ],
+     "sampler": [
+      "405:352",
+      0
+     ],
+     "sigmas": [
+      "405:404",
+      0
+     ],
+     "latent_image": [
+      "405:377",
+      0
+     ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+     "title": "SamplerCustomAdvanced"
+    }
+   },
+   "405:404": {
+    "inputs": {
+     "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+     "title": "ManualSigmas"
+    }
+   },
+   "405:388": {
+    "inputs": {
+     "video_cfg": 1,
+     "audio_cfg": 1,
+     "model": [
+      "405:384",
+      0
+     ],
+     "positive": [
+      "405:365",
+      0
+     ],
+     "negative": [
+      "405:365",
+      1
+     ]
+    },
+    "class_type": "LTXVDualCFGGuider",
+    "_meta": {
+     "title": "LTXV Dual CFG Guider"
+    }
+   },
+   "405:352": {
+    "inputs": {
+     "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+     "title": "KSamplerSelect"
+    }
+   },
+   "405:339": {
+    "inputs": {
+     "noise_seed": 558811532553686
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+     "title": "RandomNoise"
+    }
+   },
+   "405:365": {
+    "inputs": {
+     "frame_rate": [
+      "405:359",
+      0
+     ],
+     "positive": [
+      "405:364",
+      0
+     ],
+     "negative": [
+      "405:373",
+      0
+     ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+     "title": "LTXVConditioning"
+    }
+   },
+   "405:377": {
+    "inputs": {
+     "video_latent": [
+      "405:356",
+      0
+     ],
+     "audio_latent": [
+      "405:366",
+      0
+     ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+     "title": "Concat AV Latent"
+    }
+   },
+   "405:364": {
+    "inputs": {
+     "text": [
+      "405:382",
+      0
+     ],
+     "clip": [
+      "405:387",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Prompt)"
+    }
+   },
+   "405:373": {
+    "inputs": {
+     "text": "pc game, console game, video game, cartoon, childish, ugly",
+     "clip": [
+      "405:387",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Prompt)"
+    }
+   },
+   "405:356": {
+    "inputs": {
+     "width": [
+      "405:353",
+      1
+     ],
+     "height": [
+      "405:355",
+      1
+     ],
+     "length": [
+      "405:378",
+      1
+     ],
+     "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {
+     "title": "Empty LTXV Latent Video"
+    }
+   },
+   "405:366": {
+    "inputs": {
+     "frames_number": [
+      "405:378",
+      1
+     ],
+     "frame_rate": [
+      "405:359",
+      1
+     ],
+     "batch_size": 1,
+     "audio_vae": [
+      "405:386",
+      0
+     ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+     "title": "Empty LTXV Latent Audio"
+    }
+   },
+   "405:381": {
+    "inputs": {
+     "source": [
+      "405:382",
+      0
+     ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+     "title": "Preview as Text"
+    }
+   },
+   "405:382": {
+    "inputs": {
+     "switch": [
+      "405:383",
+      0
+     ],
+     "on_false": [
+      "405:376",
+      0
+     ],
+     "on_true": [
+      "405:380",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "If/Else Switch"
+    }
+   },
+   "405:371": {
+    "inputs": {
+     "model_name": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+     "title": "Load Latent Upscale Model"
+    }
+   },
+   "405:384": {
+    "inputs": {
+     "unet_name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "405:385": {
+    "inputs": {
+     "vae_name": "ltx-2.5-video-vae-bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "405:386": {
+    "inputs": {
+     "vae_name": "ltx-2.5-audio-vae-bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "405:387": {
+    "inputs": {
+     "clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+     "type": "ltxv",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "405:380": {
+    "inputs": {
+     "prompt": [
+      "405:376",
+      0
+     ],
+     "max_length": 600,
+     "sampling_mode": "on",
+     "sampling_mode.temperature": 0.7,
+     "sampling_mode.top_k": 64,
+     "sampling_mode.top_p": 0.95,
+     "sampling_mode.min_p": 0.05,
+     "sampling_mode.repetition_penalty": 1.15,
+     "sampling_mode.seed": 0,
+     "sampling_mode.presence_penalty": 0,
+     "thinking": false,
+     "use_default_template": true,
+     "mtp": "auto",
+     "clip": [
+      "405:393",
+      0
+     ]
+    },
+    "class_type": "TextGenerateLTX2Prompt",
+    "_meta": {
+     "title": "Generate LTX2 Prompt"
+    }
+   },
+   "405:378": {
+    "inputs": {
+     "expression": "a * b + 1",
+     "values.a": [
+      "405:362",
+      0
+     ],
+     "values.b": [
+      "405:361",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression (length)"
+    }
+   },
+   "405:353": {
+    "inputs": {
+     "expression": "a/2",
+     "values.a": [
+      "405:372",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression"
+    }
+   },
+   "405:355": {
+    "inputs": {
+     "expression": "a/2",
+     "values.a": [
+      "405:360",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression"
+    }
+   },
+   "405:359": {
+    "inputs": {
+     "expression": "a",
+     "values.a": [
+      "405:361",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression (fps)"
+    }
+   },
+   "405:360": {
+    "inputs": {
+     "value": [
+      "409",
+      1
+     ]
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Height"
+    }
+   },
+   "405:361": {
+    "inputs": {
+     "value": 24
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Frame Rate"
+    }
+   },
+   "405:362": {
+    "inputs": {
+     "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Duration"
+    }
+   },
+   "405:372": {
+    "inputs": {
+     "value": [
+      "409",
+      0
+     ]
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Width"
+    }
+   },
+   "405:376": {
+    "inputs": {
+     "value": "A close-up of an Arctic hunter's face, his eyes fixed straight ahead, narrowed and locked on something in the far distance directly in front of him, frost dusting his dark beard, one hand slowly reaching toward the rifle slung on his back, his breath quick and shallow, the tension in his jaw visible even through the scarf. The camera slowly pulls back, revealing him crouched at the edge of an ice floe, and ahead of him, in the exact direction of his gaze, a polar bear moves slowly along a distant ice ridge, its pale coat blending into the white haze, facing toward him. The pull-back continues, the hunter in the foreground and the bear far ahead, the two facing each other across the dark lead of water, the ice field and grey sea stretching around them, seabirds wheeling overhead. Midway through the shot, the complete title \"LTX-2.5\" fades in large and centered, plain white sans-serif letters with wide spacing, no glow, no shadow, no ornament, the lettering large enough to dominate the center of the frame, emerging slowly from the mist, resting still and blending into the snowscape, with the hunter and the bear still visible below on either side of the title, staying through the end of the scene. The wind carries the distant sound of shifting ice, a single low growl rolling across the water."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+     "title": "Prompt"
+    }
+   },
+   "405:393": {
+    "inputs": {
+     "clip_name": "gemma4_e2b_it_int8_convrot.safetensors",
+     "type": "ltxv",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "405:383": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Boolean (Enable Prompt Enhance)"
+    }
+   }
+  }
+ },
+ "video_ltx2_5_i2v": {
+  "api": {
+   "75": {
+    "inputs": {
+     "filename_prefix": "video/LTX-2.5_i2v",
+     "format": "auto",
+     "format.codec": "auto",
+     "codec": "auto",
+     "video": [
+      "398:370",
+      0
+     ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+     "title": "Save Video"
+    }
+   },
+   "395": {
+    "inputs": {
+     "image": "neon_cyborg_portrait.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+     "title": "Load First Frame"
+    }
+   },
+   "403": {
+    "inputs": {
+     "aspect_ratio": "16:9 (Widescreen)",
+     "megapixels": 0.9,
+     "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+     "title": "Resolution Selector"
+    }
+   },
+   "398:393": {
+    "inputs": {
+     "clip_name": "gemma4_e2b_it_int8_convrot.safetensors",
+     "type": "ltxv",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "398:380": {
+    "inputs": {
+     "prompt": [
+      "398:376",
+      0
+     ],
+     "max_length": 600,
+     "sampling_mode": "on",
+     "sampling_mode.temperature": 0.7,
+     "sampling_mode.top_k": 64,
+     "sampling_mode.top_p": 0.95,
+     "sampling_mode.min_p": 0.05,
+     "sampling_mode.repetition_penalty": 1.15,
+     "sampling_mode.seed": 0,
+     "sampling_mode.presence_penalty": 0,
+     "thinking": false,
+     "use_default_template": true,
+     "mtp": "auto",
+     "clip": [
+      "398:393",
+      0
+     ],
+     "image": [
+      "398:350",
+      0
+     ]
+    },
+    "class_type": "TextGenerateLTX2Prompt",
+    "_meta": {
+     "title": "Generate LTX2 Prompt"
+    }
+   },
+   "398:383": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Boolean (Enable Prompt Enhance)"
+    }
+   },
+   "398:364": {
+    "inputs": {
+     "text": [
+      "398:382",
+      0
+     ],
+     "clip": [
+      "398:387",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Prompt)"
+    }
+   },
+   "398:376": {
+    "inputs": {
+     "value": "Use the provided start image as the first frame. The cybernetic figure slowly turns his head to the right, his glowing blue eyes scanning the horizon, mechanical joints in his neck whirring faintly. The camera follows his gaze, panning across the rooftop to reveal the city beyond: a river of light winding between dark towers, a flying vehicle gliding past between the buildings, its lights streaking. He watches it pass, then his eyes narrow slightly. The camera settles on his profile against the city glow, distant hover traffic humming, wind gusting across the rooftop. No text, no black frames."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+     "title": "Prompt"
+    }
+   },
+   "398:382": {
+    "inputs": {
+     "switch": [
+      "398:383",
+      0
+     ],
+     "on_false": [
+      "398:376",
+      0
+     ],
+     "on_true": [
+      "398:380",
+      0
+     ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+     "title": "If/Else Switch"
+    }
+   },
+   "398:384": {
+    "inputs": {
+     "unet_name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+     "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+     "title": "Load Diffusion Model"
+    }
+   },
+   "398:381": {
+    "inputs": {
+     "source": [
+      "398:382",
+      0
+     ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+     "title": "Preview as Text"
+    }
+   },
+   "398:362": {
+    "inputs": {
+     "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Duration"
+    }
+   },
+   "398:363": {
+    "inputs": {
+     "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+     "title": "Switch to Text to Video?"
+    }
+   },
+   "398:365": {
+    "inputs": {
+     "frame_rate": [
+      "398:359",
+      0
+     ],
+     "positive": [
+      "398:364",
+      0
+     ],
+     "negative": [
+      "398:373",
+      0
+     ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+     "title": "LTXVConditioning"
+    }
+   },
+   "398:385": {
+    "inputs": {
+     "vae_name": "ltx-2.5-video-vae-bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "398:386": {
+    "inputs": {
+     "vae_name": "ltx-2.5-audio-vae-bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+     "title": "Load VAE"
+    }
+   },
+   "398:372": {
+    "inputs": {
+     "value": [
+      "403",
+      0
+     ]
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Width"
+    }
+   },
+   "398:373": {
+    "inputs": {
+     "text": "pc game, console game, video game, cartoon, childish, ugly",
+     "clip": [
+      "398:387",
+      0
+     ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+     "title": "CLIP Text Encode (Prompt)"
+    }
+   },
+   "398:387": {
+    "inputs": {
+     "clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+     "type": "ltxv",
+     "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+     "title": "Load CLIP"
+    }
+   },
+   "398:360": {
+    "inputs": {
+     "value": [
+      "403",
+      1
+     ]
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Height"
+    }
+   },
+   "398:352": {
+    "inputs": {
+     "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+     "title": "KSamplerSelect"
+    }
+   },
+   "398:339": {
+    "inputs": {
+     "noise_seed": 875362541677469
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+     "title": "RandomNoise"
+    }
+   },
+   "398:397": {
+    "inputs": {
+     "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+     "title": "ManualSigmas"
+    }
+   },
+   "398:361": {
+    "inputs": {
+     "value": 24
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+     "title": "Frame Rate"
+    }
+   },
+   "398:371": {
+    "inputs": {
+     "model_name": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+     "title": "Load Latent Upscale Model"
+    }
+   },
+   "398:388": {
+    "inputs": {
+     "video_cfg": 1,
+     "audio_cfg": 1,
+     "model": [
+      "398:384",
+      0
+     ],
+     "positive": [
+      "398:365",
+      0
+     ],
+     "negative": [
+      "398:365",
+      1
+     ]
+    },
+    "class_type": "LTXVDualCFGGuider",
+    "_meta": {
+     "title": "LTXV Dual CFG Guider"
+    }
+   },
+   "398:344": {
+    "inputs": {
+     "noise": [
+      "398:339",
+      0
+     ],
+     "guider": [
+      "398:388",
+      0
+     ],
+     "sampler": [
+      "398:352",
+      0
+     ],
+     "sigmas": [
+      "398:397",
+      0
+     ],
+     "latent_image": [
+      "398:377",
+      0
+     ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+     "title": "SamplerCustomAdvanced"
+    }
+   },
+   "398:357": {
+    "inputs": {
+     "strength": 0.7,
+     "bypass": [
+      "398:363",
+      0
+     ],
+     "vae": [
+      "398:385",
+      0
+     ],
+     "image": [
+      "398:350",
+      0
+     ],
+     "latent": [
+      "398:356",
+      0
+     ]
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": {
+     "title": "LTXVImgToVideoInplace"
+    }
+   },
+   "398:366": {
+    "inputs": {
+     "frames_number": [
+      "398:378",
+      1
+     ],
+     "frame_rate": [
+      "398:359",
+      1
+     ],
+     "batch_size": 1,
+     "audio_vae": [
+      "398:386",
+      0
+     ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+     "title": "Empty LTXV Latent Audio"
+    }
+   },
+   "398:367": {
+    "inputs": {
+     "av_latent": [
+      "398:344",
+      0
+     ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+     "title": "Separate AV Latent"
+    }
+   },
+   "398:377": {
+    "inputs": {
+     "video_latent": [
+      "398:357",
+      0
+     ],
+     "audio_latent": [
+      "398:366",
+      0
+     ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+     "title": "Concat AV Latent"
+    }
+   },
+   "398:351": {
+    "inputs": {
+     "resize_type": "scale longer dimension",
+     "resize_type.longer_size": 1536,
+     "scale_method": "lanczos",
+     "input": [
+      "395",
+      0
+     ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+     "title": "Resize Image/Mask"
+    }
+   },
+   "398:353": {
+    "inputs": {
+     "expression": "a/2",
+     "values.a": [
+      "398:372",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression"
+    }
+   },
+   "398:355": {
+    "inputs": {
+     "expression": "a/2",
+     "values.a": [
+      "398:360",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression"
+    }
+   },
+   "398:350": {
+    "inputs": {
+     "img_compression": 18,
+     "image": [
+      "398:351",
+      0
+     ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+     "title": "LTXV Preprocess"
+    }
+   },
+   "398:356": {
+    "inputs": {
+     "width": [
+      "398:353",
+      1
+     ],
+     "height": [
+      "398:355",
+      1
+     ],
+     "length": [
+      "398:378",
+      1
+     ],
+     "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {
+     "title": "Empty LTXV Latent Video"
+    }
+   },
+   "398:348": {
+    "inputs": {
+     "samples": [
+      "398:367",
+      0
+     ],
+     "upscale_model": [
+      "398:371",
+      0
+     ],
+     "vae": [
+      "398:385",
+      0
+     ]
+    },
+    "class_type": "LTXVLatentUpsampler",
+    "_meta": {
+     "title": "LTXVLatentUpsampler"
+    }
+   },
+   "398:349": {
+    "inputs": {
+     "strength": 1,
+     "bypass": [
+      "398:363",
+      0
+     ],
+     "vae": [
+      "398:385",
+      0
+     ],
+     "image": [
+      "398:350",
+      0
+     ],
+     "latent": [
+      "398:348",
+      0
+     ]
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": {
+     "title": "LTXVImgToVideoInplace"
+    }
+   },
+   "398:359": {
+    "inputs": {
+     "expression": "a",
+     "values.a": [
+      "398:361",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression (fps)"
+    }
+   },
+   "398:378": {
+    "inputs": {
+     "expression": "a * b + 1",
+     "values.a": [
+      "398:362",
+      0
+     ],
+     "values.b": [
+      "398:361",
+      0
+     ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+     "title": "Math Expression (length)"
+    }
+   },
+   "398:338": {
+    "inputs": {
+     "noise_seed": 42
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+     "title": "RandomNoise"
+    }
+   },
+   "398:340": {
+    "inputs": {
+     "video_latent": [
+      "398:349",
+      0
+     ],
+     "audio_latent": [
+      "398:367",
+      1
+     ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+     "title": "Concat AV Latent"
+    }
+   },
+   "398:396": {
+    "inputs": {
+     "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+     "title": "ManualSigmas"
+    }
+   },
+   "398:391": {
+    "inputs": {
+     "video_cfg": 1,
+     "audio_cfg": 1,
+     "model": [
+      "398:384",
+      0
+     ],
+     "positive": [
+      "398:365",
+      0
+     ],
+     "negative": [
+      "398:365",
+      1
+     ]
+    },
+    "class_type": "LTXVDualCFGGuider",
+    "_meta": {
+     "title": "LTXV Dual CFG Guider"
+    }
+   },
+   "398:341": {
+    "inputs": {
+     "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+     "title": "KSamplerSelect"
+    }
+   },
+   "398:368": {
+    "inputs": {
+     "noise": [
+      "398:338",
+      0
+     ],
+     "guider": [
+      "398:391",
+      0
+     ],
+     "sampler": [
+      "398:341",
+      0
+     ],
+     "sigmas": [
+      "398:396",
+      0
+     ],
+     "latent_image": [
+      "398:340",
+      0
+     ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+     "title": "SamplerCustomAdvanced"
+    }
+   },
+   "398:369": {
+    "inputs": {
+     "av_latent": [
+      "398:368",
+      0
+     ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+     "title": "Separate AV Latent"
+    }
+   },
+   "398:374": {
+    "inputs": {
+     "tile_size": 512,
+     "overlap": 64,
+     "temporal_size": 64,
+     "temporal_overlap": 16,
+     "samples": [
+      "398:369",
+      0
+     ],
+     "vae": [
+      "398:385",
+      0
+     ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+     "title": "VAE Decode (Tiled)"
+    }
+   },
+   "398:358": {
+    "inputs": {
+     "samples": [
+      "398:369",
+      1
+     ],
+     "audio_vae": [
+      "398:386",
+      0
+     ]
+    },
+    "class_type": "LTXVAudioVAEDecode",
+    "_meta": {
+     "title": "LTXV Audio VAE Decode"
+    }
+   },
+   "398:370": {
+    "inputs": {
+     "fps": [
+      "398:359",
+      0
+     ],
+     "bit_depth": 8,
+     "color_space": "sRGB",
+     "codec": "none",
+     "images": [
+      "398:374",
+      0
+     ],
+     "audio": [
+      "398:358",
+      0
+     ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+     "title": "Create Video"
+    }
+   }
+  }
+ }
+}

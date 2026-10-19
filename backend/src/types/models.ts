@@ -105,6 +105,8 @@ export interface Job {
   external_ref: string | null;
   asset_id: number | null;
   asset_stage: 'draft' | 'final' | null;
+  /** current step of a running job, e.g. "Refining the prompt" */
+  stage?: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

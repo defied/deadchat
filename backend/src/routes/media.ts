@@ -1,17 +1,43 @@
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
+import multer from 'multer';
 import { authenticate } from '../middleware/auth';
-import { getMedia, getMediaPath, listMedia, deleteMedia } from '../services/mediaStore';
+import { getMedia, getMediaPath, listMedia, deleteMedia, saveMedia } from '../services/mediaStore';
 
 const router = Router();
 
 router.use(authenticate);
 
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpeg|webp)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Start images must be PNG, JPEG or WebP'));
+  },
+});
+
+// POST /api/media/upload — add your own image to the gallery (e.g. as a video start frame)
+router.post('/upload', uploadImage.single('image'), (req: Request, res: Response): void => {
+  if (!req.file) { res.status(400).json({ error: 'image file is required' }); return; }
+  const media = saveMedia({
+    userId: req.user!.id,
+    type: 'image',
+    bytes: req.file.buffer,
+    mime: req.file.mimetype,
+    originalFilename: req.file.originalname,
+    prompt: `Uploaded: ${req.file.originalname}`,
+    meta: { uploaded: true },
+  });
+  res.status(201).json(media);
+});
+
 // GET /api/media
 router.get('/', (req: Request, res: Response): void => {
   const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 200);
   const offset = parseInt(String(req.query.offset || '0'), 10);
-  res.json(listMedia(req.user!.id, limit, offset));
+  const type = ['image', 'video', 'audio'].includes(String(req.query.type)) ? (String(req.query.type) as 'image' | 'video' | 'audio') : undefined;
+  res.json(listMedia(req.user!.id, limit, offset, type));
 });
 
 // GET /api/media/:id — Range-aware streaming (required for video scrubbing)

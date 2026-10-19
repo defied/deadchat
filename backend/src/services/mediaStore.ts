@@ -84,9 +84,14 @@ export function getMediaPath(filename: string): string {
   return path.join(config.mediaDir, filename);
 }
 
-export function listMedia(userId: number, limit = 50, offset = 0): Media[] {
+export function listMedia(userId: number, limit = 50, offset = 0, type?: MediaType): Media[] {
+  if (type) {
+    return db.prepare(
+      'SELECT * FROM media WHERE user_id = ? AND type = ? ORDER BY id DESC LIMIT ? OFFSET ?'
+    ).all(userId, type, limit, offset) as Media[];
+  }
   return db.prepare(
-    'SELECT * FROM media WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    'SELECT * FROM media WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?'
   ).all(userId, limit, offset) as Media[];
 }
 

@@ -13,6 +13,8 @@ export interface MediaItem {
   duration_s: number | null;
   prompt: string | null;
   provider_id: number | null;
+  /** JSON: generation metadata (model, final prompt, verdict, ...) */
+  meta?: string | null;
   created_at: string;
 }
 

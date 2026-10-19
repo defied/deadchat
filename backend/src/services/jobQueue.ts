@@ -86,7 +86,7 @@ export function setExternalRef(id: number, ref: string): void {
 export function complete(id: number, result: Record<string, unknown>): void {
   db.prepare(`
     UPDATE jobs
-    SET status = 'succeeded', result = ?, progress = 1, finished_at = datetime('now')
+    SET status = 'succeeded', result = ?, progress = 1, stage = NULL, finished_at = datetime('now')
     WHERE id = ?
   `).run(JSON.stringify(result), id);
 }
@@ -94,7 +94,7 @@ export function complete(id: number, result: Record<string, unknown>): void {
 export function fail(id: number, error: string): void {
   db.prepare(`
     UPDATE jobs
-    SET status = 'failed', error = ?, finished_at = datetime('now')
+    SET status = 'failed', error = ?, stage = NULL, finished_at = datetime('now')
     WHERE id = ?
   `).run(error, id);
 }
@@ -138,4 +138,9 @@ export async function awaitJob(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Human-readable current step, shown next to the progress bar. */
+export function setStage(id: number, stage: string | null): void {
+  db.prepare('UPDATE jobs SET stage = ? WHERE id = ?').run(stage, id);
 }
