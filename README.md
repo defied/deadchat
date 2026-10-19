@@ -39,6 +39,12 @@ Every image/video job runs on ComfyUI (`COMFYUI_URL`). The model list lives in
 `workflows.json` (ComfyUI's own API-format export — see `ComfyUI-Installs/README.md` on the GPU box).
 
 * **Local models** need only their weights in ComfyUI's models folder; Admin → Media shows any missing files.
+* **Free daily (Cloudflare Workers AI)**: FLUX.1 schnell / FLUX.2 [klein] / FLUX.2 [dev] on Cloudflare's free
+  10,000-neuron daily allowance (00:00 UTC reset), no GPU needed. Connect an account ID + Workers AI token in
+  Admin → Media; DeadChat tallies estimated usage and stops before the allowance runs out.
+* **Free sites** (Generate → Free sites): Dreamina (Seedance 2.5), Google Flow (Veo), Kling, PixVerse, Firefly,
+  Gemini, Bing, Leonardo, Krea, Recraft, Ideogram… These only offer free credits in their own web apps, so DeadChat
+  refines the prompt for the site's model, copies it and opens the site; results can be imported back into the gallery.
 * **Hosted models** (closed weights such as Seedance 2.5) run through ComfyUI's partner API nodes and are billed
   to a comfy.org API key, set in Admin → Media and stored encrypted with `SECRETS_KEY` (set it in production).
 * Jobs: refine prompt (local LLM) → upload start image → generate → for images, optional vision check that

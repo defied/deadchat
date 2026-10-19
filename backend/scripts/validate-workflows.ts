@@ -6,7 +6,7 @@ const BASE = process.env.COMFY || 'http://localhost:8188';
 
 async function main() {
   let bad = 0;
-  for (const m of MEDIA_MODELS) {
+  for (const m of MEDIA_MODELS.filter((x) => x.backend !== 'cloudflare')) {
     for (const variant of [{ fast: false }, { fast: true }]) {
       if (variant.fast && !m.hasFastMode) continue;
       const g = buildGraph(m, { prompt: 'validation test', image: 'example.png', ...variant });

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clapperboard, Maximize2, Trash2 } from 'lucide-react';
+import { Clapperboard, Maximize2, Trash2, Upload } from 'lucide-react';
 import { deleteMedia, listMedia, type MediaItem } from '../../api/media';
-import { parseMeta } from '../../api/generate';
+import { parseMeta, uploadMedia } from '../../api/generate';
 import { MediaImage } from '../MediaImage';
 import { MediaVideo } from '../MediaVideo';
 import { MediaLightbox } from '../MediaLightbox';
@@ -16,6 +16,8 @@ export function Gallery() {
   const [filter, setFilter] = useState<Filter>('all');
   const [open, setOpen] = useState<MediaItem | null>(null);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -44,12 +46,37 @@ export function Gallery() {
 
   return (
     <div>
-      <div className="seg" style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <div className="seg">
         {(['all', 'image', 'video'] as Filter[]).map((f) => (
           <button key={f} className={filter === f ? 'on' : ''} onClick={() => setFilter(f)}>
             {f === 'all' ? 'All' : f === 'image' ? 'Images' : 'Videos'}
           </button>
         ))}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime"
+          style={{ display: 'none' }}
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            setUploading(true);
+            try {
+              await uploadMedia(f);
+              await load();
+            } catch (err) {
+              setError(errorMessage(err, 'Upload failed'));
+            } finally {
+              setUploading(false);
+            }
+          }}
+        />
+        <button className="btn btn-sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          <Upload size={13} /> {uploading ? 'Uploading…' : 'Upload image or video'}
+        </button>
       </div>
       {error && <Alert onClose={() => setError('')}>{error}</Alert>}
       {!items ? (

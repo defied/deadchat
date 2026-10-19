@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEDIA_MODELS, buildGraph, ratioFromSize, type Graph } from './catalog';
+import { MEDIA_MODELS, buildGraph, resolveParams, ratioFromSize, type Graph } from './catalog';
+import { cloudflareCost } from './cloudflare';
 
 const PROMPT = 'unit-test prompt: a red cube on a blue table';
 
@@ -14,7 +15,7 @@ function links(g: Graph): Array<[string, string, string]> {
   return out;
 }
 
-for (const m of MEDIA_MODELS) {
+for (const m of MEDIA_MODELS.filter((x) => x.backend !== 'cloudflare')) {
   test(`${m.id}: builds a valid graph`, () => {
     const g = buildGraph(m, { prompt: PROMPT, image: m.needsImage || m.acceptsImage ? 'start.png' : undefined, seed: 123 });
     const json = JSON.stringify(g);
@@ -53,4 +54,19 @@ test('ratioFromSize picks the closest ratio', () => {
   assert.equal(ratioFromSize(512, 512), '1:1');
   assert.equal(ratioFromSize(768, 1024), '3:4');
   assert.equal(ratioFromSize(undefined, undefined), '1:1');
+});
+
+test('cloudflare models: free-tier cost estimates match the published rates', () => {
+  const schnell = MEDIA_MODELS.find((x) => x.id === 'cf-flux1-schnell')!;
+  // 1024² = 4 tiles × 4.8 + 4 steps × 9.6 = 57.6 → ~173 free images/day
+  assert.equal(cloudflareCost(schnell, { ratio: '1:1', fast: true }), 58);
+  const klein = MEDIA_MODELS.find((x) => x.id === 'cf-flux2-klein-9b')!;
+  assert.equal(cloudflareCost(klein, { ratio: '1:1', fast: false }), 1364);
+  for (const m of MEDIA_MODELS.filter((x) => x.backend === 'cloudflare')) {
+    assert.ok(m.cloudflare, `${m.id} has no cloudflare spec`);
+    assert.throws(() => buildGraph(m, { prompt: 'x' }), /runs on Cloudflare/);
+    const p = resolveParams(m, { prompt: 'x', ratio: '21:9' });
+    assert.ok(m.ratios.includes(p.ratio));
+    assert.ok(cloudflareCost(m, p) < 10_000, `${m.id} costs more than the whole free allowance`);
+  }
 });

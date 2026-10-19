@@ -3,7 +3,8 @@ import { authenticate } from '../middleware/auth';
 import { adminOnly } from '../middleware/adminOnly';
 import { enqueue } from '../services/jobQueue';
 import { getMedia } from '../services/mediaStore';
-import { MEDIA_MODELS, getMediaModel, type Ratio } from '../services/media/catalog';
+import { MEDIA_MODELS, getMediaModel, type MediaModel, type Ratio } from '../services/media/catalog';
+import { enhancePrompt } from '../services/media/enhance';
 import { availabilityFor, invalidateAvailability } from '../services/media/runner';
 import { getMediaSettings, updateMediaSettings } from '../services/media/settings';
 import { describeModel, type CatalogJobParams } from '../services/media/process';
@@ -21,6 +22,7 @@ router.get('/models', async (_req: Request, res: Response): Promise<void> => {
     defaults: { image: settings.defaultImageModel, video: settings.defaultVideoModel },
     enhanceByDefault: settings.enhanceByDefault,
     hostedEnabled: settings.apiKeySet,
+    cloudflare: settings.cloudflareSet ? { remainingNeurons: settings.cloudflareUsage.remaining, freeNeurons: 10_000 } : null,
   });
 });
 
@@ -102,9 +104,30 @@ router.put('/settings', adminOnly, (req: Request, res: Response): void => {
     defaultImageModel: b.defaultImageModel as string | undefined,
     defaultVideoModel: b.defaultVideoModel as string | undefined,
     enhanceByDefault: typeof b.enhanceByDefault === 'boolean' ? b.enhanceByDefault : undefined,
+    cloudflareAccountId: b.cloudflareAccountId === undefined ? undefined : (b.cloudflareAccountId as string | null) || null,
+    cloudflareToken: b.cloudflareToken === undefined ? undefined : (b.cloudflareToken as string | null) || null,
   });
   invalidateAvailability();
   res.json(s);
+});
+
+// POST /api/generate/refine — rewrite a prompt for a model/site outside DeadChat
+// (the "free daily credits" launcher). Body: { prompt, kind, target }
+router.post('/refine', async (req: Request, res: Response): Promise<void> => {
+  const { prompt, kind, target } = (req.body || {}) as { prompt?: string; kind?: string; target?: string };
+  if (typeof prompt !== 'string' || !prompt.trim()) { res.status(400).json({ error: 'prompt is required' }); return; }
+  const k = kind === 'video' ? 'video' : 'image';
+  const label = typeof target === 'string' && target.trim() ? target.trim().slice(0, 80) : k === 'video' ? 'video' : 'image';
+  try {
+    const refined = await enhancePrompt(prompt.trim().slice(0, 4000), {
+      label,
+      kind: k,
+      strengths: [],
+    } as unknown as MediaModel);
+    res.json({ prompt: refined });
+  } catch (e) {
+    res.status(502).json({ error: `Prompt refinement failed: ${(e as Error).message}` });
+  }
 });
 
 export default router;

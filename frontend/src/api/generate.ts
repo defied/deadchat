@@ -9,7 +9,7 @@ export interface CatalogModel {
   label: string;
   vendor: string;
   kind: MediaKind;
-  backend: 'local' | 'api';
+  backend: 'local' | 'api' | 'cloudflare';
   needsImage?: boolean;
   acceptsImage?: boolean;
   summary: string;
@@ -32,6 +32,8 @@ export interface CatalogResponse {
   defaults: { image: string; video: string };
   enhanceByDefault: boolean;
   hostedEnabled: boolean;
+  /** null = Cloudflare not connected */
+  cloudflare: { remainingNeurons: number; freeNeurons: number } | null;
 }
 
 export interface GenerateRequest {
@@ -60,8 +62,15 @@ export async function startGeneration(req: GenerateRequest): Promise<number> {
 }
 
 export async function uploadStartImage(file: File): Promise<MediaItem> {
+  return uploadMedia(file);
+}
+
+/** Add an image or video to the gallery (start frames, or results imported from other sites). */
+export async function uploadMedia(file: File, opts: { prompt?: string; source?: string } = {}): Promise<MediaItem> {
   const form = new FormData();
-  form.append('image', file);
+  form.append('file', file);
+  if (opts.prompt) form.append('prompt', opts.prompt);
+  if (opts.source) form.append('source', opts.source);
   const { data } = await client.post<MediaItem>('/api/media/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
@@ -74,6 +83,9 @@ export interface MediaSettings {
   defaultImageModel: string;
   defaultVideoModel: string;
   enhanceByDefault: boolean;
+  cloudflareSet: boolean;
+  cloudflareAccountId: string | null;
+  cloudflareUsage: { day: string; neurons: number; remaining: number };
 }
 
 export async function getMediaSettings(): Promise<MediaSettings> {
@@ -81,7 +93,13 @@ export async function getMediaSettings(): Promise<MediaSettings> {
   return data;
 }
 
-export async function updateMediaSettings(patch: Partial<Omit<MediaSettings, 'apiKeySet' | 'apiKeyHint'>> & { apiKey?: string | null }): Promise<MediaSettings> {
+export async function updateMediaSettings(
+  patch: Partial<Pick<MediaSettings, 'defaultImageModel' | 'defaultVideoModel' | 'enhanceByDefault'>> & {
+    apiKey?: string | null;
+    cloudflareAccountId?: string | null;
+    cloudflareToken?: string | null;
+  },
+): Promise<MediaSettings> {
   const { data } = await client.put<MediaSettings>('/api/generate/settings', patch);
   return data;
 }
@@ -107,4 +125,10 @@ export function parseMeta(raw: unknown): GenerationMeta {
   } catch {
     return {};
   }
+}
+
+/** Refine a prompt for a model/site outside DeadChat (free-sites launcher). */
+export async function refinePrompt(prompt: string, kind: MediaKind, target: string): Promise<string> {
+  const { data } = await client.post<{ prompt: string }>('/api/generate/refine', { prompt, kind, target });
+  return data.prompt;
 }

@@ -10,24 +10,31 @@ router.use(authenticate);
 
 const uploadImage = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  // 200 MB: imported videos from external sites (Dreamina, Flow, Kling…) can be large.
+  limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (/^image\/(png|jpeg|webp)$/.test(file.mimetype)) cb(null, true);
-    else cb(new Error('Start images must be PNG, JPEG or WebP'));
+    if (/^image\/(png|jpeg|webp)$/.test(file.mimetype) || /^video\/(mp4|webm|quicktime)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Upload a PNG, JPEG or WebP image, or an MP4/WebM/MOV video'));
   },
 });
 
-// POST /api/media/upload — add your own image to the gallery (e.g. as a video start frame)
-router.post('/upload', uploadImage.single('image'), (req: Request, res: Response): void => {
-  if (!req.file) { res.status(400).json({ error: 'image file is required' }); return; }
+// POST /api/media/upload — add your own image or video to the gallery
+// (a start frame for video, or a result imported from another site).
+// Form fields: image|file (the file), prompt?, source? (e.g. "Dreamina · Seedance 2.5")
+router.post('/upload', uploadImage.fields([{ name: 'image', maxCount: 1 }, { name: 'file', maxCount: 1 }]), (req: Request, res: Response): void => {
+  const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+  const file = files?.image?.[0] ?? files?.file?.[0];
+  if (!file) { res.status(400).json({ error: 'file is required' }); return; }
+  const source = typeof req.body?.source === 'string' ? req.body.source.slice(0, 120) : null;
+  const prompt = typeof req.body?.prompt === 'string' && req.body.prompt.trim() ? req.body.prompt.slice(0, 4000) : null;
   const media = saveMedia({
     userId: req.user!.id,
-    type: 'image',
-    bytes: req.file.buffer,
-    mime: req.file.mimetype,
-    originalFilename: req.file.originalname,
-    prompt: `Uploaded: ${req.file.originalname}`,
-    meta: { uploaded: true },
+    type: file.mimetype.startsWith('video/') ? 'video' : 'image',
+    bytes: file.buffer,
+    mime: file.mimetype,
+    originalFilename: file.originalname,
+    prompt: prompt ?? `Uploaded: ${file.originalname}`,
+    meta: { uploaded: true, ...(source ? { source, modelLabel: source } : {}), ...(prompt ? { finalPrompt: prompt } : {}) },
   });
   res.status(201).json(media);
 });

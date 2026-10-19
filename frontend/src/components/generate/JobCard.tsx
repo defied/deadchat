@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, Clapperboard, Cloud, Cpu, Loader2, ShieldCheck, Sparkles, X, XCircle } from 'lucide-react';
+import { CheckCircle, Clapperboard, Cloud, Cpu, Gift, Loader2, ShieldCheck, Sparkles, X, XCircle } from 'lucide-react';
 import type { Job } from '../../api/jobs';
 import type { CatalogModel, GenerationMeta } from '../../api/generate';
 import { MediaImage } from '../MediaImage';
@@ -60,7 +60,8 @@ export function JobCard({
         <b>{model?.label ?? meta.modelLabel ?? job.type}</b>
         {model && (
           <span className="badge">
-            {model.backend === 'api' ? <Cloud size={10} /> : <Cpu size={10} />} {model.backend === 'api' ? 'hosted' : 'local'}
+            {model.backend === 'local' ? <Cpu size={10} /> : model.backend === 'cloudflare' ? <Gift size={10} /> : <Cloud size={10} />}{' '}
+            {model.backend === 'local' ? 'local' : model.backend === 'cloudflare' ? 'free daily' : 'hosted'}
           </span>
         )}
         {meta.verdict && (

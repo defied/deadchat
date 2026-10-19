@@ -8,7 +8,8 @@ import { saveMedia, getMedia, getMediaPath } from '../mediaStore';
 import { evictAllModels } from '../ollama';
 import { freeMemory } from '../comfyui';
 import * as assetPipeline from '../assetPipeline';
-import { getMediaModel, buildGraph, ratioFromSize, type MediaModel, type Ratio } from './catalog';
+import { getMediaModel, buildGraph, resolveParams, ratioFromSize, type MediaModel, type Ratio } from './catalog';
+import { runCloudflare } from './cloudflare';
 import { runGraph, uploadInputImage, type RunOutput } from './runner';
 import { enhancePrompt, verifyImage, correctPrompt, type Verdict } from './enhance';
 import { getMediaSettings } from './settings';
@@ -98,9 +99,17 @@ export async function processCatalogJob(job: Job, raw: Record<string, unknown>):
       await evictAllModels();
       await freeMemory();
     }
-    stage(attempts > 1 ? `Generating (attempt ${i + 1}/${attempts})` : model.backend === 'api' ? `Waiting for ${model.vendor}` : 'Generating');
+    stage(
+      attempts > 1
+        ? `Generating (attempt ${i + 1}/${attempts})`
+        : model.backend === 'api'
+          ? `Waiting for ${model.vendor}`
+          : model.backend === 'cloudflare'
+            ? 'Generating on Cloudflare'
+            : 'Generating',
+    );
     const span = 0.85 / attempts;
-    const graph = buildGraph(model, {
+    const req = {
       prompt,
       negative: p.negative,
       seed,
@@ -110,8 +119,12 @@ export async function processCatalogJob(job: Job, raw: Record<string, unknown>):
       fast: p.fast,
       audio: p.audio,
       image: imageName,
-    });
-    const outputs = await runGraph(model, graph, (x) => updateProgress(job.id, 0.05 + span * i + span * x));
+    };
+    const outputs =
+      model.backend === 'cloudflare'
+        ? await runCloudflare(model, resolveParams(model, req))
+        : await runGraph(model, buildGraph(model, req), (x) => updateProgress(job.id, 0.05 + span * i + span * x));
+    updateProgress(job.id, 0.05 + span * (i + 1));
 
     let verdict: Verdict | undefined;
     if (attempts > 1) {
@@ -174,7 +187,7 @@ export async function processCatalogJob(job: Job, raw: Record<string, unknown>):
 }
 
 export function describeModel(m: MediaModel) {
-  const { apply: _apply, ...rest } = m;
+  const { apply: _apply, cloudflare, ...rest } = m;
   void _apply;
-  return rest;
+  return { ...rest, ...(cloudflare ? { cloudflareModel: cloudflare.model } : {}) };
 }

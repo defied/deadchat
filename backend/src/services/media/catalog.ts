@@ -7,6 +7,7 @@
 // each entry only needs to write DeadChat's parameters into the right inputs.
 
 import workflows from './workflows.json';
+import { CF_NEURONS, type CloudflareSpec } from './cloudflare';
 
 export type MediaKind = 'image' | 'video';
 export type Ratio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9';
@@ -33,8 +34,12 @@ export interface MediaModel {
   label: string;
   vendor: string;
   kind: MediaKind;
-  /** hosted models run through ComfyUI API nodes and need a comfy.org key */
-  backend: 'local' | 'api';
+  /**
+   * local: weights on the GPU box (free) · api: ComfyUI partner nodes (comfy.org credits)
+   * · cloudflare: Workers AI free daily allowance (no ComfyUI involved)
+   */
+  backend: 'local' | 'api' | 'cloudflare';
+  cloudflare?: CloudflareSpec;
   /** needs a start image (image-to-video) */
   needsImage?: boolean;
   /** accepts an optional start image */
@@ -572,6 +577,55 @@ export const MEDIA_MODELS: MediaModel[] = [
     },
   },
 
+  // ── Cloudflare Workers AI (free daily allowance) ──
+  {
+    id: 'cf-flux1-schnell',
+    label: 'FLUX.1 [schnell] · Cloudflare',
+    vendor: 'Black Forest Labs',
+    kind: 'image',
+    backend: 'cloudflare',
+    summary: 'Runs on Cloudflare, not your GPU: ~100–170 free images a day. Good for quick drafts while the GPU is busy.',
+    strengths: ['free daily', 'speed'],
+    ratios: ['1:1'],
+    hasFastMode: true,
+    speed: '~5–10 s',
+    cost: '~60–100 of 10,000 free neurons/day',
+    defaults: { ratio: '1:1' },
+    cloudflare: { model: '@cf/black-forest-labs/flux-1-schnell', format: 'json', steps: { draft: 4, final: 8 }, neurons: CF_NEURONS.schnell },
+    apply() {},
+  },
+  {
+    id: 'cf-flux2-klein-9b',
+    label: 'FLUX.2 [klein] 9B · Cloudflare',
+    vendor: 'Black Forest Labs',
+    kind: 'image',
+    backend: 'cloudflare',
+    summary: 'FLUX.2 quality on Cloudflare’s free daily allowance (~7 images a day).',
+    strengths: ['free daily', 'quality'],
+    ratios: WIDE_RATIOS,
+    speed: '~5–15 s',
+    cost: '~1,400 of 10,000 free neurons/day',
+    defaults: { ratio: '1:1' },
+    cloudflare: { model: '@cf/black-forest-labs/flux-2-klein-9b', format: 'multipart', steps: { draft: 4, final: 4 }, neurons: CF_NEURONS.klein },
+    apply() {},
+  },
+  {
+    id: 'cf-flux2-dev',
+    label: 'FLUX.2 [dev] · Cloudflare',
+    vendor: 'Black Forest Labs',
+    kind: 'image',
+    backend: 'cloudflare',
+    summary: 'Full FLUX.2 [dev] without using local VRAM; the free allowance covers only a few images a day.',
+    strengths: ['free daily', 'photorealism'],
+    ratios: WIDE_RATIOS,
+    hasFastMode: true,
+    speed: '~15–40 s',
+    cost: 'draft ~1,200 · final ~3,000 of 10,000 free neurons/day',
+    defaults: { ratio: '1:1' },
+    cloudflare: { model: '@cf/black-forest-labs/flux-2-dev', format: 'multipart', steps: { draft: 8, final: 20 }, neurons: CF_NEURONS.flux2dev },
+    apply() {},
+  },
+
   // ── Hosted images ──
   {
     id: 'nano-banana-21',
@@ -706,18 +760,14 @@ export function getMediaModel(id: string): MediaModel | undefined {
   return MEDIA_MODELS.find((m) => m.id === id);
 }
 
-/** Build a ready-to-queue ComfyUI API graph for `model` with `params`. */
-export function buildGraph(model: MediaModel, params: Partial<MediaParams> & { prompt: string }): Graph {
-  const base = GRAPHS[model.id];
-  if (!base) throw new Error(`No workflow for ${model.id}`);
-  if (model.needsImage && !params.image) throw new Error(`${model.label} needs a start image`);
-  const g = JSON.parse(JSON.stringify(base)) as Graph;
+/** Clamp/fill request parameters to what `model` supports. */
+export function resolveParams(model: MediaModel, params: Partial<MediaParams> & { prompt: string }): MediaParams {
   const ratio = params.ratio && model.ratios.includes(params.ratio) ? params.ratio : model.defaults.ratio;
   const resolution =
     params.resolution && model.resolutions?.includes(params.resolution) ? params.resolution : model.defaults.resolution;
   const d = model.durations;
   const duration = d ? Math.min(d.max, Math.max(d.min, params.duration ?? d.default)) : undefined;
-  model.apply(g, {
+  return {
     prompt: params.prompt,
     negative: params.negative,
     seed: Number.isFinite(params.seed) ? Math.abs(Math.floor(params.seed!)) % SEED_MAX : Math.floor(Math.random() * SEED_MAX),
@@ -727,7 +777,17 @@ export function buildGraph(model: MediaModel, params: Partial<MediaParams> & { p
     fast: params.fast,
     image: params.image,
     audio: params.audio,
-  });
+  };
+}
+
+/** Build a ready-to-queue ComfyUI API graph for `model` with `params`. */
+export function buildGraph(model: MediaModel, params: Partial<MediaParams> & { prompt: string }): Graph {
+  if (model.backend === 'cloudflare') throw new Error(`${model.label} runs on Cloudflare, not ComfyUI`);
+  const base = GRAPHS[model.id];
+  if (!base) throw new Error(`No workflow for ${model.id}`);
+  if (model.needsImage && !params.image) throw new Error(`${model.label} needs a start image`);
+  const g = JSON.parse(JSON.stringify(base)) as Graph;
+  model.apply(g, resolveParams(model, params));
   return g;
 }
 

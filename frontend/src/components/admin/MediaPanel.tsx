@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Cloud, Cpu, KeyRound } from 'lucide-react';
+import { Check, Cloud, Cpu, Gift, KeyRound } from 'lucide-react';
 import { getCatalog, getMediaSettings, updateMediaSettings, type MediaSettings } from '../../api/generate';
 import { Alert, Field, Loading, Section, errorMessage } from '../ui';
 
@@ -71,6 +71,8 @@ export function MediaPanel() {
           )}
         </div>
       </Section>
+
+      <CloudflareSection settings={settings} saving={saving} onSave={save} />
 
       <Section title="Defaults" hint="Used by agents, Studio portraits and older API clients that don't name a model.">
         <div className="card opt-row">
@@ -146,5 +148,77 @@ export function MediaPanel() {
         </div>
       </Section>
     </div>
+  );
+}
+
+function CloudflareSection({
+  settings,
+  saving,
+  onSave,
+}: {
+  settings: MediaSettings;
+  saving: boolean;
+  onSave: (patch: Parameters<typeof updateMediaSettings>[0], msg: string) => Promise<void>;
+}) {
+  const [accountId, setAccountId] = useState(settings.cloudflareAccountId ?? '');
+  const [token, setToken] = useState('');
+  const u = settings.cloudflareUsage;
+  const pct = Math.round((u.remaining / 10_000) * 100);
+
+  return (
+    <Section
+      title={<><Gift size={14} /> Free daily images · Cloudflare Workers AI</>}
+      hint={
+        <>
+          A free Cloudflare account includes 10,000 “neurons” a day (resets 00:00 UTC) — about 100–170 FLUX.1 schnell
+          images or ~7 FLUX.2 [klein] images, without using your GPU. Create a token at{' '}
+          <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">dash.cloudflare.com → API Tokens</a>{' '}
+          with the <b>Workers AI</b> template; the account ID is on the dashboard home page. On the free Workers plan
+          Cloudflare never bills — requests simply stop when the day’s allowance is used.
+        </>
+      }
+    >
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {settings.cloudflareSet && (
+          <div style={{ fontSize: 13 }}>
+            Connected · today: ~{u.neurons.toLocaleString()} of 10,000 neurons used ({pct}% left, estimated by DeadChat)
+            <div className="progress" style={{ marginTop: 6, maxWidth: 360 }}>
+              <div style={{ width: `${100 - pct}%` }} />
+            </div>
+          </div>
+        )}
+        <div className="opt-row">
+          <Field label="Account ID">
+            <input value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder="32-character account ID" autoComplete="off" />
+          </Field>
+          <Field label={settings.cloudflareSet ? 'API token (set — paste to replace)' : 'API token'}>
+            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Workers AI token" autoComplete="off" />
+          </Field>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-primary"
+            disabled={saving || !accountId.trim() || (!settings.cloudflareSet && token.trim().length < 20)}
+            onClick={() =>
+              onSave(
+                { cloudflareAccountId: accountId.trim(), ...(token.trim() ? { cloudflareToken: token.trim() } : {}) },
+                'Cloudflare connected — the “Free daily · Cloudflare” models are now available in Generate.',
+              ).then(() => setToken(''))
+            }
+          >
+            Save
+          </button>
+          {settings.cloudflareSet && (
+            <button
+              className="btn btn-danger"
+              disabled={saving}
+              onClick={() => onSave({ cloudflareAccountId: null, cloudflareToken: null }, 'Cloudflare disconnected.')}
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
+      </div>
+    </Section>
   );
 }

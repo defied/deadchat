@@ -1,4 +1,4 @@
-import { Cloud, Cpu, Music, Image as ImageIcon, Zap } from 'lucide-react';
+import { Cloud, Cpu, Gift, Music, Image as ImageIcon, Zap } from 'lucide-react';
 import type { CatalogModel, MediaKind } from '../../api/generate';
 
 export function ModelPicker({
@@ -7,16 +7,26 @@ export function ModelPicker({
   value,
   onChange,
   hostedEnabled,
+  cloudflare,
 }: {
   models: CatalogModel[];
   kind: MediaKind;
   value: string;
   onChange: (id: string) => void;
   hostedEnabled: boolean;
+  cloudflare?: { remainingNeurons: number; freeNeurons: number } | null;
 }) {
   const ofKind = models.filter((m) => m.kind === kind);
   const groups: Array<{ label: string; icon: React.ReactNode; items: CatalogModel[]; note?: string }> = [
     { label: 'On this machine', icon: <Cpu size={12} />, items: ofKind.filter((m) => m.backend === 'local'), note: 'free · private' },
+    {
+      label: 'Free daily · Cloudflare',
+      icon: <Gift size={12} />,
+      items: ofKind.filter((m) => m.backend === 'cloudflare'),
+      note: cloudflare
+        ? `${Math.round((cloudflare.remainingNeurons / cloudflare.freeNeurons) * 100)}% left today`
+        : 'needs a free Cloudflare account',
+    },
     {
       label: 'Hosted',
       icon: <Cloud size={12} />,

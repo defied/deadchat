@@ -4,7 +4,8 @@
 import { randomUUID } from 'crypto';
 import { getComfyuiUrl } from '../comfyuiSettings';
 import { pollHistory, fetchOutputFile } from '../comfyui';
-import { getComfyApiKey } from './settings';
+import { getComfyApiKey, getCloudflareCredentials, getCloudflareUsage } from './settings';
+import { cloudflareCost } from './cloudflare';
 import { MEDIA_MODELS, type Graph, type MediaModel } from './catalog';
 
 function base(): string {
@@ -121,6 +122,16 @@ export async function availabilityFor(models = MEDIA_MODELS): Promise<Record<str
   const hasKey = !!getComfyApiKey();
   const out: Record<string, ModelAvailability> = {};
   for (const m of models) {
+    if (m.backend === 'cloudflare') {
+      const usage = getCloudflareUsage();
+      const need = cloudflareCost(m, { ratio: m.defaults.ratio, fast: m.hasFastMode });
+      out[m.id] = !getCloudflareCredentials()
+        ? { available: false, reason: 'Needs a free Cloudflare account (Admin → Media)' }
+        : usage.remaining < need
+          ? { available: false, reason: 'Free Cloudflare allowance used up for today (resets 00:00 UTC)' }
+          : { available: true };
+      continue;
+    }
     if (!snap.reachable) {
       out[m.id] = { available: false, reason: 'ComfyUI is offline' };
     } else if (m.backend === 'api') {

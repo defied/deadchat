@@ -177,6 +177,7 @@ export function CreatePanel() {
             value={modelIds[kind]}
             onChange={(id) => setModelIds((m) => ({ ...m, [kind]: id }))}
             hostedEnabled={!!catalog?.hostedEnabled}
+            cloudflare={catalog?.cloudflare}
           />
         </Field>
 
