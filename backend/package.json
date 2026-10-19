@@ -7,7 +7,7 @@
     "dev": "nodemon",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "node --require ts-node/register --test src/services/anthropicTranslate.test.ts",
+    "test": "node --require ts-node/register --test src/services/anthropicTranslate.test.ts src/services/media/catalog.test.ts",
     "worker": "ts-node src/worker.ts"
   },
   "dependencies": {

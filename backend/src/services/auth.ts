@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { config } from '../config';
 
 export function hashPassword(password: string): string {
@@ -30,10 +31,12 @@ export function signAccessToken(user: { id: number; username: string; role: stri
 }
 
 export function signRefreshToken(user: { id: number }): string {
+  // jwtid makes every refresh token unique even when two are issued in the same
+  // second (otherwise they'd be byte-identical and share one DB row's hash).
   return jwt.sign(
     { userId: user.id, type: 'refresh' } satisfies RefreshTokenPayload,
     config.jwtSecret,
-    { expiresIn: config.refreshExpiry } as jwt.SignOptions
+    { expiresIn: config.refreshExpiry, jwtid: randomUUID() } as jwt.SignOptions
   );
 }
 

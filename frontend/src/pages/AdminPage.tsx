@@ -10,15 +10,17 @@ import { ModelPricingPanel } from '../components/admin/ModelPricingPanel';
 import { LiveStatsPanel } from '../components/admin/LiveStatsPanel';
 import { ComfyUIStatsPanel } from '../components/admin/ComfyUIStatsPanel';
 import { AgentsPanel } from '../components/admin/AgentsPanel';
+import { MediaPanel } from '../components/admin/MediaPanel';
 import type { User } from '../api/auth';
 import type { UsageSummary } from '../api/users';
 import * as usersApi from '../api/users';
-import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot, Image, Shield } from 'lucide-react';
+import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot, Image, Shield, Wand2 } from 'lucide-react';
 
 const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={14} /> },
   { id: 'models', label: 'Models', icon: <Cpu size={14} /> },
   { id: 'agents', label: 'Agent library', icon: <Bot size={14} /> },
+  { id: 'media', label: 'Media', icon: <Wand2 size={14} /> },
   { id: 'usage', label: 'Usage', icon: <BarChart3 size={14} /> },
   { id: 'pricing', label: 'Pricing', icon: <DollarSign size={14} /> },
   { id: 'live', label: 'Ollama live', icon: <Activity size={14} /> },
@@ -30,6 +32,7 @@ const SUBTITLES: Record<Tab, string> = {
   users: 'Accounts, roles and passwords.',
   models: 'Install, configure and choose the default chat model.',
   agents: 'Starter agents every user can chat with or copy.',
+  media: 'Image and video models, hosted-model API key, and defaults.',
   usage: 'Requests and tokens per user and model.',
   pricing: 'Per-model prices used to estimate cost in Usage.',
   live: 'What Ollama is running right now: VRAM, throughput, recent requests.',
@@ -173,6 +176,7 @@ export function AdminPage() {
       {tab === 'live' && <LiveStatsPanel />}
       {tab === 'comfyui' && <ComfyUIStatsPanel />}
       {tab === 'agents' && <AgentsPanel />}
+      {tab === 'media' && <MediaPanel />}
 
       {showForm && (
         <UserForm

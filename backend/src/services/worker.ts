@@ -8,6 +8,7 @@ import { selectProvider } from './providers/registry';
 import { evictAllModels } from './ollama';
 import { freeMemory } from './comfyui';
 import * as assetPipeline from './assetPipeline';
+import { processCatalogJob } from './media/process';
 import { config } from '../config';
 import type { Job, JobType, MediaType } from '../types/models';
 
@@ -44,7 +45,11 @@ async function processJob(job: Job): Promise<void> {
   const params = JSON.parse(job.params) as Record<string, unknown>;
 
   try {
-    if (job.type === 'image' || job.type === 'video' || job.type === 'tts') {
+    if (job.type === 'image' || job.type === 'video') {
+      // All image/video generation goes through the media catalog (local
+      // ComfyUI models and hosted API nodes alike).
+      await processCatalogJob(job, params);
+    } else if (job.type === 'tts') {
       await processMediaJob(job, params);
     } else if (job.type === 'agent') {
       await processAgentJob(job, params);

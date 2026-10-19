@@ -1,6 +1,6 @@
 import client from './client';
 
-export type JobType = 'image' | 'video' | 'agent';
+export type JobType = 'image' | 'video' | 'agent' | 'tts';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface Job {
@@ -13,6 +13,8 @@ export interface Job {
   provider_id: number | null;
   params: string;
   progress: number;
+  /** human-readable current step while running */
+  stage?: string | null;
   result: string | null;
   error: string | null;
   attempts: number;

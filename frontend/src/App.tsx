@@ -63,7 +63,8 @@ export function App() {
             {/* One route for both so the page stays mounted when a new chat gets its id. */}
             <Route path="/chat/:sessionId?" element={<Page><ChatPage /></Page>} />
             <Route path="/agents" element={<Page><AgentsPage /></Page>} />
-            <Route path="/generate" element={<Page><GeneratePage /></Page>} />
+            <Route path="/generate" element={<Navigate to="/generate/create" replace />} />
+            <Route path="/generate/:tab" element={<Page><GeneratePage /></Page>} />
             <Route path="/studio" element={<Page><StudioPage /></Page>} />
             <Route path="/tokens" element={<Page><TokensPage /></Page>} />
             <Route
