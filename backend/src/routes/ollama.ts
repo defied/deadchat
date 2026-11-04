@@ -5,11 +5,61 @@ import { config } from '../config';
 import db from '../db/connection';
 import { buildSnapshot, fetchNginxStatus, type RunningModelLite } from '../services/liveStats';
 import { getOllamaUrl, getOllamaUrlOverride, setOllamaUrl } from '../services/appSettings';
+import {
+  getBackend,
+  listBackends,
+  primaryBackendId,
+  primaryDefaultUrl,
+  runWithBackendUrl,
+  setBackendDefaultModel,
+} from '../services/ollamaBackends';
 
 const FRONTEND_STATUS_URL =
   process.env.FRONTEND_STATUS_URL || 'http://deadchat-frontend:8080/_nginx_status';
 
 const router = Router();
+
+// ?backend=<id> on any route below makes its Ollama calls go to that backend
+// (e.g. pulling a model onto the Mac). Without it, the default backend is used.
+router.use((req: Request, res: Response, next) => {
+  const requested = req.query.backend;
+  if (typeof requested !== 'string' || !requested) return next();
+  const b = getBackend(requested);
+  if (!b) {
+    res.status(400).json({ error: `Unknown backend "${requested}"` });
+    return;
+  }
+  runWithBackendUrl(b.url, next);
+});
+
+// GET /api/ollama/backends — every backend with URL, health and default model (admin only)
+router.get('/backends', authenticate, adminOnly, (_req: Request, res: Response): void => {
+  res.json({ backends: listBackends() });
+});
+
+// PUT /api/ollama/backends/:id/default-model — Body: { model: string | null } (admin only)
+// The model new chats on that backend start with, and what a chat falls back
+// to when it lands on that backend without a model the backend has.
+router.put('/backends/:id/default-model', authenticate, adminOnly, (req: Request, res: Response): void => {
+  const b = getBackend(req.params.id as string);
+  if (!b) {
+    res.status(404).json({ error: 'Unknown backend' });
+    return;
+  }
+  const raw = req.body?.model;
+  if (raw !== null && raw !== undefined && raw !== '' && typeof raw !== 'string') {
+    res.status(400).json({ error: 'model must be a string or null' });
+    return;
+  }
+  const backendModels = listBackends().find((x) => x.id === b.id)?.models;
+  const model = typeof raw === 'string' ? raw.trim() : '';
+  if (model && backendModels && !backendModels.includes(model)) {
+    res.status(400).json({ error: `Model "${model}" is not installed on ${b.id}` });
+    return;
+  }
+  setBackendDefaultModel(b.id, model || null);
+  res.json({ backends: listBackends() });
+});
 
 // GET /api/ollama/active-model - accessible to all authenticated users
 router.get('/active-model', authenticate, (_req: Request, res: Response): void => {
@@ -273,9 +323,10 @@ router.put('/active-model', authenticate, adminOnly, (req: Request, res: Respons
 router.get('/backend-url', authenticate, adminOnly, (_req: Request, res: Response): void => {
   const override = getOllamaUrlOverride();
   res.json({
-    url: getOllamaUrl(),
-    default: config.ollamaUrl,
+    url: getBackend(primaryBackendId())!.url,
+    default: primaryDefaultUrl(),
     isOverride: override !== null,
+    backends: listBackends(),
   });
 });
 
@@ -287,8 +338,8 @@ router.put('/backend-url', authenticate, adminOnly, (req: Request, res: Response
   if (raw === null || raw === undefined || raw === '') {
     setOllamaUrl(null);
     res.json({
-      url: getOllamaUrl(),
-      default: config.ollamaUrl,
+      url: getBackend(primaryBackendId())!.url,
+      default: primaryDefaultUrl(),
       isOverride: false,
       message: 'Ollama URL override cleared; using boot-time default',
     });
@@ -325,7 +376,7 @@ router.put('/backend-url', authenticate, adminOnly, (req: Request, res: Response
   setOllamaUrl(normalised);
   res.json({
     url: normalised,
-    default: config.ollamaUrl,
+    default: primaryDefaultUrl(),
     isOverride: true,
     message: `Ollama URL set to ${normalised}`,
   });

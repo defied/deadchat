@@ -5,6 +5,7 @@ import {
 import * as ollamaApi from '../../api/ollama';
 import type { OllamaModel, RunningModel, BackendUrlInfo } from '../../api/ollama';
 import { ModelSettingsEditor } from './ModelSettingsEditor';
+import { BackendsCard } from './BackendsCard';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -253,6 +254,8 @@ export function ModelsPanel() {
         </div>
       )}
 
+      <BackendsCard />
+
       {/* Backend URL config */}
       <div style={{
         padding: '12px 16px',
@@ -270,7 +273,7 @@ export function ModelsPanel() {
           color: 'var(--color-text-secondary)',
         }}>
           <Server size={16} style={{ color: 'var(--color-text-dim)' }} />
-          <span style={{ fontWeight: 500 }}>Ollama backend URL</span>
+          <span style={{ fontWeight: 500 }}>Primary backend URL</span>
           {backendUrl?.isOverride ? (
             <span style={{
               padding: '1px 6px', fontSize: 10, fontWeight: 500, borderRadius: 4,
@@ -324,7 +327,7 @@ export function ModelsPanel() {
           )}
         </div>
         <div style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 6 }}>
-          All chat, generate, and tool-call traffic forwards here. Boot default: <code>{backendUrl?.default || '—'}</code>
+          Overrides the primary backend's URL. The model list below and admin actions use the primary while it's online. Boot default: <code>{backendUrl?.default || '—'}</code>
         </div>
         {backendUrlNotice && (
           <div style={{

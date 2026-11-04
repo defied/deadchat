@@ -18,6 +18,15 @@ export interface StreamState {
   text: string;
   toolCalls: ToolCallEntry[];
   model?: string;
+  /** Backend answering the current reply. */
+  backend?: string;
+}
+
+/** Set when the chat's backend was down and another one answered the last reply. */
+export interface BackendSwitch {
+  backend: string;
+  switchedFrom: string;
+  model: string;
 }
 
 const IDLE: StreamState = { active: false, thinking: '', text: '', toolCalls: [] };
@@ -31,6 +40,7 @@ export function useChatSession(
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [stream, setStream] = useState<StreamState>(IDLE);
+  const [backendSwitch, setBackendSwitch] = useState<BackendSwitch | null>(null);
   const [remoteGenerating, setRemoteGenerating] = useState(false);
   /** Session id whose history has finished loading (null while loading). */
   const [readyFor, setReadyFor] = useState<number | null>(null);
@@ -50,6 +60,7 @@ export function useChatSession(
   // Load on session change.
   useEffect(() => {
     setStream(IDLE);
+    setBackendSwitch(null);
     setLoadError(null);
     setRemoteGenerating(false);
     setReadyFor(null);
@@ -91,7 +102,12 @@ export function useChatSession(
 
       switch (d.type) {
         case 'start':
-          setStream({ ...IDLE, active: true, model: d.model as string });
+          setStream({ ...IDLE, active: true, model: d.model as string, backend: d.backend as string | undefined });
+          setBackendSwitch(
+            d.switchedFrom
+              ? { backend: d.backend as string, switchedFrom: d.switchedFrom as string, model: d.model as string }
+              : null,
+          );
           setMessages((prev) =>
             prev.map((m) => (m.local === 'pending' ? { ...m, id: d.userMessageId as number, local: undefined } : m)),
           );
@@ -174,6 +190,7 @@ export function useChatSession(
     readyFor,
     loadError,
     stream,
+    backendSwitch,
     busy: stream.active || remoteGenerating,
     send,
     stop,

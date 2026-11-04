@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateApiToken } from '../middleware/apiToken';
 import { adminOnly } from '../middleware/adminOnly';
 import { getOllamaUrl } from '../services/appSettings';
@@ -10,9 +10,50 @@ import {
   deleteModelSettings,
 } from '../services/modelSettings';
 import { logUsage } from '../services/usage';
+import { backendUrlForModel, listBackends, runWithBackendUrl } from '../services/ollamaBackends';
 
 const router = Router();
 const auth = authenticateApiToken;
+
+/** Send a request that names a model to an available backend that has that model. */
+function byModel(req: Request, _res: Response, next: NextFunction): void {
+  const model = typeof req.body?.model === 'string' ? req.body.model : null;
+  runWithBackendUrl(backendUrlForModel(model), next);
+}
+
+/** GET `path` from every available backend and merge the model lists (first backend wins on duplicates). */
+type JsonObject = Record<string, unknown>;
+
+async function mergedModelLists(
+  path: string,
+  listKey: 'models' | 'data',
+  nameKey: 'name' | 'id',
+): Promise<{ status: number; body: JsonObject }> {
+  const up = listBackends().filter((b) => b.available);
+  const results: Array<JsonObject | null> = await Promise.all(
+    up.map(async (b) => {
+      try {
+        const r = await fetch(`${b.url}${path}`, { signal: AbortSignal.timeout(5000) });
+        return r.ok ? ((await r.json()) as JsonObject) : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const ok = results.filter((x): x is JsonObject => x !== null);
+  if (ok.length === 0) throw new Error('no Ollama backend reachable');
+  const seen = new Set<string>();
+  const merged: Array<Record<string, unknown>> = [];
+  for (const body of ok) {
+    for (const item of (body[listKey] as Array<Record<string, unknown>> | undefined) ?? []) {
+      const name = String(item[nameKey] ?? '');
+      if (seen.has(name)) continue;
+      seen.add(name);
+      merged.push(item);
+    }
+  }
+  return { status: 200, body: { ...ok[0], [listKey]: merged } };
+}
 
 async function proxyJson(
   upstreamPath: string,
@@ -144,9 +185,8 @@ function filterTags(data: unknown): unknown {
 
 router.get('/api/tags', auth, async (_req, res) => {
   try {
-    const resp = await fetch(`${getOllamaUrl()}/api/tags`);
-    const data = await resp.json();
-    res.status(resp.status).json(filterTags(data));
+    const merged = await mergedModelLists('/api/tags', 'models', 'name');
+    res.status(merged.status).json(filterTags(merged.body));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: `Upstream Ollama unreachable: ${msg}` });
@@ -161,27 +201,27 @@ router.get('/api/ps', auth, (_req, res) => {
   proxyJson('/api/ps', 'GET', undefined, res);
 });
 
-router.post('/api/show', auth, (req, res) => {
+router.post('/api/show', auth, byModel, (req, res) => {
   proxyJson('/api/show', 'POST', req.body, res);
 });
 
-router.post('/api/chat', auth, (req, res) => {
+router.post('/api/chat', auth, byModel, (req, res) => {
   const body = { ...req.body, options: mergeOptions(req.body?.model, req.body?.options) };
   if (body.options === undefined) delete body.options;
   proxyStream('/api/chat', body, req, res);
 });
 
-router.post('/api/generate', auth, (req, res) => {
+router.post('/api/generate', auth, byModel, (req, res) => {
   const body = { ...req.body, options: mergeOptions(req.body?.model, req.body?.options) };
   if (body.options === undefined) delete body.options;
   proxyStream('/api/generate', body, req, res);
 });
 
-router.post('/api/embeddings', auth, (req, res) => {
+router.post('/api/embeddings', auth, byModel, (req, res) => {
   proxyJson('/api/embeddings', 'POST', req.body, res);
 });
 
-router.post('/api/embed', auth, (req, res) => {
+router.post('/api/embed', auth, byModel, (req, res) => {
   proxyJson('/api/embed', 'POST', req.body, res);
 });
 
@@ -189,8 +229,9 @@ router.post('/api/embed', auth, (req, res) => {
 
 router.get('/v1/models', auth, async (_req, res) => {
   try {
-    const resp = await fetch(`${getOllamaUrl()}/v1/models`);
-    const data = await resp.json();
+    const merged = await mergedModelLists('/v1/models', 'data', 'id');
+    const data: unknown = merged.body;
+    const resp = { status: merged.status };
     const enabled = getEnabledModels();
     if (enabled.length > 0 && typeof data === 'object' && data !== null) {
       const obj = data as { data?: Array<{ id?: string }> };
@@ -207,19 +248,19 @@ router.get('/v1/models', auth, async (_req, res) => {
   }
 });
 
-router.post('/v1/chat/completions', auth, (req, res) => {
+router.post('/v1/chat/completions', auth, byModel, (req, res) => {
   const serverOptions = req.body?.model ? getOptionsForModel(req.body.model) : {};
   const body = { ...serverOptions, ...req.body };
   proxyStream('/v1/chat/completions', body, req, res);
 });
 
-router.post('/v1/completions', auth, (req, res) => {
+router.post('/v1/completions', auth, byModel, (req, res) => {
   const serverOptions = req.body?.model ? getOptionsForModel(req.body.model) : {};
   const body = { ...serverOptions, ...req.body };
   proxyStream('/v1/completions', body, req, res);
 });
 
-router.post('/v1/embeddings', auth, (req, res) => {
+router.post('/v1/embeddings', auth, byModel, (req, res) => {
   proxyJson('/v1/embeddings', 'POST', req.body, res);
 });
 

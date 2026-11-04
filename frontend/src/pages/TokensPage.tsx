@@ -28,7 +28,7 @@ export function TokensPage() {
   // Kept after the dialog closes so the snippets below stay copy-pasteable.
   const [lastToken, setLastToken] = useState<string | null>(null);
 
-  const modelsQ = useQuery({ queryKey: ['chat-models'], queryFn: getChatModels, staleTime: 60_000 });
+  const modelsQ = useQuery({ queryKey: ['chat-models'], queryFn: () => getChatModels(), staleTime: 60_000 });
   const model = modelsQ.data?.defaultModel || 'qwen3.8:27b';
 
   const refresh = useCallback(async () => {

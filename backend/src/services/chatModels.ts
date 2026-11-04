@@ -69,8 +69,10 @@ async function showModel(tag: OllamaTag): Promise<{ capabilities: string[]; cont
  * default); otherwise every locally installed completion model is offered.
  * Embedding-only models are excluded.
  */
-export async function listChatModels(): Promise<{ models: ChatModelInfo[]; defaultModel: string; reachable: boolean }> {
-  const defaultModel = getActiveModel();
+export async function listChatModels(
+  defaultModelOverride?: string | null,
+): Promise<{ models: ChatModelInfo[]; defaultModel: string; reachable: boolean }> {
+  const defaultModel = defaultModelOverride || getActiveModel();
   let tags: OllamaTag[] = [];
   let reachable = true;
   try {
@@ -82,8 +84,10 @@ export async function listChatModels(): Promise<{ models: ChatModelInfo[]; defau
     reachable = false;
   }
 
+  // The admin allow-list is shared by every backend, so it only applies to a
+  // backend when it names at least one of that backend's models.
   const enabled = getEnabledModels();
-  if (enabled.length > 0) {
+  if (enabled.length > 0 && tags.some((t) => enabled.includes(t.name))) {
     const allow = new Set([...enabled, defaultModel]);
     tags = tags.filter((t) => allow.has(t.name));
   }
@@ -128,8 +132,12 @@ export async function getModelCapabilities(model: string): Promise<string[]> {
   }
 }
 
-/** Is `model` something a user may pick for a chat session? */
+/**
+ * Is `model` something a user may pick for a chat session on the current
+ * backend? If the backend can't be reached right now the model can't be
+ * checked, so it is accepted.
+ */
 export async function isAllowedChatModel(model: string): Promise<boolean> {
-  const { models } = await listChatModels();
-  return models.some((m) => m.name === model);
+  const { models, reachable } = await listChatModels();
+  return !reachable || models.some((m) => m.name === model);
 }

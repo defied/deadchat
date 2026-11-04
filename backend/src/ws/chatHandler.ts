@@ -5,7 +5,8 @@ import { runAgentLoop, AgentEvent } from '../services/agentLoop';
 import { logUsage } from '../services/usage';
 import { recordRequest } from '../services/liveStats';
 import { getChatOptions } from '../services/modelSettings';
-import { getActiveModel, getModelCapabilities } from '../services/chatModels';
+import { getModelCapabilities } from '../services/chatModels';
+import { resolveChatBackend, runWithBackendUrl } from '../services/ollamaBackends';
 import {
   normalizeAttachments,
   parseStoredAttachments,
@@ -25,7 +26,17 @@ export interface IncomingChat {
 // Every outgoing event carries the sessionId so the client can ignore events
 // for a chat the user has navigated away from.
 type Outgoing =
-  | { type: 'start'; sessionId: number; userMessageId: number; model: string; title: string }
+  | {
+      type: 'start';
+      sessionId: number;
+      userMessageId: number;
+      model: string;
+      title: string;
+      /** Backend answering this reply. */
+      backend: string;
+      /** Set when the chat's backend was down and `backend` stood in for it. */
+      switchedFrom?: string;
+    }
   | { type: 'thinking'; sessionId: number; content: string }
   | { type: 'token'; sessionId: number; content: string }
   | { type: 'tool_call'; sessionId: number; step: number; toolName: string; toolCallId: string; toolInput: unknown }
@@ -92,21 +103,37 @@ export async function handleChatMessage(ws: WebSocket, user: WsUser, data: Incom
     const title = maybeSetTitle(session, content, attachments.map((a) => a.filename));
     db.prepare("UPDATE sessions SET updated_at = datetime('now') WHERE id = ?").run(sessionId);
 
-    const model = session.model || getActiveModel();
-    send(ws, { type: 'start', sessionId, userMessageId: Number(userMsg.lastInsertRowid), model, title });
+    // Pick the backend (falling back to another one if the chat's is down) and
+    // the model to run there. Everything below talks to that backend.
+    const target = resolveChatBackend(session.backend, session.model);
+    const model = target.model;
+    if (target.switched) {
+      console.warn(`[chat] session ${sessionId}: ${target.requestedId} unavailable, using ${target.id} (${model})`);
+    }
+    send(ws, {
+      type: 'start',
+      sessionId,
+      userMessageId: Number(userMsg.lastInsertRowid),
+      model,
+      title,
+      backend: target.id,
+      ...(target.switched ? { switchedFrom: target.requestedId } : {}),
+    });
 
     const history = db.prepare(
       'SELECT role, content, attachments FROM messages WHERE session_id = ? ORDER BY id ASC'
     ).all(sessionId) as HistoryRow[];
 
-    const capabilities = await getModelCapabilities(model);
-    const vision = capabilities.includes('vision');
+    await runWithBackendUrl(target.url, async () => {
+      const capabilities = await getModelCapabilities(model);
+      const vision = capabilities.includes('vision');
 
-    if (session.agent_agentic) {
-      await runAgentic(ws, user, session, model, history, controller.signal);
-    } else {
-      await runStreaming(ws, user, session, model, history, vision, controller.signal);
-    }
+      if (session.agent_agentic) {
+        await runAgentic(ws, user, session, model, history, controller.signal);
+      } else {
+        await runStreaming(ws, user, session, model, history, vision, controller.signal);
+      }
+    });
   } catch (err: any) {
     console.error(`[chat] session ${sessionId} failed:`, err?.message);
     send(ws, { type: 'error', sessionId, message: err?.message || 'Generation failed' });
