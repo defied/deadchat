@@ -43,6 +43,10 @@ metadata:
   namespace: deadchat
 data:
   OLLAMA_URL: "http://192.168.0.106:11434"
+  # Chat-selectable Ollama backends; the first is the primary. A chat whose
+  # backend is offline is answered by another online one. The Mac is listed by
+  # IP because pods cannot resolve mDNS (.local) names.
+  OLLAMA_BACKENDS: "gpu-box=http://192.168.0.106:11434,mac=http://192.168.0.29:11434"
   OLLAMA_MODEL: "qwen3.8:27b"
   CHAT_NUM_CTX: "32768"
   MAX_FILE_SIZE: "10485760"

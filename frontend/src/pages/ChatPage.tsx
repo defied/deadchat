@@ -11,7 +11,7 @@ import { useChatSession } from '../hooks/useChatSession';
 import { ChatSidebar } from '../components/chat/ChatSidebar';
 import { Composer } from '../components/chat/Composer';
 import { MessageView, StreamingMessage } from '../components/chat/Message';
-import { CapabilityIcons, ModelSelect, ModelStatusChip } from '../components/chat/ModelControls';
+import { BackendSelect, CapabilityIcons, ModelSelect, ModelStatusChip } from '../components/chat/ModelControls';
 import { AgentPicker } from '../components/AgentPicker';
 import { Alert, EmptyState, Loading, errorMessage } from '../components/ui';
 
@@ -45,11 +45,36 @@ export function ChatPage() {
   }, [listCollapsed]);
 
   const sessionsQ = useQuery({ queryKey: SESSIONS_KEY, queryFn: chatApi.getSessions });
-  const modelsQ = useQuery({ queryKey: ['chat-models'], queryFn: chatApi.getChatModels, staleTime: 60_000 });
   const sessions = sessionsQ.data ?? [];
+  const session = sessions.find((s) => s.id === sessionId) ?? null;
+
+  // ── Backends ─────────────────────────────────────────────────────────────
+  // The picker only appears when more than one backend is up. A chat whose
+  // backend is offline is answered by one that is up (the server decides the
+  // same way), so the model list follows the backend that will actually answer.
+  const backendsQ = useQuery({
+    queryKey: ['chat-backends'],
+    queryFn: chatApi.getChatBackends,
+    refetchInterval: 15_000,
+  });
+  const backends = backendsQ.data?.backends ?? [];
+  const availableBackends = backends.filter((b) => b.available);
+  const primaryBackend = backendsQ.data?.primary ?? null;
+  const [newBackend, setNewBackend] = useState<string | null>(null);
+  const chosenBackend = (session ? session.backend : newBackend) ?? primaryBackend;
+  const chosenAvailable = availableBackends.some((b) => b.id === chosenBackend);
+  const effectiveBackend = chosenAvailable ? chosenBackend : (availableBackends[0]?.id ?? chosenBackend);
+  const backendOffline = !!backendsQ.data && !chosenAvailable && effectiveBackend !== chosenBackend;
+  const showBackendPicker = availableBackends.length > 1;
+
+  const modelsQ = useQuery({
+    queryKey: ['chat-models', effectiveBackend],
+    queryFn: () => chatApi.getChatModels(effectiveBackend),
+    enabled: backendsQ.isFetched,
+    staleTime: 60_000,
+  });
   const models = modelsQ.data?.models ?? [];
   const defaultModel = modelsQ.data?.defaultModel ?? '';
-  const session = sessions.find((s) => s.id === sessionId) ?? null;
 
   const patchSession = (id: number, patch: Partial<ChatSession>) =>
     qc.setQueryData<ChatSession[]>(SESSIONS_KEY, (old) => old?.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -117,6 +142,7 @@ export function ChatPage() {
   const startNewChat = () => {
     setNewAgent(null);
     setNewModel(null);
+    setNewBackend(null);
     setMobileListOpen(false);
     navigate('/chat');
   };
@@ -127,6 +153,7 @@ export function ChatPage() {
       const created = await chatApi.createSession({
         agent: newAgent ? { source: newAgent.source, id: newAgent.id } : null,
         model: newModel,
+        backend: newBackend,
       });
       qc.setQueryData<ChatSession[]>(SESSIONS_KEY, (old) => [created, ...(old ?? [])]);
       pendingFirst.current = { id: created.id, content, attachments };
@@ -153,6 +180,21 @@ export function ChatPage() {
       if (s.id === sessionId) navigate('/chat');
     } catch (err) {
       setActionError(errorMessage(err, 'Delete failed'));
+    }
+  };
+
+  // Switching backend resets the model to that backend's default (e.g. the Mac's MLX model).
+  const handleBackendChange = async (backend: string) => {
+    if (!session) {
+      setNewBackend(backend);
+      setNewModel(null);
+      return;
+    }
+    try {
+      const updated = await chatApi.updateSession(session.id, { backend, model: null });
+      patchSession(session.id, updated);
+    } catch (err) {
+      setActionError(errorMessage(err, 'Could not switch backend'));
     }
   };
 
@@ -208,10 +250,18 @@ export function ChatPage() {
                 <Wrench size={11} /> tools
               </span>
             )}
+            {showBackendPicker && effectiveBackend && (
+              <BackendSelect
+                backends={backends}
+                value={chosenAvailable ? chosenBackend! : effectiveBackend}
+                onChange={handleBackendChange}
+                disabled={chat.busy}
+              />
+            )}
             {models.length > 0 && (
               <ModelSelect
                 models={models}
-                value={session ? session.model : newModel}
+                value={session ? (backendOffline ? null : session.model) : newModel}
                 defaultModel={defaultModel}
                 onChange={session ? handleModelChange : setNewModel}
                 disabled={chat.busy}
@@ -219,7 +269,10 @@ export function ChatPage() {
             )}
             <CapabilityIcons model={session ? effectiveModel : models.find((m) => m.name === (newModel || defaultModel))} />
             {(session ? effectiveModelName : newModel || defaultModel) && (
-              <ModelStatusChip model={session ? effectiveModelName : newModel || defaultModel} />
+              <ModelStatusChip
+                model={session ? effectiveModelName : newModel || defaultModel}
+                backend={chat.stream.backend ?? effectiveBackend}
+              />
             )}
           </div>
         </header>
@@ -229,11 +282,28 @@ export function ChatPage() {
             <Alert onClose={() => setActionError(null)}>{actionError}</Alert>
           </div>
         )}
-        {modelsQ.data && !modelsQ.data.reachable && (
+        {backendsQ.data && availableBackends.length === 0 ? (
+          <div style={{ padding: '10px 20px 0' }}>
+            <Alert kind="warn">No Ollama server is reachable, so replies will fail until one is back.</Alert>
+          </div>
+        ) : modelsQ.data && !modelsQ.data.reachable ? (
           <div style={{ padding: '10px 20px 0' }}>
             <Alert kind="warn">The Ollama server is unreachable, so replies will fail until it is back.</Alert>
           </div>
-        )}
+        ) : backendOffline ? (
+          <div style={{ padding: '10px 20px 0' }}>
+            <Alert kind="warn">
+              {chosenBackend} is offline, so replies come from {effectiveBackend} until it's back.
+            </Alert>
+          </div>
+        ) : chat.backendSwitch ? (
+          <div style={{ padding: '10px 20px 0' }}>
+            <Alert kind="warn">
+              {chat.backendSwitch.switchedFrom} was offline, so the last reply came from {chat.backendSwitch.backend} (
+              {chat.backendSwitch.model}).
+            </Alert>
+          </div>
+        ) : null}
 
         {sessionId == null ? (
           <div className="chat-hero">

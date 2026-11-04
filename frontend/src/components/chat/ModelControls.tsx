@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Brain, Eye, Wrench } from 'lucide-react';
-import type { ChatModel } from '../../api/chat';
+import type { ChatBackend, ChatModel } from '../../api/chat';
 import { getModelStatus, type ModelStatus } from '../../api/ollama';
 
 export function CapabilityIcons({ model }: { model?: ChatModel }) {
@@ -65,16 +65,51 @@ export function ModelSelect({
   );
 }
 
+/**
+ * Which Ollama backend a chat runs on. Only rendered when more than one
+ * backend is available; unavailable ones stay listed (disabled) so the user
+ * can see why their choice isn't offered.
+ */
+export function BackendSelect({
+  backends,
+  value,
+  onChange,
+  disabled,
+}: {
+  backends: ChatBackend[];
+  value: string;
+  onChange: (backend: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      className="model-select"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Backend"
+      title="Ollama server used for this chat"
+    >
+      {backends.map((b) => (
+        <option key={b.id} value={b.id} disabled={!b.available && b.id !== value}>
+          {b.id}
+          {b.available ? '' : ' (offline)'}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 const POLL_MS = 5000;
 
 /** GPU/CPU residency of a model — warns when Ollama spilled to CPU. */
-export function ModelStatusChip({ model }: { model: string }) {
+export function ModelStatusChip({ model, backend }: { model: string; backend?: string | null }) {
   const [status, setStatus] = useState<ModelStatus | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const tick = () =>
-      getModelStatus(model)
+      getModelStatus(model, backend)
         .then((s) => !cancelled && setStatus(s))
         .catch(() => !cancelled && setStatus(null));
     tick();
@@ -83,7 +118,7 @@ export function ModelStatusChip({ model }: { model: string }) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [model]);
+  }, [model, backend]);
 
   if (!status) return null;
   let cls = 'badge';

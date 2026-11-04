@@ -17,8 +17,10 @@ export interface Session {
   agent_name: string | null;
   system_prompt: string | null;
   agent_agentic: number;
-  /** Per-chat model override; NULL = admin-selected active model. */
+  /** Per-chat model override; NULL = the backend's default model. */
   model: string | null;
+  /** Per-chat Ollama backend id; NULL = the primary backend. */
+  backend: string | null;
   created_at: string;
   updated_at: string | null;
 }

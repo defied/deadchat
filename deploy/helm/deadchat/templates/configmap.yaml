@@ -7,5 +7,6 @@ metadata:
 data:
   OLLAMA_URL: {{ .Values.backend.env.ollamaUrl | quote }}
   OLLAMA_MODEL: {{ .Values.backend.env.ollamaModel | quote }}
+  OLLAMA_BACKENDS: {{ .Values.backend.env.ollamaBackends | default "" | quote }}
   MAX_FILE_SIZE: {{ .Values.backend.env.maxFileSize | quote }}
   TTS_URL: {{ .Values.backend.env.ttsUrl | quote }}

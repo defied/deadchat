@@ -76,6 +76,26 @@ helm install deadchat deploy/helm/deadchat -f my-values.yaml
 kubectl apply -f deploy/k8s/
 ```
 
+## Multiple Ollama Backends
+
+Set `OLLAMA_BACKENDS` to list several Ollama servers, e.g.
+`gpu-box=http://192.168.0.106:11434,mac=http://192.168.0.29:11434`. The first is the primary (the admin URL override changes it); without the variable, `OLLAMA_URL` is the only backend.
+
+- **Per chat:** when more than one backend is online, the chat header shows a backend picker. Switching backend resets the chat to that backend's default model.
+- **Different models per backend:** each backend lists its own models. Admin → Models → *Ollama backends* sets each backend's default model (e.g. an MLX model for a Mac); the primary falls back to the global default.
+- **Offline backends:** each backend is probed every 10 s. If a chat's backend is offline and another is online, the reply comes from the online one, keeping the chat's model if that backend has it and otherwise using its default; the chat shows a notice.
+- **Outside chats:** admin tools use the primary while it's online, else the first online backend; `?backend=<id>` on `/api/ollama/*` targets a specific one. Public API calls go to an online backend that has the requested model, and `/api/tags` and `/v1/models` list models from every online backend.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `OLLAMA_BACKENDS` | empty (`OLLAMA_URL` only) | `id=url` pairs, comma-separated; first is primary |
+| `OLLAMA_HEALTH_INTERVAL_MS` | `10000` | How often each backend is probed (`/api/tags`) |
+| `OLLAMA_HEALTH_TIMEOUT_MS` | `3000` | Probe timeout |
+| `OLLAMA_FAIL_THRESHOLD` | `2` | Failed probes in a row before a backend is offline |
+| `OLLAMA_RECOVER_THRESHOLD` | `2` | Good probes in a row before it's online again |
+
+Use IP addresses rather than `.local` names: pods can't resolve mDNS. A Mac's Ollama must listen on the network (`launchctl setenv OLLAMA_HOST 0.0.0.0`, then restart Ollama).
+
 ## Default Credentials
 
 - **Username:** admin

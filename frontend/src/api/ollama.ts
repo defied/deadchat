@@ -124,9 +124,36 @@ export async function getActiveModel(): Promise<string> {
   return data.model;
 }
 
-export async function getModelStatus(name: string): Promise<ModelStatus> {
-  const { data } = await client.get('/api/ollama/model-status', { params: { name } });
+export async function getModelStatus(name: string, backend?: string | null): Promise<ModelStatus> {
+  const { data } = await client.get('/api/ollama/model-status', {
+    params: backend ? { name, backend } : { name },
+  });
   return data;
+}
+
+export interface OllamaBackendInfo {
+  id: string;
+  url: string;
+  primary: boolean;
+  available: boolean;
+  healthy: boolean | null;
+  defaultModel: string | null;
+  models: string[] | null;
+  lastCheckAt: string | null;
+  error: string | null;
+}
+
+export async function listBackends(): Promise<OllamaBackendInfo[]> {
+  const { data } = await client.get<{ backends: OllamaBackendInfo[] }>('/api/ollama/backends');
+  return data.backends;
+}
+
+export async function setBackendDefaultModel(id: string, model: string | null): Promise<OllamaBackendInfo[]> {
+  const { data } = await client.put<{ backends: OllamaBackendInfo[] }>(
+    `/api/ollama/backends/${encodeURIComponent(id)}/default-model`,
+    { model },
+  );
+  return data.backends;
 }
 
 export async function setActiveModel(model: string): Promise<void> {

@@ -2,7 +2,8 @@ import http from 'http';
 import app from './app';
 import { config } from './config';
 import { runMigrations } from './db/migrate';
-import { getOllamaUrl } from './services/appSettings';
+import { getCachedOllamaUrlOverride } from './services/appSettings';
+import { listBackends, startBackendMonitor } from './services/ollamaBackends';
 import { createWebSocketServer } from './ws/index';
 import { startWorker } from './services/worker';
 import { startScheduler } from './services/scheduler';
@@ -21,7 +22,8 @@ createWebSocketServer(server);
 // Start listening
 server.listen(config.port, () => {
   console.log(`[startup] Deadchat backend running on port ${config.port}`);
-  console.log(`[startup] Ollama endpoint: ${getOllamaUrl()}`);
+  startBackendMonitor(getCachedOllamaUrlOverride);
+  console.log(`[startup] Ollama backends: ${listBackends().map((b) => `${b.id}=${b.url}`).join(', ')}`);
   console.log(`[startup] Default model: ${config.ollamaModel}`);
   console.log(`[startup] ComfyUI endpoint: ${config.comfyuiUrl}`);
   console.log(`[startup] Media dir: ${config.mediaDir}`);

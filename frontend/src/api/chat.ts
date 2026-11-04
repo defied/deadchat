@@ -5,8 +5,10 @@ export interface ChatSession {
   title: string;
   created_at: string;
   updated_at: string | null;
-  /** Per-chat model override; null = server default. */
+  /** Per-chat model override; null = the backend's default model. */
   model: string | null;
+  /** Per-chat Ollama backend id; null = the primary backend. */
+  backend: string | null;
   message_count?: number;
   // Agent snapshot — present only when the session was created with one.
   agent_source?: 'library' | 'user' | null;
@@ -49,10 +51,30 @@ export interface ChatModelsResponse {
   models: ChatModel[];
   defaultModel: string;
   reachable: boolean;
+  /** Backend these models are on. */
+  backend: string;
 }
 
-export async function getChatModels(): Promise<ChatModelsResponse> {
-  const { data } = await client.get<ChatModelsResponse>('/api/chat/models');
+export interface ChatBackend {
+  id: string;
+  primary: boolean;
+  /** false once the backend has failed its health checks */
+  available: boolean;
+  defaultModel: string | null;
+  /** admins only */
+  url?: string;
+  error?: string | null;
+}
+
+export async function getChatBackends(): Promise<{ primary: string; backends: ChatBackend[] }> {
+  const { data } = await client.get<{ primary: string; backends: ChatBackend[] }>('/api/chat/backends');
+  return data;
+}
+
+export async function getChatModels(backend?: string | null): Promise<ChatModelsResponse> {
+  const { data } = await client.get<ChatModelsResponse>('/api/chat/models', {
+    params: backend ? { backend } : undefined,
+  });
   return data;
 }
 
@@ -65,6 +87,7 @@ export async function createSession(input: {
   title?: string;
   agent?: { source: 'library' | 'user'; id: number } | null;
   model?: string | null;
+  backend?: string | null;
 } = {}): Promise<ChatSession> {
   const body: Record<string, unknown> = {};
   if (input.title) body.title = input.title;
@@ -73,13 +96,14 @@ export async function createSession(input: {
     body.agentId = input.agent.id;
   }
   if (input.model) body.model = input.model;
+  if (input.backend) body.backend = input.backend;
   const { data } = await client.post<{ session: ChatSession }>('/api/chat/sessions', body);
   return data.session;
 }
 
 export async function updateSession(
   id: number,
-  patch: { title?: string; model?: string | null },
+  patch: { title?: string; model?: string | null; backend?: string | null },
 ): Promise<ChatSession> {
   const { data } = await client.patch<{ session: ChatSession }>(`/api/chat/sessions/${id}`, patch);
   return data.session;

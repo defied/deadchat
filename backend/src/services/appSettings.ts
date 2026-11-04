@@ -1,24 +1,27 @@
 import db from '../db/connection';
-import { config } from '../config';
+import { currentBackendUrl, defaultBackendUrl, probeBackendsNow } from './ollamaBackends';
 
 const OLLAMA_URL_KEY = 'ollama_url';
 
-let cachedUrl: string | null = null;
+let cachedOverride: string | null = null;
 let cacheLoaded = false;
 
-function loadOllamaUrl(): string {
-  const row = db
-    .prepare('SELECT value FROM settings WHERE key = ?')
-    .get(OLLAMA_URL_KEY) as { value: string } | undefined;
-  return row?.value || config.ollamaUrl;
-}
-
-export function getOllamaUrl(): string {
+/** Admin override for the primary backend's URL (cached), or null. */
+export function getCachedOllamaUrlOverride(): string | null {
   if (!cacheLoaded) {
-    cachedUrl = loadOllamaUrl();
+    cachedOverride = getOllamaUrlOverride();
     cacheLoaded = true;
   }
-  return cachedUrl!;
+  return cachedOverride;
+}
+
+/**
+ * The Ollama URL for the current request: the chat's backend inside
+ * runWithBackendUrl(), otherwise the primary while it is available, else the
+ * first available backend.
+ */
+export function getOllamaUrl(): string {
+  return currentBackendUrl() ?? defaultBackendUrl();
 }
 
 export function getOllamaUrlOverride(): string | null {
@@ -46,6 +49,7 @@ export function setOllamaUrl(url: string | null): void {
       );
     }
   }
-  cachedUrl = null;
+  cachedOverride = null;
   cacheLoaded = false;
+  void probeBackendsNow();
 }
