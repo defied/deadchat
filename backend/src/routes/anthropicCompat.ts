@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authenticateApiToken } from '../middleware/apiToken';
-import { backendUrlForModel } from '../services/ollamaBackends';
+import { routeApiRequest } from '../services/ollamaBackends';
 import { getOptionsForModel } from '../services/modelSettings';
 import { logUsage } from '../services/usage';
 import {
@@ -63,22 +63,33 @@ router.post('/v1/messages', authenticateApiToken, async (req: Request, res: Resp
   const started = Date.now();
   let promptTokens = 0;
   let evalTokens = 0;
-  const body = req.body as AnthropicMessagesRequest;
-  const model = body?.model ?? '';
+  const requestBody = req.body as AnthropicMessagesRequest;
 
-  const validationError = validate(body);
+  const validationError = validate(requestBody);
   if (validationError) {
     res.status(400).json(errorEnvelope('invalid_request_error', validationError));
     return;
   }
+
+  // Route to an online backend that has the requested model, or fall back to
+  // the first online backend's default model. Image blocks are dropped by the
+  // translator, so the fallback never has to read images.
+  const route = routeApiRequest(requestBody.model || null, true);
+  const body: AnthropicMessagesRequest =
+    route.substituted && route.model ? { ...requestBody, model: route.model } : requestBody;
+  const model = body.model ?? '';
+  if (route.substituted) {
+    console.log(`[anthropic-compat] model "${requestBody.model}" not on any online backend; using ${route.id}'s default "${model}"`);
+    res.setHeader('X-DeadChat-Model', model);
+  }
+  res.setHeader('X-DeadChat-Backend', route.id);
 
   const serverOptions = model ? getOptionsForModel(model) : {};
   const ollamaReq = anthropicToOllamaRequest(body, serverOptions);
   const knownTools = (body.tools ?? []).map((t) => t.name).filter((n): n is string => typeof n === 'string');
 
   try {
-    // Route to an available backend that has the requested model.
-    const upstream = await fetch(`${backendUrlForModel(model || null)}/api/chat`, {
+    const upstream = await fetch(`${route.url}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ollamaReq),

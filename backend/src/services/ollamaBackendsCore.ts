@@ -136,10 +136,57 @@ export function pickBackend(
 
 /** Backend for a request that names only a model (public API): prefer one that has it. */
 export function pickBackendForModel(backends: BackendCandidate[], model: string | null): string {
+  return routeModelRequest(backends, model, false).id;
+}
+
+export interface ModelRoute {
+  id: string;
+  /** Model to send: the requested one, or the backend's default when substituted. */
+  model: string | null;
+  /** true when no online backend had the requested model and a default stands in. */
+  substituted: boolean;
+}
+
+/**
+ * Route an API request that names a model. Prefers an online backend that has
+ * the model. If none does and `allowFallback` is set, the first online
+ * backend's default model is used instead (its first installed model when it
+ * has no default). Otherwise the request goes to the first online backend
+ * unchanged, so Ollama's own "model not found" error comes back.
+ */
+export function routeModelRequest(
+  backends: BackendCandidate[],
+  model: string | null,
+  allowFallback: boolean,
+): ModelRoute {
   const up = backends.filter((b) => b.available);
   if (model) {
     const withModel = up.find((b) => hasModel(b.models, model));
-    if (withModel) return withModel.id;
+    if (withModel) return { id: withModel.id, model, substituted: false };
   }
-  return (up[0] ?? backends[0]).id;
+  const target = up[0] ?? backends[0];
+  if (model && allowFallback && up.length > 0 && target.models !== null) {
+    const stand = target.defaultModel ?? target.models[0] ?? null;
+    if (stand && stand !== model) return { id: target.id, model: stand, substituted: true };
+  }
+  return { id: target.id, model, substituted: false };
+}
+
+/** Does an Ollama- or OpenAI-style request body carry images? */
+export function requestHasImages(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const b = body as { images?: unknown; messages?: unknown };
+  if (Array.isArray(b.images) && b.images.length > 0) return true;
+  if (!Array.isArray(b.messages)) return false;
+  return b.messages.some((m) => {
+    if (!m || typeof m !== 'object') return false;
+    const msg = m as { images?: unknown; content?: unknown };
+    if (Array.isArray(msg.images) && msg.images.length > 0) return true;
+    return (
+      Array.isArray(msg.content) &&
+      msg.content.some(
+        (p) => !!p && typeof p === 'object' && ['image_url', 'image', 'input_image'].includes((p as { type?: string }).type ?? ''),
+      )
+    );
+  });
 }
