@@ -7,7 +7,7 @@
     "dev": "nodemon",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "node --require ts-node/register --test src/services/anthropicTranslate.test.ts src/services/media/catalog.test.ts src/services/ollamaBackendsCore.test.ts",
+    "test": "node --require ts-node/register --test src/services/anthropicTranslate.test.ts src/services/media/catalog.test.ts src/services/influencers/rules.test.ts src/services/influencers/factcheck.test.ts src/services/ollamaBackendsCore.test.ts",
     "worker": "ts-node src/worker.ts"
   },
   "dependencies": {
@@ -19,6 +19,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^4.2.1",
+    "sharp": "^0.34.5",
     "uuid": "^11.0.3",
     "ws": "^8.18.0"
   },
