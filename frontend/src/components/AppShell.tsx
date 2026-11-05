@@ -8,6 +8,7 @@ import {
   Clapperboard,
   Image,
   Key,
+  Megaphone,
   LogOut,
   Menu,
   MessageSquare,
@@ -38,6 +39,7 @@ const GROUPS: Array<{ label: string; items: NavDef[]; admin?: boolean }> = [
     items: [
       { to: '/generate', label: 'Generate', icon: <Image size={17} />, hint: 'Images and video with ComfyUI' },
       { to: '/studio', label: 'Studio', icon: <Clapperboard size={17} />, hint: 'Characters: portraits and voices' },
+      { to: '/social', label: 'Social Media', icon: <Megaphone size={17} />, hint: 'AI influencers: personas, portfolios and posting' },
     ],
   },
   {

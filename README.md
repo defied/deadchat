@@ -96,6 +96,26 @@ Set `OLLAMA_BACKENDS` to list several Ollama servers, e.g.
 
 Use IP addresses rather than `.local` names: pods can't resolve mDNS. A Mac's Ollama must listen on the network (`launchctl setenv OLLAMA_HOST 0.0.0.0`, then restart Ollama).
 
+## Social Media (AI influencers)
+
+The **Social Media** tab creates AI influencer projects with a step-by-step wizard:
+
+- **Photo & video personas:** ground rules → persona → look → portfolio → posting plan → accounts → launch. Looks and portfolio images are generated on the local ComfyUI models. You approve a look, and its description and seed are reused for every image afterwards. Approved images can be animated with the local image-to-video model.
+- **Text & commentary personas:** ground rules → persona → topics & sources → posting plan → accounts → launch. Every post is researched and fact-checked: stories come from RSS feeds and web search, and can optionally be informed by what people are posting on Bluesky. The draft uses only facts from trusted sources. Each factual claim must be supported by N independent trusted domains (2+ for political content) and contradicted by none, or the post is blocked.
+
+**Rules enforced in code** (`services/influencers/compliance.ts`), whatever the automation settings say:
+
+- The persona is invented, a stated adult of 21 or older, and never aimed at minors. Image prompts that hint at a minor, a real person's likeness or sexual content are refused.
+- Every post carries `#AIgenerated` and every bio says the account is AI. Each platform's own AI label is part of its setup checklist.
+- Posting is capped at 6 posts a day, at least 60 minutes apart.
+- Posts may only link the verified sources. Political posts may not @-mention people, and election logistics need an official government source.
+- Every post also goes through an LLM policy review before it can be approved.
+- Posts wait for approval unless *auto-publish* is on. Even then, anything that fails a check is held.
+
+**Platforms:** Bluesky (app password) and Mastodon (access token) publish through their APIs. Instagram, Threads, TikTok, X and YouTube are prepared for you to post manually and then mark as posted.
+
+**Setup:** text personas need a web search provider. Set `SEARXNG_URL` (recommended: self-hosted SearXNG) or `BRAVE_SEARCH_API_KEY`, or enter one in the wizard as an admin. The automation runs in the worker process (`RUN_WORKER`) and checks every minute.
+
 ## Default Credentials
 
 - **Username:** admin

@@ -7,6 +7,7 @@ import { listBackends, startBackendMonitor } from './services/ollamaBackends';
 import { createWebSocketServer } from './ws/index';
 import { startWorker } from './services/worker';
 import { startScheduler } from './services/scheduler';
+import { startInfluencerAutomation } from './services/influencers/automation';
 
 // Run database migrations
 console.log('[startup] Running database migrations...');
@@ -33,6 +34,7 @@ server.listen(config.port, () => {
   if (config.runWorker) {
     startWorker();
     startScheduler();
+    startInfluencerAutomation();
   } else {
     console.log('[startup] Worker/scheduler disabled (RUN_WORKER=false)');
   }
