@@ -61,6 +61,8 @@ spec:
               value: /data/deadchat.db
             - name: UPLOAD_DIR
               value: /data/uploads
+            - name: MEDIA_DIR
+              value: /data/media
           volumeMounts:
             - name: data
               mountPath: /data
