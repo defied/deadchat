@@ -52,6 +52,8 @@ data:
   MAX_FILE_SIZE: "10485760"
   DB_PATH: "/data/deadchat.db"
   UPLOAD_DIR: "/data/uploads"
+  # Must be on the /data volume, or generated media is lost on every restart.
+  MEDIA_DIR: "/data/media"
   PORT: "3000"
 ---
 apiVersion: apps/v1

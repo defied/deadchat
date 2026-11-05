@@ -106,3 +106,17 @@ export function deleteMedia(id: number, requestingUserId: number, isAdmin: boole
   db.prepare('DELETE FROM media WHERE id = ?').run(id);
   return true;
 }
+
+/**
+ * Count media rows whose file is missing from disk. Logged at startup so a
+ * media directory that isn't on persistent storage is noticed, not silently
+ * emptied on the next restart.
+ */
+export function countMissingMediaFiles(): { total: number; missing: number } {
+  const rows = db.prepare('SELECT filename FROM media').all() as Array<{ filename: string }>;
+  let missing = 0;
+  for (const r of rows) {
+    if (!fs.existsSync(getMediaPath(r.filename))) missing++;
+  }
+  return { total: rows.length, missing };
+}

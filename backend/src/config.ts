@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import path from 'path';
 dotenv.config();
 
 export const config = {
@@ -19,7 +20,9 @@ export const config = {
   // Media generation
   comfyuiUrl: process.env.COMFYUI_URL || 'http://192.168.0.106:8188',
   ttsUrl: process.env.TTS_URL || 'http://192.168.0.106:8020',
-  mediaDir: process.env.MEDIA_DIR || './data/media',
+  // Generated images/videos. Defaults to a `media` folder next to the database,
+  // so whatever volume holds the DB also holds the files the DB points at.
+  mediaDir: process.env.MEDIA_DIR || path.join(path.dirname(process.env.DB_PATH || './data/deadchat.db'), 'media'),
   secretsKey: process.env.SECRETS_KEY || '',
   runWorker: process.env.RUN_WORKER !== 'false',
 };
