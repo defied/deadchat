@@ -25,7 +25,9 @@ import {
   parseBackends,
   pickBackend,
   pickBackendForModel,
+  routeModelRequest,
   type BackendCandidate,
+  type ModelRoute,
   type BackendDef,
   type BackendHealth,
   type Thresholds,
@@ -148,6 +150,15 @@ export function resolveChatBackend(requestedId: string | null, requestedModel: s
 /** URL for a request that names only a model, e.g. the public API. */
 export function backendUrlForModel(model: string | null): string {
   return getBackend(pickBackendForModel(candidates(), model))!.url;
+}
+
+/**
+ * Route a public API request by model. With `allowFallback`, a model no
+ * online backend has is replaced by the first online backend's default.
+ */
+export function routeApiRequest(model: string | null, allowFallback: boolean): ModelRoute & { url: string } {
+  const route = routeModelRequest(candidates(), model, allowFallback);
+  return { ...route, url: getBackend(route.id)!.url };
 }
 
 /** URL used outside a chat: the primary while available, else the first available backend. */

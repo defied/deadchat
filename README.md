@@ -85,6 +85,7 @@ Set `OLLAMA_BACKENDS` to list several Ollama servers, e.g.
 - **Different models per backend:** each backend lists its own models. Admin → Models → *Ollama backends* sets each backend's default model (e.g. an MLX model for a Mac); the primary falls back to the global default.
 - **Offline backends:** each backend is probed every 10 s. If a chat's backend is offline and another is online, the reply comes from the online one, keeping the chat's model if that backend has it and otherwise using its default; the chat shows a notice.
 - **Outside chats:** admin tools use the primary while it's online, else the first online backend; `?backend=<id>` on `/api/ollama/*` targets a specific one. Public API calls go to an online backend that has the requested model, and `/api/tags` and `/v1/models` list models from every online backend.
+- **API model fallback:** when no online backend has a generation request's model (`/api/chat`, `/api/generate`, `/v1/chat/completions`, `/v1/completions`, `/v1/messages`), the first online backend's default model answers instead, and the response carries `X-DeadChat-Model`. Requests with images only fall back to a default that can read images; otherwise they get a 400. Embedding and `/api/show` requests are never substituted. Every routed response carries `X-DeadChat-Backend`.
 
 | Variable | Default | Meaning |
 |---|---|---|

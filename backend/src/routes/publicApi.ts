@@ -10,15 +10,54 @@ import {
   deleteModelSettings,
 } from '../services/modelSettings';
 import { logUsage } from '../services/usage';
-import { backendUrlForModel, listBackends, runWithBackendUrl } from '../services/ollamaBackends';
+import { listBackends, requestHasImages, routeApiRequest, runWithBackendUrl } from '../services/ollamaBackends';
+import { getModelCapabilities } from '../services/chatModels';
 
 const router = Router();
 const auth = authenticateApiToken;
 
-/** Send a request that names a model to an available backend that has that model. */
-function byModel(req: Request, _res: Response, next: NextFunction): void {
+/**
+ * Send a request that names a model to an online backend that has that model.
+ * Used for requests whose model must not be swapped (embeddings, /api/show).
+ */
+function byModel(req: Request, res: Response, next: NextFunction): void {
   const model = typeof req.body?.model === 'string' ? req.body.model : null;
-  runWithBackendUrl(backendUrlForModel(model), next);
+  const route = routeApiRequest(model, false);
+  res.setHeader('X-DeadChat-Backend', route.id);
+  runWithBackendUrl(route.url, next);
+}
+
+/**
+ * Like byModel, but for generation requests: when no online backend has the
+ * requested model, use the first online backend's default model instead.
+ * Requests carrying images only fall back to a default that can see images;
+ * otherwise they get a 400 explaining why.
+ */
+async function byModelWithFallback(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const model = typeof req.body?.model === 'string' ? req.body.model : null;
+    const route = routeApiRequest(model, true);
+    if (route.substituted && route.model) {
+      if (requestHasImages(req.body)) {
+        const caps = await runWithBackendUrl(route.url, () => getModelCapabilities(route.model!));
+        if (!caps.includes('vision')) {
+          res.status(400).json({
+            error:
+              `No online backend has model "${model}", and ${route.id}'s default model ` +
+              `"${route.model}" can't read images.`,
+          });
+          return;
+        }
+      }
+      console.log(`[public-api] model "${model}" not on any online backend; using ${route.id}'s default "${route.model}"`);
+      req.body = { ...req.body, model: route.model };
+      res.setHeader('X-DeadChat-Model', route.model);
+    }
+    res.setHeader('X-DeadChat-Backend', route.id);
+    runWithBackendUrl(route.url, next);
+  } catch (err) {
+    next(err);
+  }
 }
 
 /** GET `path` from every available backend and merge the model lists (first backend wins on duplicates). */
@@ -205,13 +244,13 @@ router.post('/api/show', auth, byModel, (req, res) => {
   proxyJson('/api/show', 'POST', req.body, res);
 });
 
-router.post('/api/chat', auth, byModel, (req, res) => {
+router.post('/api/chat', auth, byModelWithFallback, (req, res) => {
   const body = { ...req.body, options: mergeOptions(req.body?.model, req.body?.options) };
   if (body.options === undefined) delete body.options;
   proxyStream('/api/chat', body, req, res);
 });
 
-router.post('/api/generate', auth, byModel, (req, res) => {
+router.post('/api/generate', auth, byModelWithFallback, (req, res) => {
   const body = { ...req.body, options: mergeOptions(req.body?.model, req.body?.options) };
   if (body.options === undefined) delete body.options;
   proxyStream('/api/generate', body, req, res);
@@ -248,13 +287,13 @@ router.get('/v1/models', auth, async (_req, res) => {
   }
 });
 
-router.post('/v1/chat/completions', auth, byModel, (req, res) => {
+router.post('/v1/chat/completions', auth, byModelWithFallback, (req, res) => {
   const serverOptions = req.body?.model ? getOptionsForModel(req.body.model) : {};
   const body = { ...serverOptions, ...req.body };
   proxyStream('/v1/chat/completions', body, req, res);
 });
 
-router.post('/v1/completions', auth, byModel, (req, res) => {
+router.post('/v1/completions', auth, byModelWithFallback, (req, res) => {
   const serverOptions = req.body?.model ? getOptionsForModel(req.body.model) : {};
   const body = { ...serverOptions, ...req.body };
   proxyStream('/v1/completions', body, req, res);

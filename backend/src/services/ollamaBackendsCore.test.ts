@@ -8,6 +8,8 @@ import {
   parseBackends,
   pickBackend,
   pickBackendForModel,
+  requestHasImages,
+  routeModelRequest,
   type BackendCandidate,
   type BackendHealth,
 } from './ollamaBackendsCore';
@@ -157,4 +159,56 @@ test('pickBackendForModel falls back to the first available backend', () => {
   assert.equal(pickBackendForModel([gpu(), mac()], 'unknown'), 'gpu-box');
   assert.equal(pickBackendForModel([gpu({ available: false }), mac()], 'qwen3.8:27b'), 'mac');
   assert.equal(pickBackendForModel([gpu({ available: false }), mac({ available: false })], null), 'gpu-box');
+});
+
+// ── public API fallback ────────────────────────────────────────────────────
+
+test('routeModelRequest keeps a model an online backend has, without substituting', () => {
+  assert.deepEqual(routeModelRequest([gpu({ available: false }), mac()], 'gemma4:latest', true), {
+    id: 'mac',
+    model: 'gemma4:latest',
+    substituted: false,
+  });
+});
+
+test("routeModelRequest falls back to the first online backend's default", () => {
+  assert.deepEqual(routeModelRequest([gpu({ available: false }), mac()], 'qwen3-vl:8b', true), {
+    id: 'mac',
+    model: 'qwen3.6:35b',
+    substituted: true,
+  });
+});
+
+test('routeModelRequest uses the first installed model when the backend has no default', () => {
+  const r = routeModelRequest([mac({ defaultModel: null })], 'missing', true);
+  assert.deepEqual(r, { id: 'mac', model: 'qwen3.6:35b', substituted: true });
+});
+
+test('routeModelRequest does not substitute without allowFallback', () => {
+  assert.deepEqual(routeModelRequest([gpu(), mac()], 'missing', false), {
+    id: 'gpu-box',
+    model: 'missing',
+    substituted: false,
+  });
+});
+
+test('routeModelRequest does not substitute when nothing is online or models are unknown', () => {
+  assert.equal(routeModelRequest([gpu({ available: false }), mac({ available: false })], 'missing', true).substituted, false);
+  assert.equal(routeModelRequest([gpu({ models: null })], 'missing', true).substituted, false);
+});
+
+test('routeModelRequest leaves model-less requests alone', () => {
+  assert.deepEqual(routeModelRequest([gpu(), mac()], null, true), { id: 'gpu-box', model: null, substituted: false });
+});
+
+test('requestHasImages spots Ollama and OpenAI image payloads', () => {
+  assert.equal(requestHasImages({ prompt: 'x', images: ['aGk='] }), true);
+  assert.equal(requestHasImages({ messages: [{ role: 'user', content: 'x', images: ['aGk='] }] }), true);
+  assert.equal(
+    requestHasImages({ messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:' } }] }] }),
+    true,
+  );
+  assert.equal(requestHasImages({ prompt: 'x', images: [] }), false);
+  assert.equal(requestHasImages({ messages: [{ role: 'user', content: 'hello' }] }), false);
+  assert.equal(requestHasImages(null), false);
 });
