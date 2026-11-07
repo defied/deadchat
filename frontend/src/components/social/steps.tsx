@@ -632,7 +632,24 @@ export function StepPlan({ detail, meta, save, back }: StepProps) {
 
 // ── Accounts ───────────────────────────────────────────────────────────────
 
-function AccountCard({ inf, platform, account, apply }: { inf: api.Influencer; platform: api.PlatformDef; account?: api.AccountView; apply: (d: api.Detail) => void }) {
+const MANUAL_REASON: Record<string, string> = {
+  tiktok: 'TikTok keeps API posts private until it audits the app, so these are posted by hand.',
+  x: "X charges for each post made through its API (about $0.20 with a link), so these are posted by hand.",
+};
+
+function AccountCard({
+  inf,
+  platform,
+  account,
+  publishing,
+  apply,
+}: {
+  inf: api.Influencer;
+  platform: api.PlatformDef;
+  account?: api.AccountView;
+  publishing: api.Meta['publishing'];
+  apply: (d: api.Detail) => void;
+}) {
   const [fields, setFields] = useState<Record<string, string>>(account?.fields ?? {});
   const [checklist, setChecklist] = useState<Record<string, boolean>>(account?.checklist ?? {});
   const { busy, error, run } = useAction();
@@ -652,8 +669,20 @@ function AccountCard({ inf, platform, account, apply }: { inf: api.Influencer; p
       <div className="field-hint" style={{ marginBottom: 8 }}>{platform.aiRule}</div>
       {platform.mode === 'manual' && (
         <div className="field-hint" style={{ marginBottom: 8 }}>
-          DeadChat prepares each post for {platform.name}; you publish it there and mark it as posted. Automatic posting needs
-          {platform.id === 'instagram' || platform.id === 'threads' ? " Meta's Graph API with a business account and public media hosting" : ' API access this setup doesn\'t have yet'}.
+          DeadChat prepares each post for {platform.name}; you publish it there and mark it as posted.{' '}
+          {MANUAL_REASON[platform.id] ?? ''}
+        </div>
+      )}
+      {platform.needsPublicUrl && !publishing.publicUrlConfigured && (
+        <Alert kind="warn">
+          {platform.name} downloads images and videos from DeadChat. Set PUBLIC_URL on the server to DeadChat's public https address.
+        </Alert>
+      )}
+      {platform.connect === 'google' && (
+        <div className="field-hint" style={{ marginBottom: 8 }}>
+          Authorised redirect URI for the OAuth client:{' '}
+          {publishing.youtubeRedirectUri ? <code style={{ userSelect: 'all', overflowWrap: 'anywhere' }}>{publishing.youtubeRedirectUri}</code> : 'set PUBLIC_URL on the server first'}
+          . Google may warn that the app is unverified; since it's your own app, choose Advanced → Continue.
         </div>
       )}
       <div className="checklist">
@@ -690,10 +719,25 @@ function AccountCard({ inf, platform, account, apply }: { inf: api.Influencer; p
       </div>
       {account?.lastError && <Alert>{account.lastError}</Alert>}
       {error && <Alert>{error}</Alert>}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button className="btn btn-primary" disabled={!!busy} onClick={() => run('save', async () => apply(await api.saveAccount(inf.id, platform.id, fields, checklist)))}>
           {busy === 'save' ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Save
         </button>
+        {platform.connect === 'google' && account && (
+          <button
+            className="btn"
+            disabled={!!busy || !publishing.youtubeRedirectUri}
+            onClick={() =>
+              run('connect', async () => {
+                const { url } = await api.connectYouTube(inf.id);
+                window.location.assign(url);
+              })
+            }
+          >
+            {busy === 'connect' ? <Loader2 size={14} className="spin" /> : <ExternalLink size={14} />}{' '}
+            {account.status === 'connected' ? 'Reconnect Google' : 'Connect with Google'}
+          </button>
+        )}
         {platform.mode === 'api' && account && (
           <button className="btn" disabled={!!busy} onClick={() => run('test', async () => apply(await api.testAccount(inf.id, platform.id)))}>
             {busy === 'test' ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Test connection
@@ -707,15 +751,32 @@ function AccountCard({ inf, platform, account, apply }: { inf: api.Influencer; p
 export function StepAccounts({ detail, meta, apply, back, next }: StepProps) {
   const inf = detail.influencer;
   const chosen = meta.platforms.filter((p) => (inf.plan.platforms ?? []).includes(p.id));
+  // Back from Google's consent screen: /social/:id/accounts?connected=youtube or ?error=…
+  const [oauth] = useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    return { connected: q.get('connected'), error: q.get('error') };
+  });
+  useEffect(() => {
+    if (oauth.connected || oauth.error) window.history.replaceState(null, '', window.location.pathname);
+  }, [oauth]);
   return (
     <div>
+      {oauth.connected && <Alert kind="info">{meta.platforms.find((p) => p.id === oauth.connected)?.name ?? oauth.connected} is connected.</Alert>}
+      {oauth.error && <Alert>{oauth.error}</Alert>}
       <p className="section-hint" style={{ marginBottom: 12 }}>
         Create a dedicated account per platform for this persona, turn on that platform's AI labelling, and connect it. Keys
         and passwords are stored encrypted and never shown again.
       </p>
       {chosen.length === 0 && <Alert kind="warn">Pick platforms on the posting plan step first.</Alert>}
       {chosen.map((p) => (
-        <AccountCard key={p.id} inf={inf} platform={p} account={detail.accounts.find((a) => a.platform === p.id)} apply={apply} />
+        <AccountCard
+          key={p.id}
+          inf={inf}
+          platform={p}
+          account={detail.accounts.find((a) => a.platform === p.id)}
+          publishing={meta.publishing}
+          apply={apply}
+        />
       ))}
       <StepNav onBack={back} onNext={next} nextLabel="Continue" />
     </div>

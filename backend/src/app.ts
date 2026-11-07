@@ -22,6 +22,8 @@ import influencerRoutes from './routes/influencers';
 import providersRoutes from './routes/providers';
 import schedulesRoutes from './routes/schedules';
 import comfyuiRoutes from './routes/comfyui';
+import publicMediaRoutes from './routes/publicMedia';
+import socialOAuthRoutes from './routes/socialOAuth';
 
 const app = express();
 
@@ -52,6 +54,11 @@ app.use('/api/uploads', uploadsStatic);
 app.use('/uploads', uploadsStatic);
 
 // Media files are served through the /api/media route (with Range support + auth)
+
+// Unauthenticated but signed: media links for Instagram/Threads to download,
+// and OAuth redirects from Google. Mounted before anything that requires auth.
+app.use('/api/public/media', publicMediaRoutes);
+app.use('/api/oauth', socialOAuthRoutes);
 
 // Public (API-token-authed) routes — mounted first so POST /api/chat,
 // /api/tags, etc. reach the Ollama-compat handlers before the JWT-authed

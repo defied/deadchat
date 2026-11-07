@@ -163,6 +163,8 @@ export interface PlatformDef {
   fields: Array<{ key: string; label: string; secret?: boolean; placeholder?: string; hint?: string }>;
   checklist: Array<{ id: string; label: string; required: boolean; link?: string }>;
   aiRule: string;
+  connect?: 'google';
+  needsPublicUrl?: boolean;
 }
 
 export interface ModelOption {
@@ -175,6 +177,7 @@ export interface ModelOption {
 export interface Meta {
   steps: Record<InfluencerKind, string[]>;
   platforms: PlatformDef[];
+  publishing: { publicUrlConfigured: boolean; youtubeRedirectUri: string | null };
   models: { image: ModelOption[]; video: ModelOption[] };
   rules: { minAge: number; maxPostsPerDay: number; minMinutesBetween: number; minPortfolio: number; disclosureTag: string };
   research: { searxngUrl: string | null; braveKeySet: boolean; configured: boolean };
@@ -219,6 +222,8 @@ export const animateMedia = async (id: number, mid: number, motion?: string) =>
 export const saveAccount = async (id: number, platform: string, fields: Record<string, string>, checklist: Record<string, boolean>) =>
   (await client.put<Detail>(`${base}/${id}/accounts/${platform}`, { fields, checklist })).data;
 export const testAccount = async (id: number, platform: string) => (await client.post<Detail>(`${base}/${id}/accounts/${platform}/test`)).data;
+export const connectYouTube = async (id: number) =>
+  (await client.post<{ url: string }>(`${base}/${id}/accounts/youtube/connect`)).data;
 export const removeAccount = async (id: number, platform: string) => (await client.delete<Detail>(`${base}/${id}/accounts/${platform}`)).data;
 
 export const activate = async (id: number) => (await client.post<Detail>(`${base}/${id}/activate`)).data;

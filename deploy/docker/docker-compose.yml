@@ -26,6 +26,7 @@ services:
       - TTS_URL=http://192.168.0.106:8020
       - MEDIA_DIR=/data/media
       - SECRETS_KEY=change-this-in-production
+      - PUBLIC_URL=  # public https address; needed for Instagram, Threads and YouTube
       - RUN_WORKER=true
     volumes:
       - backend-data:/data
