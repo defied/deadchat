@@ -128,8 +128,9 @@ export async function correctPrompt(
     'explicitly and earlier in the prompt. ' +
     (rules
       ? `The image must follow these rules: ${rules} Image models draw whatever a prompt names, even when it says ` +
-        '"covered" or "no", so never name what must stay hidden: describe what covers it instead (thicker, opaque ' +
-        'foam higher up, a towel wrapped higher, arms folded, a tighter or higher camera crop). '
+        '"covered" or "no", so never name what must stay hidden. Foam and thin fabric do not hide the body reliably: ' +
+        'change the framing so the problem area is out of shot or turned away (a close-up cropped at the ' +
+        'collarbones, back to the camera, knees hugged to the chest, a thick towel wrapped high). '
       : '') +
     'Output ONLY the new prompt.';
   const user = `Original request: ${userPrompt}\n\nPrevious prompt: ${previous}\n\nProblems found in the result:\n- ${issues.join('\n- ')}`;
