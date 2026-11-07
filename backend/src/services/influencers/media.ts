@@ -46,10 +46,12 @@ function randomSeed(): number {
 /** What scenes may show, for the scene-planning prompts. */
 export function sceneRule(inf: Influencer): string {
   return inf.look.suggestive
-    ? 'may include a few tasteful, flirtatious implied-nudity scenes (a bubble bath with thick foam up to the ' +
-        'collarbones, stepping out of the shower with a towel wrapped high, tangled in bedsheets). Nothing explicit ' +
-        'or sexual. Never name breasts, nipples or other private body parts, even to say they are covered: image ' +
-        'models draw whatever is named. Describe only what covers the body and how high it comes.'
+    ? 'may include a few tasteful, flirtatious implied-nudity scenes. Image models draw the body under foam or thin ' +
+        'fabric, so frame each one so the chest is out of shot or turned away: a close-up in the bath cropped at the ' +
+        'collarbones, sitting in the tub with knees hugged to the chest and arms wrapped around them, back to the ' +
+        'camera looking over the shoulder, or stepping out of the shower in a thick towel wrapped high. Nothing ' +
+        'explicit or sexual. Never name breasts, nipples or other private body parts, even to say they are covered: ' +
+        'image models draw whatever is named. Describe the framing and what covers the body.'
     : 'are safe for work.';
 }
 

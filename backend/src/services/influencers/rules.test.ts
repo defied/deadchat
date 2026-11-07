@@ -134,7 +134,7 @@ test('suggestive projects allow implied nudity but never exposure, sex or minors
 test('suggestive prompts require coverage and keep the minor safeguards', () => {
   const p = buildImagePrompt(persona, 'woman with dark curly hair', 'in a bubble bath', undefined, true);
   assert.match(p, /aged 27/);
-  assert.match(p, /opaque white foam or water up to the collarbones/);
+  assert.match(p, /chest is out of frame or turned away/);
   assert.doesNotMatch(p, /nipple|breast|genital|buttock/i, 'the prompt must not name what stays hidden');
   assert.doesNotMatch(p, /fully clothed/);
   for (const n of [IMAGE_NEGATIVE, IMAGE_NEGATIVE_SUGGESTIVE]) assert.match(n, /child, children, teen/);

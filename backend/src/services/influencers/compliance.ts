@@ -206,9 +206,12 @@ export function buildImagePrompt(persona: Persona, appearance: string, scene: st
     scene.trim(),
     // Image models draw whatever is named, even "covered nipples", so the
     // prompt only describes what covers the body.
+    // Foam alone isn't enough: models draw the body under it. Framing that keeps
+    // the chest out of shot or turned away is what reliably works.
     suggestive
-      ? 'tasteful, sensual implied nudity, modestly covered: thick opaque white foam or water up to the collarbones, ' +
-        'or a towel wrapped high and snug, or draped bedsheets, or arms folded; nothing explicit; a clearly mature adult'
+      ? 'tasteful, sensual implied nudity, modestly framed: the chest is out of frame or turned away from the camera ' +
+        '(close-up cropped at the collarbones, back to the camera looking over the shoulder, knees hugged to the chest ' +
+        'with arms wrapped around them, or a thick towel wrapped high and snug); nothing explicit; a clearly mature adult'
       : 'tasteful, fully clothed, safe for work',
   ];
   return parts.filter(Boolean).join('. ').replace(/\s+/g, ' ');
