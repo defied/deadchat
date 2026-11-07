@@ -28,6 +28,10 @@ export interface CatalogJobParams {
   enhance?: boolean;
   /** total attempts including the first (1 = no verification). Images only. */
   verifyAttempts?: number;
+  /** Hard content rules the vision check enforces (images only). */
+  verifyRules?: string;
+  /** Fail the job unless an attempt passed the vision check's hard rules. */
+  requireVerified?: boolean;
   imageMediaId?: number;
 }
 
@@ -49,6 +53,11 @@ export function normalizeParams(kind: 'image' | 'video', raw: Record<string, unk
     duration: raw.frames ? Number(raw.frames) / fps : undefined,
     enhance: settings.enhanceByDefault,
   };
+}
+
+/** Images that keep the hard rules always beat ones that don't, then score decides. */
+function rank(v: Verdict): number {
+  return (v.rulesBroken ? 0 : 100) + v.score;
 }
 
 export async function processCatalogJob(job: Job, raw: Record<string, unknown>): Promise<void> {
@@ -88,7 +97,7 @@ export async function processCatalogJob(job: Job, raw: Record<string, unknown>):
   }
 
   // 3. Generate (+ verify loop for images).
-  const attempts = kind === 'image' ? Math.min(3, Math.max(1, p.verifyAttempts ?? 1)) : 1;
+  const attempts = kind === 'image' ? Math.min(4, Math.max(p.requireVerified ? 2 : 1, p.verifyAttempts ?? 1)) : 1;
   const history: Array<{ prompt: string; seed: number; verdict?: Verdict }> = [];
   let best: { outputs: RunOutput[]; verdict?: Verdict; prompt: string; seed: number } | null = null;
 
@@ -131,21 +140,28 @@ export async function processCatalogJob(job: Job, raw: Record<string, unknown>):
       stage(`Checking the result (${i + 1}/${attempts})`);
       if (model.backend === 'local') await freeMemory(); // let the vision LLM load
       try {
-        verdict = await verifyImage(p.prompt, outputs[0].bytes.toString('base64'));
+        verdict = await verifyImage(p.prompt, outputs[0].bytes.toString('base64'), p.verifyRules);
       } catch (e) {
+        if (p.requireVerified) throw new Error(`The image couldn't be checked against the content rules: ${(e as Error).message}`);
         console.warn(`[media] verification skipped: ${(e as Error).message}`);
       }
     }
     history.push({ prompt, seed, verdict });
-    if (!best || (verdict && (!best.verdict || verdict.score > best.verdict.score))) best = { outputs, verdict, prompt, seed };
+    if (!best || (verdict && (!best.verdict || rank(verdict) > rank(best.verdict)))) best = { outputs, verdict, prompt, seed };
     if (!verdict || verdict.pass || i === attempts - 1) break;
 
     stage('Fixing the prompt');
     try {
-      prompt = await correctPrompt(p.prompt, prompt, verdict.issues, model);
+      prompt = await correctPrompt(p.prompt, prompt, verdict.issues, model, p.verifyRules);
     } catch {
       /* retry with the same prompt and a new seed */
     }
+  }
+
+  if (p.requireVerified && (!best!.verdict || best!.verdict.rulesBroken)) {
+    throw new Error(
+      `All ${history.length} attempts broke the content rules (${best!.verdict?.issues.join('; ') || 'not checked'}). Nothing was saved.`,
+    );
   }
 
   // 4. Save.

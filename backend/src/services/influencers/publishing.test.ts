@@ -335,3 +335,35 @@ test('Mastodon: implied-nudity posts mark their media sensitive', async () => {
   await platforms.publish('mastodon', creds, { text: 'Just words', mediaIds: [], sources: [], sensitive: true });
   assert.equal(JSON.parse(calls.find((c) => c.url.endsWith('/statuses'))!.body).sensitive, false);
 });
+
+// ── coverage check ─────────────────────────────────────────────────────────
+
+test('verifyImage fails any image that breaks a hard rule, and unclear answers', async () => {
+  const enhance = require('../media/enhance') as typeof import('../media/enhance'); // eslint-disable-line @typescript-eslint/no-require-imports
+  const { getActiveModel } = require('../chatModels') as typeof import('../chatModels'); // eslint-disable-line @typescript-eslint/no-require-imports
+  const model = getActiveModel();
+  let reply = '';
+  let system = '';
+  on((c) => c.url.endsWith('/api/tags'), () => json({ models: [{ name: model, digest: 'd1' }] }));
+  on((c) => c.url.endsWith('/api/show'), () => json({ capabilities: ['completion', 'vision'], model_info: {} }));
+  on((c) => c.url.endsWith('/api/chat'), (c) => {
+    system = JSON.parse(c.body).messages[0].content;
+    return json({ message: { content: reply } });
+  });
+
+  reply = JSON.stringify({ rulesBroken: true, score: 9, issues: ['nipple outline visible through the foam'] });
+  const broken = await enhance.verifyImage('bath scene', 'AAAA', 'No nipple may be visible.');
+  assert.deepEqual([broken.pass, broken.rulesBroken, broken.score], [false, true, 1]);
+  assert.match(system, /Hard rules .*No nipple may be visible/);
+
+  reply = JSON.stringify({ rulesBroken: false, score: 9, issues: [] });
+  assert.equal((await enhance.verifyImage('bath scene', 'AAAA', 'No nipple may be visible.')).pass, true);
+
+  // Missing rulesBroken or unparseable output fails closed when rules apply...
+  reply = JSON.stringify({ score: 9, issues: [] });
+  assert.equal((await enhance.verifyImage('bath scene', 'AAAA', 'No nipple may be visible.')).pass, false);
+  reply = 'not json';
+  assert.equal((await enhance.verifyImage('bath scene', 'AAAA', 'No nipple may be visible.')).pass, false);
+  // ...but not for ordinary images.
+  assert.equal((await enhance.verifyImage('a cat', 'AAAA')).pass, true);
+});
