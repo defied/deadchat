@@ -179,7 +179,7 @@ export interface Meta {
   platforms: PlatformDef[];
   publishing: { publicUrlConfigured: boolean; youtubeRedirectUri: string | null };
   models: { image: ModelOption[]; video: ModelOption[] };
-  rules: { minAge: number; maxPostsPerDay: number; minMinutesBetween: number; minPortfolio: number; disclosureTag: string };
+  rules: { minAge: number; maxPostsPerDay: number; minMinutesBetween: number; minPortfolio: number };
   research: { searxngUrl: string | null; braveKeySet: boolean; configured: boolean };
   defaultTrustedDomains: string[];
   suggestedFeeds: Array<{ label: string; url: string }>;

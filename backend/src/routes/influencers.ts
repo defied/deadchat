@@ -11,12 +11,10 @@ import {
   MIN_MINUTES_BETWEEN_POSTS,
   MIN_PERSONA_AGE,
   MIN_PORTFOLIO,
-  POST_DISCLOSURE_TAG,
   checkImagePrompt,
   checkLaunchReadiness,
   checkPersona,
   checkPlan,
-  ensureDisclosure,
 } from '../services/influencers/compliance';
 import { DEFAULT_TRUSTED_DOMAINS } from '../services/influencers/factcheck';
 import {
@@ -147,7 +145,7 @@ router.get('/meta', (_req, res) => {
       image: localModels('image').map((m) => ({ id: m.id, label: m.label, summary: m.summary, speed: m.speed })),
       video: localModels('video').filter((m) => m.needsImage).map((m) => ({ id: m.id, label: m.label, summary: m.summary, speed: m.speed })),
     },
-    rules: { minAge: MIN_PERSONA_AGE, maxPostsPerDay: MAX_POSTS_PER_DAY, minMinutesBetween: MIN_MINUTES_BETWEEN_POSTS, minPortfolio: MIN_PORTFOLIO, disclosureTag: POST_DISCLOSURE_TAG },
+    rules: { minAge: MIN_PERSONA_AGE, maxPostsPerDay: MAX_POSTS_PER_DAY, minMinutesBetween: MIN_MINUTES_BETWEEN_POSTS, minPortfolio: MIN_PORTFOLIO },
     research: { ...getResearchSettings(), configured: researchConfigured() },
     defaultTrustedDomains: DEFAULT_TRUSTED_DOMAINS,
     suggestedFeeds: SUGGESTED_FEEDS,
@@ -423,7 +421,7 @@ router.patch('/:id/posts/:pid', owned, (req, res) =>
     const i = inf(res);
     const post = ownedPost(i, Number(req.params.pid));
     if (post.status === 'published' || post.status === 'publishing') throw new Error('Published posts can\'t be edited');
-    const text = ensureDisclosure(String(req.body?.text ?? '').slice(0, 5000));
+    const text = String(req.body?.text ?? '').slice(0, 5000).trim();
     if (i.kind === 'text') {
       // Edited text needs a fresh fact-check before it can be approved.
       store.updatePost(post.id, { text, status: 'review', error: text === post.checkedText ? null : 'Edited: re-check before approving' });

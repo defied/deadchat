@@ -9,7 +9,7 @@
 // Nothing here publishes. A post that fails the fact-check or any rule is
 // stored as `blocked` with the reasons, so the user can see why.
 
-import { checkImagePrompt, checkPostText, domainOf, ensureDisclosure, POST_DISCLOSURE_TAG } from './compliance';
+import { checkImagePrompt, checkPostText, domainOf, stripDisclosureTag } from './compliance';
 import { aggregateFactCheck, isTrusted, topicKey, type ClaimEvidence, type FeedItem, type SourceVerdict } from './factcheck';
 import { asString, asStringArray, llmJson } from './llm';
 import { getActiveModel, getModelCapabilities } from '../chatModels';
@@ -21,11 +21,11 @@ import type { ComplianceResult, FactCheck, Influencer, Persona, Source } from '.
 
 // ── shared ─────────────────────────────────────────────────────────────────
 
-/** Longest post that fits every chosen platform, leaving room for the disclosure tag. */
+/** Longest post that fits every chosen platform. */
 export function textBudget(inf: Influencer): number {
   const limits = (inf.plan.platforms ?? []).map((p) => getPlatform(p)?.maxText ?? 500);
   const min = limits.length ? Math.min(...limits) : 300;
-  return Math.max(120, min - POST_DISCLOSURE_TAG.length - 4);
+  return Math.max(120, min);
 }
 
 function personaBrief(p: Persona): string {
@@ -316,7 +316,7 @@ export async function generateTextPost(inf: Influencer, opts: GenerateOptions): 
     fact = draft.claims.length ? await verifyClaims(inf, draft.claims, pages) : aggregateFactCheck([], inf.research);
   }
 
-  const text = ensureDisclosure(draft.text);
+  const text = stripDisclosureTag(draft.text);
   const sources = sourcesFor(fact, pages);
   const compliance = fact.passed ? await reviewPost(inf, text, sources) : null;
   const ok = fact.passed && !!compliance?.passed;
@@ -352,7 +352,7 @@ export async function recheckTextPost(inf: Influencer, post: store.Post): Promis
   );
   const claims = asStringArray(out.claims, 8, 300);
   const fact = claims.length ? await verifyClaims(inf, claims, pages) : aggregateFactCheck([], inf.research);
-  const text = ensureDisclosure(post.text);
+  const text = stripDisclosureTag(post.text);
   const compliance = fact.passed ? await reviewPost(inf, text, post.sources) : null;
   const ok = fact.passed && !!compliance?.passed;
   return store.updatePost(post.id, {
@@ -383,7 +383,7 @@ export async function generateVisualPost(inf: Influencer, opts: GenerateOptions)
   const scene = asString(out.scene, 400);
   if (!scene) throw new Error('The model did not return a scene');
   const sceneCheck = checkImagePrompt('The scene', scene);
-  const caption = ensureDisclosure(asString(out.caption, textBudget(inf) + 40));
+  const caption = stripDisclosureTag(asString(out.caption, textBudget(inf) + 40));
   if (!sceneCheck.passed) {
     return store.createPost(inf.id, {
       status: 'blocked',

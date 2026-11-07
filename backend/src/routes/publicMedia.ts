@@ -1,5 +1,6 @@
 // GET /api/public/media/:id/:exp/:variant/:sig — unauthenticated, signed and
-// expiring. Lets Instagram and Threads download a post's media.
+// expiring. Lets Instagram and Threads download a post's media. Converted
+// images carry the IPTC AI source type so the platforms label them as AI.
 
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
@@ -16,6 +17,21 @@ export function instagramCrop(width: number, height: number): { width: number; h
   return null;
 }
 
+/**
+ * IPTC "trainedAlgorithmicMedia" digital source type, the tag Meta and other
+ * platforms read to label an image as AI-generated.
+ */
+export const AI_SOURCE_TYPE = 'http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia';
+export const AI_XMP = `<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/"
+    Iptc4xmpExt:DigitalSourceType="${AI_SOURCE_TYPE}"/>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>`;
+
 async function convert(file: string, variant: MediaVariant): Promise<Buffer> {
   const sharp = (await import('sharp')).default;
   let img = sharp(file).rotate();
@@ -31,7 +47,7 @@ async function convert(file: string, variant: MediaVariant): Promise<Buffer> {
       img = img.resize({ width: 1440, withoutEnlargement: true });
     }
   }
-  return img.flatten({ background: '#ffffff' }).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+  return img.flatten({ background: '#ffffff' }).withXmp(AI_XMP).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
 }
 
 router.get('/:id/:exp/:variant/:sig', async (req: Request, res: Response): Promise<void> => {

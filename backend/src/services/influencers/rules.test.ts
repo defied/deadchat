@@ -10,7 +10,7 @@ import {
   checkPlan,
   checkPostText,
   checkRate,
-  ensureDisclosure,
+  stripDisclosureTag,
 } from './compliance';
 import { activeHoursBetween, inWindow, intervalHours, isPostDue, nextWindowStart } from './schedule';
 import type { Attestation, Influencer, Persona, Plan } from './types';
@@ -107,22 +107,22 @@ test('buildImagePrompt pins the adult age and the locked appearance', () => {
 
 // ── post text ──────────────────────────────────────────────────────────────
 
-test('ensureDisclosure appends once', () => {
-  const once = ensureDisclosure('Sunrise run done.');
-  assert.match(once, /#AIgenerated$/);
-  assert.equal(ensureDisclosure(once), once);
+test('stripDisclosureTag removes the old hashtag and tidies spacing', () => {
+  assert.equal(stripDisclosureTag('Sunrise run done.\n\n#AIgenerated'), 'Sunrise run done.');
+  assert.equal(stripDisclosureTag('Glow #AI-generated #nightdive\n\nMore'), 'Glow #nightdive\n\nMore');
+  assert.equal(stripDisclosureTag('No tag here, AI-generated persona'), 'No tag here, AI-generated persona');
 });
 
-test('posts need the disclosure and may only link verified sources', () => {
+test('posts need no hashtag and may only link verified sources', () => {
   const src = [{ url: 'https://apnews.com/a', domain: 'apnews.com' }];
-  assert.equal(checkPostText('Hello #AIgenerated', { kind: 'visual' }).passed, true);
-  assert.equal(checkPostText('Hello', { kind: 'visual' }).passed, false);
-  assert.equal(checkPostText('See https://apnews.com/a #AIgenerated', { kind: 'text', sources: src }).passed, true);
-  assert.equal(checkPostText('See https://randomblog.example/x #AIgenerated', { kind: 'text', sources: src }).passed, false);
+  assert.equal(checkPostText('Hello', { kind: 'visual' }).passed, true);
+  assert.equal(checkPostText('', { kind: 'visual' }).passed, false);
+  assert.equal(checkPostText('See https://apnews.com/a', { kind: 'text', sources: src }).passed, true);
+  assert.equal(checkPostText('See https://randomblog.example/x', { kind: 'text', sources: src }).passed, false);
 });
 
 test('political posts may not @-mention people; others only warn', () => {
-  const t = 'Thoughts on @someone today #AIgenerated';
+  const t = 'Thoughts on @someone today';
   assert.equal(checkPostText(t, { kind: 'text', research: { political: true } }).passed, false);
   const visual = checkPostText(t, { kind: 'visual' });
   assert.equal(visual.passed, true);
@@ -130,7 +130,7 @@ test('political posts may not @-mention people; others only warn', () => {
 });
 
 test('political posts about election logistics need an official source', () => {
-  const t = 'Early voting starts Monday. #AIgenerated';
+  const t = 'Early voting starts Monday.';
   const news = [{ url: 'https://apnews.com/a', domain: 'apnews.com' }];
   const gov = [{ url: 'https://www.sos.wa.gov/x', domain: 'sos.wa.gov' }];
   assert.equal(checkPostText(t, { kind: 'text', research: { political: true }, sources: news }).passed, false);
@@ -138,7 +138,7 @@ test('political posts about election logistics need an official source', () => {
 });
 
 test('policy topics mentioning children are not blocked in post text', () => {
-  assert.equal(checkPostText('The child tax credit vote passed. #AIgenerated', { kind: 'text' }).passed, true);
+  assert.equal(checkPostText('The child tax credit vote passed.', { kind: 'text' }).passed, true);
 });
 
 // ── rate caps ──────────────────────────────────────────────────────────────
