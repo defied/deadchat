@@ -11,6 +11,7 @@ import fs from 'fs';
 import { getMedia, getMediaPath } from '../mediaStore';
 import type { Source } from './types';
 import { requirePublicUrl, signedMediaUrl } from './publicMedia';
+import { stripDisclosureTag } from './compliance';
 
 export interface CredentialField {
   key: string;
@@ -66,7 +67,7 @@ export const PLATFORMS: PlatformDef[] = [
       { id: 'app-password', label: 'Create an app password for DeadChat', required: true, link: 'https://bsky.app/settings/app-passwords' },
       ...COMMON,
     ],
-    aiRule: 'No AI label setting exists, so the bio disclosure and #AIgenerated tag on each post carry it.',
+    aiRule: 'No AI label setting exists, so the bio disclosure carries it.',
   },
   {
     id: 'mastodon',
@@ -110,7 +111,7 @@ export const PLATFORMS: PlatformDef[] = [
       ...COMMON,
     ],
     aiRule:
-      'Profiles featuring an AI-generated person must carry the "AI-generated profile" label. The API can\'t set the per-post AI label, so every caption carries #AIgenerated.',
+      'Profiles featuring an AI-generated person must carry the "AI-generated profile" label. Instagram reads the AI tag DeadChat embeds in each image and adds its "AI info" label.',
   },
   {
     id: 'threads',
@@ -133,7 +134,7 @@ export const PLATFORMS: PlatformDef[] = [
       { id: 'ai-profile', label: 'The linked Instagram profile carries the "AI-generated profile" label', required: true },
       ...COMMON,
     ],
-    aiRule: "Meta's AI-disclosure rules apply: label photorealistic AI video and audio. Every post carries #AIgenerated.",
+    aiRule: "Meta's AI-disclosure rules apply: label photorealistic AI video and audio. Images carry an embedded AI tag that Meta reads to add its label.",
   },
   {
     id: 'tiktok',
@@ -209,19 +210,15 @@ export function graphemeLength(text: string): number {
   return n;
 }
 
-/** Shorten to `max` graphemes on a word boundary, keeping the trailing disclosure line. */
+/** Shorten to `max` graphemes on a word boundary. */
 export function fitText(text: string, max: number): string {
   if (graphemeLength(text) <= max) return text;
-  const lines = text.trimEnd().split('\n');
-  const last = lines[lines.length - 1];
-  const keepTag = /#AI-?generated/i.test(last) ? last : '';
-  const body = keepTag ? lines.slice(0, -1).join('\n').trimEnd() : text;
-  const room = max - (keepTag ? graphemeLength(keepTag) + 2 : 0) - 1;
-  const chars = Array.from(segmenter.segment(body), (s) => s.segment);
+  const room = max - 1;
+  const chars = Array.from(segmenter.segment(text.trimEnd()), (s) => s.segment);
   let cut = chars.slice(0, Math.max(0, room)).join('');
   const sp = cut.lastIndexOf(' ');
   if (sp > room * 0.6) cut = cut.slice(0, sp);
-  return `${cut.trimEnd()}…${keepTag ? `\n\n${keepTag}` : ''}`;
+  return `${cut.trimEnd()}…`;
 }
 
 export interface Facet {
@@ -645,7 +642,7 @@ async function publishThreads(creds: Record<string, unknown>, input: PublishInpu
   const text = threadsLength(extra) < 200 ? fitThreads(input.text, 500 - threadsLength(extra)) + extra : fitThreads(input.text);
   // Threads accepts JPEG and PNG; anything else is converted.
   const url = (m: MediaItem) =>
-    signedMediaUrl(m.id, m.mime, m.type === 'image' && !/^image\/(jpeg|png)$/.test(m.mime) ? 'jpeg' : 'orig', 'Threads');
+    signedMediaUrl(m.id, m.mime, m.type === 'image' ? 'jpeg' : 'orig', 'Threads');
   const single = (m: MediaItem, carousel: boolean): MetaParams => ({
     ...(m.type === 'image' ? { media_type: 'IMAGE', image_url: url(m) } : { media_type: 'VIDEO', video_url: url(m) }),
     ...(carousel ? { is_carousel_item: true } : { text }),
@@ -816,6 +813,8 @@ export async function publish(
   input: PublishInput,
   ctx?: PublishContext,
 ): Promise<PublishResult> {
+  // Posts drafted before the hashtag was dropped still carry it.
+  input = { ...input, text: stripDisclosureTag(input.text) };
   if (platform === 'bluesky') return publishBluesky(creds, input);
   if (platform === 'mastodon') return publishMastodon(creds, input);
   if (platform === 'instagram') return publishInstagram(creds, input, ctx);

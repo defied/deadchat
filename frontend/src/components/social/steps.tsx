@@ -28,7 +28,7 @@ const RULES: Array<{ key: keyof api.Attestation; title: string; body: string }> 
   {
     key: 'disclose',
     title: 'Every account is labelled as AI.',
-    body: "The bio says it's an AI-generated persona, every post carries #AIgenerated, and each platform's AI label is turned on.",
+    body: "The bio says it's an AI-generated persona, images carry an embedded AI tag that platforms read to label them, and each platform's AI label is turned on.",
   },
   {
     key: 'noDeception',

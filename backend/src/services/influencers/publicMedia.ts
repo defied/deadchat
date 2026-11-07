@@ -10,8 +10,8 @@ import { config } from '../../config';
 /**
  * How the file is served:
  * - orig: the file as stored
- * - jpeg: re-encoded as JPEG (Threads accepts JPEG/PNG only)
- * - ig:   JPEG, cropped into Instagram's feed aspect range (4:5 to 1.91:1)
+ * - jpeg: re-encoded as JPEG with the AI metadata tag (used for Threads)
+ * - ig:   the same, cropped into Instagram's feed aspect range (4:5 to 1.91:1)
  */
 export type MediaVariant = 'orig' | 'jpeg' | 'ig';
 export const MEDIA_VARIANTS: MediaVariant[] = ['orig', 'jpeg', 'ig'];

@@ -107,7 +107,7 @@ The **Social Media** tab creates AI influencer projects with a step-by-step wiza
 **Rules enforced in code** (`services/influencers/compliance.ts`), whatever the automation settings say:
 
 - The persona is invented, a stated adult of 21 or older, and never aimed at minors. Image prompts that hint at a minor, a real person's likeness or sexual content are refused.
-- Every post carries `#AIgenerated` and every bio says the account is AI. Each platform's own AI label is part of its setup checklist.
+- Every bio says the account is AI. Images sent to Instagram and Threads carry the IPTC AI source tag, which Meta reads to add its AI label, and each platform's own AI label is part of its setup checklist. Posts no longer carry an `#AIgenerated` hashtag.
 - Posting is capped at 6 posts a day, at least 60 minutes apart.
 - Posts may only link the verified sources. Political posts may not @-mention people, and election logistics need an official government source.
 - Every post also goes through an LLM policy review before it can be approved.

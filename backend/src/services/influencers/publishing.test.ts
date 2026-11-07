@@ -156,7 +156,7 @@ test('Instagram: renews the token, posts one image, returns the permalink', asyn
   assert.equal(create.headers.authorization, 'Bearer NEW', 'uses the renewed token');
   const params = form(create);
   assert.match(params.get('image_url')!, /^https:\/\/deadchat\.example\.com\/api\/public\/media\/\d+\/\d+\/ig\/.+\.jpg$/);
-  assert.match(params.get('caption')!, /#AIgenerated\n\nSources: noaa\.gov, usgs\.gov$/);
+  assert.match(params.get('caption')!, /^Tide pools at dawn\.\n\nSources: noaa\.gov, usgs\.gov$/);
   assert.equal(saved.at(-1)!.accessToken, 'NEW');
   assert.equal(saved.at(-1)!.userId, '1784');
   assert.ok(saved.at(-1)!.tokenRefreshedAt);
@@ -172,7 +172,7 @@ test('Instagram: carousel of image + video waits for the video, then publishes',
   on((c) => c.url.endsWith('/9/media_publish'), () => json({ id: 'P2' }));
   on((c) => c.url.includes('/P2?'), () => json({ permalink: 'https://www.instagram.com/p/car/' }));
 
-  const out = await platforms.publish('instagram', creds, { text: 'Two views #AIgenerated', mediaIds: [tallPng, clipMp4], sources: [] });
+  const out = await platforms.publish('instagram', creds, { text: 'Two views', mediaIds: [tallPng, clipMp4], sources: [] });
   assert.equal(out.url, 'https://www.instagram.com/p/car/');
   assert.ok(!calls.some((c) => c.url.includes('refresh_access_token')), 'token renewed under a week ago is reused');
   const kids = calls.filter((c) => c.url.endsWith('/9/media') && form(c).get('is_carousel_item') === 'true');
@@ -217,10 +217,10 @@ test('Threads: text post with inline sources, token sent as access_token', async
   assert.equal(form(create).get('access_token'), 'TH');
   assert.equal(create.headers.authorization, undefined);
   assert.equal(form(create).get('media_type'), 'TEXT');
-  assert.match(form(create).get('text')!, /Sources: https:\/\/www\.noaa\.gov\/news\/a https:\/\/www\.usgs\.gov\/b$/);
+  assert.match(form(create).get('text')!, /^Storm surge update\.\n\nSources: https:\/\/www\.noaa\.gov\/news\/a https:\/\/www\.usgs\.gov\/b$/);
 });
 
-test('Threads: PNG goes out as-is, emoji count as bytes toward 500', async () => {
+test('Threads: images go out as tagged JPEG, emoji count as bytes toward 500', async () => {
   assert.equal(platforms.threadsLength('ab🌊'), 2 + Buffer.byteLength('🌊'));
   const long = `${'🌊'.repeat(150)} end`;
   assert.ok(platforms.threadsLength(platforms.fitThreads(long)) <= 500);
@@ -230,10 +230,10 @@ test('Threads: PNG goes out as-is, emoji count as bytes toward 500', async () =>
   on((c) => c.url.includes('/TC2?'), () => json({ status: 'FINISHED' }));
   on((c) => c.url.endsWith('/55/threads_publish'), () => json({ id: 'TP2' }));
   on((c) => c.url.includes('/TP2?'), () => json({}));
-  await platforms.publish('threads', creds, { text: 'Look #AIgenerated', mediaIds: [tallPng], sources: [] });
+  await platforms.publish('threads', creds, { text: 'Look', mediaIds: [tallPng], sources: [] });
   const p = form(calls.find((c) => c.url.endsWith('/55/threads'))!);
   assert.equal(p.get('media_type'), 'IMAGE');
-  assert.match(p.get('image_url')!, /\/orig\/.+\.png$/);
+  assert.match(p.get('image_url')!, /\/jpeg\/.+\.jpg$/);
 });
 
 // ── YouTube ────────────────────────────────────────────────────────────────
@@ -256,7 +256,7 @@ test('YouTube: uploads the video as public, marked synthetic', async () => {
   on((c) => c.url === 'https://upload.example/session/1', () => json({ id: 'VID123', status: { uploadStatus: 'uploaded' } }));
 
   const out = await platforms.publish('youtube', creds, {
-    text: 'Night dive at the <reef>\n\nBioluminescence everywhere. #AIgenerated #nightdive',
+    text: 'Night dive at the <reef>\n\nBioluminescence everywhere. #nightdive',
     mediaIds: [tallPng, clipMp4],
     sources: SOURCES,
   });
@@ -267,7 +267,7 @@ test('YouTube: uploads the video as public, marked synthetic', async () => {
   assert.equal(initCall.headers['x-upload-content-type'], 'video/mp4');
   const meta = JSON.parse(initCall.body);
   assert.equal(meta.snippet.title, 'Night dive at the reef');
-  assert.deepEqual(meta.snippet.tags, ['AIgenerated', 'nightdive']);
+  assert.deepEqual(meta.snippet.tags, ['nightdive']);
   assert.match(meta.snippet.description, /Sources:\nhttps:\/\/www\.noaa\.gov\/news\/a/);
   assert.deepEqual(meta.status, { privacyStatus: 'public', selfDeclaredMadeForKids: false, containsSyntheticMedia: true });
   assert.equal(calls[2].method, 'PUT');
@@ -305,6 +305,12 @@ test('public media endpoint serves signed links only, converting for Instagram',
     const meta = await sharp(Buffer.from(await ig.arrayBuffer())).metadata();
     assert.equal(meta.format, 'jpeg');
     assert.equal(meta.width! / meta.height!, 0.8, 'cropped to 4:5');
+    assert.match(meta.xmp?.toString('utf-8') ?? '', /DigitalSourceType="http:\/\/cv\.iptc\.org\/newscodes\/digitalsourcetype\/trainedAlgorithmicMedia"/);
+
+    const th = await realFetch(local(pm.signedMediaUrl(tallPng, 'image/png', 'jpeg', 'Threads')));
+    const thMeta = await sharp(Buffer.from(await th.arrayBuffer())).metadata();
+    assert.equal(thMeta.format, 'jpeg');
+    assert.match(thMeta.xmp?.toString('utf-8') ?? '', /trainedAlgorithmicMedia/);
 
     const orig = await realFetch(local(pm.signedMediaUrl(clipMp4, 'video/mp4', 'orig', 'Instagram')), { headers: { Range: 'bytes=0-3' } });
     assert.equal(orig.status, 206);

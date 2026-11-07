@@ -97,21 +97,20 @@ test('htmlToText keeps article text and drops scripts and navigation', () => {
 
 // ── platform text ──────────────────────────────────────────────────────────
 
-test('fitText shortens to the limit but keeps the disclosure tag', () => {
-  const long = `${'word '.repeat(100)}\n\n#AIgenerated`;
-  const out = fitText(long, 300);
+test('fitText shortens to the limit on a word boundary', () => {
+  const out = fitText('word '.repeat(100), 300);
   assert.ok(graphemeLength(out) <= 300, `length ${graphemeLength(out)}`);
-  assert.match(out, /…\n\n#AIgenerated$/);
-  assert.equal(fitText('short #AIgenerated', 300), 'short #AIgenerated');
+  assert.match(out, /word…$/);
+  assert.equal(fitText('short post', 300), 'short post');
 });
 
 test('Bluesky facets use UTF-8 byte offsets for links and tags', () => {
-  const text = 'Café update https://x.test/a #AIgenerated';
+  const text = 'Café update https://x.test/a #reefwatch';
   const facets = buildFacets(text);
   const bytes = new TextEncoder().encode(text);
   const slice = (f: (typeof facets)[number]) => new TextDecoder().decode(bytes.slice(f.index.byteStart, f.index.byteEnd));
-  assert.deepEqual(facets.map(slice), ['https://x.test/a', '#AIgenerated']);
-  assert.equal(facets[1].features[0].tag, 'AIgenerated');
+  assert.deepEqual(facets.map(slice), ['https://x.test/a', '#reefwatch']);
+  assert.equal(facets[1].features[0].tag, 'reefwatch');
 });
 
 test('sources reply links short labels to full URLs', () => {

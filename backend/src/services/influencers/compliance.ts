@@ -14,7 +14,6 @@ export const MIN_MINUTES_BETWEEN_POSTS = 60;
 /** Approved portfolio images needed before a visual influencer can go live. */
 export const MIN_PORTFOLIO = 6;
 export const DEFAULT_DISCLOSURE = 'AI-generated persona';
-export const POST_DISCLOSURE_TAG = '#AIgenerated';
 
 export const IMAGE_NEGATIVE =
   'child, children, teen, teenager, minor, young-looking, school uniform, nudity, nsfw, explicit, ' +
@@ -161,11 +160,16 @@ export function buildImagePrompt(persona: Persona, appearance: string, scene: st
   return parts.filter(Boolean).join('. ').replace(/\s+/g, ' ');
 }
 
-/** Append the AI disclosure tag if the text doesn't already disclose. */
-export function ensureDisclosure(text: string, tag = POST_DISCLOSURE_TAG): string {
-  const t = text.trim();
-  if (/#AI-?generated\b|\bAI-generated\b/i.test(t)) return t;
-  return `${t}${t ? '\n\n' : ''}${tag}`;
+/**
+ * Remove the #AIgenerated hashtag that older posts carried. Platforms now
+ * detect and label AI media themselves, and the bio carries the disclosure.
+ */
+export function stripDisclosureTag(text: string): string {
+  return text
+    .replace(/[ \t]*#AI-?generated\b/gi, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function extractUrls(text: string): string[] {
@@ -191,7 +195,6 @@ export function checkPostText(
 
   if (!text.trim()) issues.push('The post is empty.');
   textChecks('The post', text, issues, { explicit: true, minor: 'post' });
-  if (!/#AI-?generated\b|\bAI-generated\b/i.test(text)) issues.push('The post must carry the AI disclosure (#AIgenerated).');
 
   if (MENTION_RE.test(text)) {
     const msg = 'The post @-mentions an account. Automated posts respond to topics, not to individual people.';
