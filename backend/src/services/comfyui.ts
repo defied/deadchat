@@ -280,6 +280,8 @@ export async function freeMemory(): Promise<void> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ unload_models: true, free_memory: true }),
+      // Best-effort: never let an unreachable ComfyUI stall a job.
+      signal: AbortSignal.timeout(10_000),
     });
   } catch {
     // best-effort

@@ -203,6 +203,7 @@ export async function evictModel(model: string): Promise<void> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, keep_alive: 0 }),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch {
     // Best-effort — don't block the job if eviction fails
