@@ -28,7 +28,8 @@ import {
   syncPending,
 } from '../services/influencers/media';
 import { generatePost, recheckTextPost, reviewPost, suggestPersona } from '../services/influencers/pipeline';
-import { PLATFORMS, checklistDone, getPlatform, testConnection } from '../services/influencers/platforms';
+import { PLATFORMS, checklistDone, getPlatform, testConnection, youtubeAuthUrl, youtubeRedirectUri } from '../services/influencers/platforms';
+import { publicUrlConfigured, signState } from '../services/influencers/publicMedia';
 import { getResearchSettings, researchConfigured, setResearchSettings } from '../services/influencers/research';
 import { nextWindowStart } from '../services/influencers/schedule';
 import { publishBlocker, publishPost } from '../services/influencers/automation';
@@ -138,6 +139,10 @@ router.get('/meta', (_req, res) => {
   res.json({
     steps: STEPS,
     platforms: PLATFORMS,
+    publishing: {
+      publicUrlConfigured: publicUrlConfigured(),
+      youtubeRedirectUri: publicUrlConfigured() ? youtubeRedirectUri() : null,
+    },
     models: {
       image: localModels('image').map((m) => ({ id: m.id, label: m.label, summary: m.summary, speed: m.speed })),
       video: localModels('video').filter((m) => m.needsImage).map((m) => ({ id: m.id, label: m.label, summary: m.summary, speed: m.speed })),
@@ -323,6 +328,11 @@ router.put('/:id/accounts/:platform', owned, (req, res) =>
       if (f.secret && (v === '' || v === '••••••••')) continue;
       creds[f.key] = v.trim();
     }
+    // A new token or OAuth client invalidates what was derived from the old one.
+    if (creds.accessToken !== prev.accessToken) {
+      for (const k of ['tokenRefreshedAt', 'tokenExpiresAt', 'userId', 'username']) delete creds[k];
+    }
+    if (creds.clientId !== prev.clientId || creds.clientSecret !== prev.clientSecret) delete creds.refreshToken;
     const checklist = { ...store.parseChecklist(existing), ...((req.body?.checklist ?? {}) as Record<string, boolean>) };
     const credsChanged = JSON.stringify(creds) !== JSON.stringify(prev);
     store.upsertAccount(i.id, def.id, {
@@ -342,12 +352,26 @@ router.post('/:id/accounts/:platform/test', owned, (req, res) =>
     const row = store.getAccount(i.id, String(req.params.platform));
     if (!row?.credentials) throw new Error('Save the credentials first');
     try {
-      const handle = await testConnection(row.platform, decryptObject(row.credentials));
+      const handle = await testConnection(row.platform, decryptObject(row.credentials), {
+        saveCredentials: (c) => store.upsertAccount(i.id, row.platform, { credentials: encryptObject(c) }),
+      });
       store.upsertAccount(i.id, row.platform, { status: 'connected', handle, lastError: null });
     } catch (e) {
       store.upsertAccount(i.id, row.platform, { status: 'error', lastError: (e as Error).message });
     }
     return detail(i);
+  }),
+);
+
+// YouTube: send the user to Google to authorise uploads; Google redirects back
+// to /api/oauth/youtube/callback (routes/socialOAuth.ts).
+router.post('/:id/accounts/youtube/connect', owned, (req, res) =>
+  wrap(res, () => {
+    const i = inf(res);
+    const row = store.getAccount(i.id, 'youtube');
+    if (!row?.credentials) throw new Error('Save the Google OAuth client ID and secret first');
+    const state = signState({ influencerId: i.id, userId: req.user!.id, platform: 'youtube' });
+    return { url: youtubeAuthUrl(decryptObject(row.credentials), state) };
   }),
 );
 

@@ -5,10 +5,11 @@
 // one. Generation runs one at a time; its image/video work goes through the
 // normal job queue. Publishing re-checks the rules and rate caps first.
 
-import { decryptObject } from '../secrets';
+import { decryptObject, encryptObject } from '../secrets';
+import { getMedia } from '../mediaStore';
 import { checkPostText, checkRate } from './compliance';
 import { generatePost } from './pipeline';
-import { getPlatform, publish } from './platforms';
+import { acceptsPost, getPlatform, publish } from './platforms';
 import { isPostDue, nextWindowStart } from './schedule';
 import * as store from './store';
 import type { Influencer } from './types';
@@ -69,22 +70,30 @@ export async function publishPost(postId: number): Promise<store.Post> {
 
   store.updatePost(post.id, { status: 'publishing', error: null });
   const results = { ...post.results };
+  const mediaTypes = post.mediaIds.map((id) => getMedia(id)?.type).filter((t): t is NonNullable<typeof t> => !!t);
   let anyApi = false;
   for (const platform of inf.plan.platforms ?? []) {
     const def = getPlatform(platform);
     const acct = store.getAccount(inf.id, platform);
     if (!def || def.mode !== 'api' || !acct || acct.status !== 'connected' || !acct.credentials) continue;
     if (results[platform]?.ok) continue;
-    if (!def.media.textOnly && post.mediaIds.length === 0) continue;
+    // e.g. YouTube only takes video; text-only platforms take anything.
+    if (!acceptsPost(def, mediaTypes)) continue;
     anyApi = true;
     try {
-      const out = await publish(platform, decryptObject(acct.credentials), {
-        text: post.text,
-        // Publishers skip media types their platform doesn't take (Bluesky: images only).
-        mediaIds: post.mediaIds,
-        sources: post.sources,
-        alt: post.topic ?? undefined,
-      });
+      const out = await publish(
+        platform,
+        decryptObject(acct.credentials),
+        {
+          text: post.text,
+          // Publishers skip media types their platform doesn't take (Bluesky: images only).
+          mediaIds: post.mediaIds,
+          sources: post.sources,
+          alt: post.topic ?? undefined,
+        },
+        // Renewed tokens (Meta) are stored straight away.
+        { saveCredentials: (c) => store.upsertAccount(inf.id, platform, { credentials: encryptObject(c) }) },
+      );
       results[platform] = { ok: true, url: out.url, at: new Date().toISOString() };
     } catch (e) {
       results[platform] = { ok: false, error: (e as Error).message, at: new Date().toISOString() };

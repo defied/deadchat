@@ -113,7 +113,19 @@ The **Social Media** tab creates AI influencer projects with a step-by-step wiza
 - Every post also goes through an LLM policy review before it can be approved.
 - Posts wait for approval unless *auto-publish* is on. Even then, anything that fails a check is held.
 
-**Platforms:** Bluesky (app password) and Mastodon (access token) publish through their APIs. Instagram, Threads, TikTok, X and YouTube are prepared for you to post manually and then mark as posted.
+**Platforms:** five publish automatically through their official APIs, using credentials you create for your own accounts:
+
+| Platform | Credential | Notes |
+|---|---|---|
+| Bluesky | App password | Images only (≤1 MB, resized automatically) |
+| Mastodon | Access token | Images and video |
+| Instagram | Long-lived access token from a Meta app with *Instagram API with Instagram login* | Professional account; you are an Instagram tester on the app, so no App Review. Needs an image or video. Images are converted to JPEG and cropped into 4:5–1.91:1. Single posts, Reels and carousels (up to 10) |
+| Threads | Long-lived access token from the *Threads API* use case | You are a Threads tester on the app. Text, image, video and carousels |
+| YouTube | Google OAuth client ID + secret, then **Connect with Google** | Videos only. Uploaded public with *altered or synthetic content* set. Set the consent screen to *In production*, or Google revokes access after 7 days |
+
+Meta tokens are renewed automatically about once a week (they expire after 60 days unused). TikTok and X are prepared for you to post and then mark as posted: TikTok keeps API posts private until it audits the app, and X charges per API post.
+
+**`PUBLIC_URL`** must be DeadChat's public https address (e.g. `https://deadchat.example.com`). Instagram and Threads download each image or video from a signed link under `/api/public/media/` that expires after 6 hours, and Google redirects YouTube sign-ins to `PUBLIC_URL/api/oauth/youtube/callback` (add that as an authorised redirect URI on the OAuth client).
 
 **Setup:** text personas need a web search provider. Set `SEARXNG_URL` (recommended: self-hosted SearXNG) or `BRAVE_SEARCH_API_KEY`, or enter one in the wizard as an admin. The automation runs in the worker process (`RUN_WORKER`) and checks every minute.
 

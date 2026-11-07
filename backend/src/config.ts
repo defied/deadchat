@@ -24,5 +24,9 @@ export const config = {
   // so whatever volume holds the DB also holds the files the DB points at.
   mediaDir: process.env.MEDIA_DIR || path.join(path.dirname(process.env.DB_PATH || './data/deadchat.db'), 'media'),
   secretsKey: process.env.SECRETS_KEY || '',
+  // Public https origin of this DeadChat (e.g. https://deadchat.example.com).
+  // Instagram and Threads fetch post media from it, and YouTube's OAuth
+  // redirect comes back to it.
+  publicUrl: (process.env.PUBLIC_URL || '').replace(/\/+$/, ''),
   runWorker: process.env.RUN_WORKER !== 'false',
 };

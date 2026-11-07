@@ -63,6 +63,8 @@ spec:
               value: /data/uploads
             - name: MEDIA_DIR
               value: /data/media
+            - name: PUBLIC_URL
+              value: {{ .Values.backend.env.publicUrl | default (printf "https://%s" .Values.ingress.host) | quote }}
           volumeMounts:
             - name: data
               mountPath: /data

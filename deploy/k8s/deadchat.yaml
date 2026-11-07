@@ -54,6 +54,9 @@ data:
   UPLOAD_DIR: "/data/uploads"
   # Must be on the /data volume, or generated media is lost on every restart.
   MEDIA_DIR: "/data/media"
+  # Public https address. Instagram and Threads download post media from it,
+  # and Google sends YouTube sign-ins back to it.
+  PUBLIC_URL: "https://deadchat.deadplanet.net"
   PORT: "3000"
 ---
 apiVersion: apps/v1
