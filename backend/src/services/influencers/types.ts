@@ -41,6 +41,12 @@ export interface Look {
    * after a shower). Nipples, genitals and buttocks stay covered; nothing explicit.
    */
   suggestive?: boolean;
+  /**
+   * What images may show: 'sfw' (default), 'implied' (covered nudity, same as
+   * `suggestive`), or 'explicit' (adult nudity and sexual content between
+   * adults; such projects never publish). Overrides `suggestive` when set.
+   */
+  contentLevel?: 'sfw' | 'implied' | 'explicit';
   /** Seed of the approved look, reused as the base seed for consistency. */
   seed?: number;
   approvedMediaId?: number;

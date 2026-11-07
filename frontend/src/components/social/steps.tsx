@@ -253,16 +253,17 @@ export function StepLook({ detail, meta, save, apply, back, next }: StepProps) {
   const [style, setStyle] = useState(inf.look.style ?? '');
   const [model, setModel] = useState(inf.look.imageModel ?? meta.models.image[0]?.id ?? '');
   const [ratio, setRatio] = useState(inf.look.ratio ?? '3:4');
-  const [suggestive, setSuggestive] = useState(!!inf.look.suggestive);
+  const savedLevel = inf.look.contentLevel ?? (inf.look.suggestive ? 'implied' : 'sfw');
+  const [level, setLevel] = useState<'sfw' | 'implied' | 'explicit'>(savedLevel);
   const [feedback, setFeedback] = useState('');
   const { busy, error, run } = useAction();
   const looks = detail.media.filter((m) => m.role === 'look');
   const shown = [...looks.filter((m) => m.status !== 'rejected'), ...looks.filter((m) => m.status === 'rejected')].slice(0, 16);
   const dirty =
     appearance !== (inf.look.appearance ?? '') || style !== (inf.look.style ?? '') || model !== (inf.look.imageModel ?? '') || ratio !== (inf.look.ratio ?? '3:4') ||
-    suggestive !== !!inf.look.suggestive;
+    level !== savedLevel;
 
-  const persist = () => save({ look: { appearance, style, imageModel: model, ratio, suggestive } });
+  const persist = () => save({ look: { appearance, style, imageModel: model, ratio, contentLevel: level } });
 
   return (
     <div>
@@ -295,15 +296,22 @@ export function StepLook({ detail, meta, save, apply, back, next }: StepProps) {
           </select>
         </Field>
       </div>
-      <label className="toggle" style={{ marginBottom: 14 }}>
-        <input type="checkbox" checked={suggestive} onChange={(e) => setSuggestive(e.target.checked)} />
-        <span>
-          <strong>Allow tasteful implied nudity.</strong> Portfolio and post photos may show scenes like a bubble bath or a
-          towel after a shower, with nipples, genitals and buttocks always covered and nothing explicit. Captions may be
-          flirtatious. Instagram and Threads allow this but may show it to fewer people. Bluesky and Mastodon posts are
-          marked sensitive.
-        </span>
-      </label>
+      <Field
+        label="Content"
+        hint={
+          level === 'explicit'
+            ? `Adult nudity and sexual content between consenting adults. These projects never publish: posts stay as drafts you can download. Needs a persona aged 25+, every image is checked to make sure everyone clearly looks 21 or older, and youth-coded words (girl, young, petite…) are refused.`
+            : level === 'implied'
+              ? 'Scenes like a bubble bath or a towel after a shower, framed so nothing private shows; each image is checked. Instagram and Threads may show these to fewer people; Bluesky and Mastodon posts are marked sensitive.'
+              : 'Every image is fully clothed.'
+        }
+      >
+        <select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}>
+          <option value="sfw">Safe for work</option>
+          <option value="implied">Tasteful implied nudity</option>
+          <option value="explicit">Explicit (adult, never published)</option>
+        </select>
+      </Field>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <button
           className="btn btn-primary"
@@ -354,7 +362,7 @@ export function StepLook({ detail, meta, save, apply, back, next }: StepProps) {
       {error && <Alert>{error}</Alert>}
       <StepNav
         onBack={back}
-        onNext={() => run('next', async () => (dirty ? save({ look: { appearance, style, imageModel: model, ratio, suggestive } }, true) : next()))}
+        onNext={() => run('next', async () => (dirty ? save({ look: { appearance, style, imageModel: model, ratio, contentLevel: level } }, true) : next()))}
         nextLabel={inf.look.approvedMediaId ? 'Continue with this look' : 'Approve a look to continue'}
         nextDisabled={!inf.look.approvedMediaId}
         busy={!!busy}

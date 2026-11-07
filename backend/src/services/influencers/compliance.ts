@@ -3,7 +3,7 @@
 // these, never instead of them. A post that fails any blocking check is never
 // published, whatever the automation settings say.
 
-import type { Attestation, ComplianceResult, Influencer, Persona, Plan, Research, Source } from './types';
+import type { Attestation, ComplianceResult, Influencer, Look, Persona, Plan, Research, Source } from './types';
 
 /** Personas are stated adults with a margin, so generated imagery is unambiguous. */
 export const MIN_PERSONA_AGE = 21;
@@ -34,8 +34,27 @@ export const COVERAGE_RULES =
 // In implied-nudity scenes, naming these makes image models draw them.
 const NAMED_PART_RE = /\b(?:nipples?|areolae?|areolas|breasts?|boobs?|tits?|cleavage|bosom)\b/i;
 
-export function imageNegative(suggestive?: boolean): string {
-  return suggestive ? IMAGE_NEGATIVE_SUGGESTIVE : IMAGE_NEGATIVE;
+export type ContentLevel = 'sfw' | 'implied' | 'explicit';
+
+/** A project's content level (older projects only have the `suggestive` flag). */
+export function contentLevel(look?: Look): ContentLevel {
+  if (look?.contentLevel === 'implied' || look?.contentLevel === 'explicit' || look?.contentLevel === 'sfw') return look.contentLevel;
+  return look?.suggestive ? 'implied' : 'sfw';
+}
+
+const asLevel = (l: ContentLevel | boolean | undefined): ContentLevel => (l === true ? 'implied' : l ? l : 'sfw');
+
+/** Explicit projects need a wider age margin so nothing can read as young. */
+export const MIN_EXPLICIT_AGE = 25;
+
+/** What the vision check enforces on every explicit image. */
+export const ADULT_RULES =
+  'Every person shown must clearly look 21 or older, with an adult face and adult body; anything childlike, ' +
+  'very youthful or ambiguous breaks the rule. No recognisable real person or celebrity.';
+
+export function imageNegative(level?: ContentLevel | boolean): string {
+  const l = asLevel(level);
+  return l === 'explicit' ? NEGATIVE_ALWAYS : l === 'implied' ? IMAGE_NEGATIVE_SUGGESTIVE : IMAGE_NEGATIVE;
 }
 
 // Ages under 18 written out ("16 years old", "16-year-old", "16yo").
@@ -89,6 +108,20 @@ const EXPLICIT_SUGGESTIVE_RE = new RegExp(
   'i',
 );
 
+// Never allowed, even in explicit projects: non-consent, incest, animals.
+const FORBIDDEN_SEXUAL_RE = new RegExp(
+  [
+    String.raw`\b(?:rape\w*|non-?consensual|forced|coerced|against\s+(?:her|his|their)\s+will|drugged|unconscious|asleep|passed\s+out)\b`,
+    String.raw`\b(?:incest\w*|step-?(?:sister|brother|daughter|son|mom|mother|dad|father)s?|(?:father|mother|daddy)\s*-?\s*(?:daughter|son))\b`,
+    String.raw`\b(?:bestiality|zoophilia|animals?\s+sex)\b`,
+  ].join('|'),
+  'i',
+);
+
+// Explicit images: youth-coded words push image models younger, so they're out.
+const EXPLICIT_YOUTH_RE =
+  /\b(?:young|younger|youthful|petite|tiny|small-framed|girlish|boyish|girls?|boys?|innocent|virgin\w*|pigtails|braces|cheerleaders?|babysitters?|students?|co-?eds?|college\s+(?:girl|boy)s?|daddy|little)\b/i;
+
 const MENTION_RE = /(^|[^\w])@[A-Za-z0-9_.-]{2,}/;
 const URL_RE = /\bhttps?:\/\/[^\s)\]}>"']+/gi;
 // Election logistics (dates, places, eligibility) must come from official sources.
@@ -111,7 +144,7 @@ function textChecks(
   label: string,
   text: string | undefined,
   issues: string[],
-  opts: { explicit: boolean; minor: MinorMode; suggestive?: boolean },
+  opts: { explicit: boolean; minor: MinorMode; level?: ContentLevel },
 ): void {
   if (!text) return;
   const re =
@@ -133,10 +166,15 @@ function textChecks(
   const likeness = LIKENESS_RE.exec(text);
   if (likeness) issues.push(`${label} refers to a real person's likeness ("${likeness[0]}"). Personas must be invented.`);
   if (opts.explicit) {
-    const explicit = (opts.suggestive ? EXPLICIT_SUGGESTIVE_RE : EXPLICIT_RE).exec(text);
+    if (opts.level === 'explicit') {
+      const forbidden = FORBIDDEN_SEXUAL_RE.exec(text);
+      if (forbidden) issues.push(`${label} mentions "${forbidden[0]}". Sexual content must be between consenting adults.`);
+      return;
+    }
+    const explicit = (opts.level === 'implied' ? EXPLICIT_SUGGESTIVE_RE : EXPLICIT_RE).exec(text);
     if (explicit) {
       issues.push(
-        opts.suggestive
+        opts.level === 'implied'
           ? `${label} goes past implied nudity ("${explicit[0]}"). Nipples, genitals and buttocks stay covered and nothing is sexual.`
           : `${label} includes sexual content ("${explicit[0]}"), which mainstream platforms prohibit.`,
       );
@@ -179,10 +217,15 @@ export function checkPersona(kind: Influencer['kind'], persona: Persona, attesta
 }
 
 /** Appearance text and scene prompts that go to the image model. */
-export function checkImagePrompt(label: string, text: string, suggestive = false): ComplianceResult {
+export function checkImagePrompt(label: string, text: string, level: ContentLevel | boolean = 'sfw'): ComplianceResult {
   const issues: string[] = [];
-  textChecks(label, text, issues, { explicit: true, minor: 'image', suggestive });
-  const part = suggestive ? NAMED_PART_RE.exec(text) : null;
+  const l = asLevel(level);
+  textChecks(label, text, issues, { explicit: true, minor: 'image', level: l });
+  const youth = l === 'explicit' && !issues.length ? EXPLICIT_YOUTH_RE.exec(text) : null;
+  if (youth) {
+    issues.push(`${label} uses "${youth[0]}". In explicit images, describe the persona as a grown woman or man so nothing reads as young.`);
+  }
+  const part = l === 'implied' ? NAMED_PART_RE.exec(text) : null;
   if (part && !issues.length) {
     issues.push(
       `${label} names "${part[0]}". Image models draw whatever is named, so describe what covers the body instead ` +
@@ -197,7 +240,14 @@ export function checkImagePrompt(label: string, text: string, suggestive = false
  * age go into every prompt so the model can't drift younger or into a
  * different person.
  */
-export function buildImagePrompt(persona: Persona, appearance: string, scene: string, style?: string, suggestive = false): string {
+export function buildImagePrompt(
+  persona: Persona,
+  appearance: string,
+  scene: string,
+  style?: string,
+  level: ContentLevel | boolean = 'sfw',
+): string {
+  const l = asLevel(level);
   const gender = persona.gender?.trim();
   const who = gender ? `a grown ${gender}` : 'a grown adult';
   const parts = [
@@ -208,7 +258,9 @@ export function buildImagePrompt(persona: Persona, appearance: string, scene: st
     // prompt only describes what covers the body.
     // Foam alone isn't enough: models draw the body under it. Framing that keeps
     // the chest out of shot or turned away is what reliably works.
-    suggestive
+    l === 'explicit'
+      ? 'an unmistakably mature adult with an adult face and adult body'
+      : l === 'implied'
       ? 'tasteful, sensual implied nudity, modestly framed: the chest is out of frame or turned away from the camera ' +
         '(close-up cropped at the collarbones, back to the camera looking over the shoulder, knees hugged to the chest ' +
         'with arms wrapped around them, or a thick towel wrapped high and snug); nothing explicit; a clearly mature adult'
@@ -244,14 +296,14 @@ export function domainOf(url: string): string {
 /** Deterministic post checks. `sources` are the URLs the fact-check verified. */
 export function checkPostText(
   text: string,
-  opts: { kind: Influencer['kind']; research?: Research; sources?: Source[]; suggestive?: boolean },
+  opts: { kind: Influencer['kind']; research?: Research; sources?: Source[]; level?: ContentLevel | boolean },
 ): ComplianceResult {
   const issues: string[] = [];
   const warnings: string[] = [];
   const political = !!opts.research?.political;
 
   if (!text.trim()) issues.push('The post is empty.');
-  textChecks('The post', text, issues, { explicit: true, minor: 'post', suggestive: opts.suggestive });
+  textChecks('The post', text, issues, { explicit: true, minor: 'post', level: asLevel(opts.level) });
 
   if (MENTION_RE.test(text)) {
     const msg = 'The post @-mentions an account. Automated posts respond to topics, not to individual people.';
@@ -341,7 +393,10 @@ export function checkLaunchReadiness(input: ReadinessInput): ComplianceResult {
     if (input.approvedPortfolio < MIN_PORTFOLIO) {
       issues.push(`Approve at least ${MIN_PORTFOLIO} portfolio images (${input.approvedPortfolio} so far).`);
     }
-    if (inf.look.appearance) issues.push(...checkImagePrompt('The look', inf.look.appearance, !!inf.look.suggestive).issues);
+    if (inf.look.appearance) issues.push(...checkImagePrompt('The look', inf.look.appearance, contentLevel(inf.look)).issues);
+    if (contentLevel(inf.look) === 'explicit' && (inf.persona.age ?? 0) < MIN_EXPLICIT_AGE) {
+      issues.push(`Explicit projects need a persona aged ${MIN_EXPLICIT_AGE} or older.`);
+    }
   } else {
     if (!(inf.research.topics ?? []).length) issues.push('Add at least one topic to cover.');
     if (!input.researchConfigured) issues.push('Configure a web search provider so posts can be fact-checked.');

@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ADULT_RULES,
   COVERAGE_RULES,
+  contentLevel,
+  imageNegative,
   IMAGE_NEGATIVE,
   IMAGE_NEGATIVE_SUGGESTIVE,
   MAX_POSTS_PER_DAY,
@@ -145,8 +148,46 @@ test('suggestive prompts require coverage and keep the minor safeguards', () => 
   assert.match(named.issues[0], /describe what covers the body/);
   assert.equal(checkImagePrompt('Scene', 'bubble bath, foam over her breasts', true).passed, false);
   assert.match(COVERAGE_RULES, /No nipple or areola may be visible/);
-  assert.equal(checkPostText('Bath night 🛁 come closer', { kind: 'visual', suggestive: true }).passed, true);
-  assert.equal(checkPostText('Bath night, nudes in my DMs', { kind: 'visual', suggestive: true }).passed, false);
+  assert.equal(checkPostText('Bath night 🛁 come closer', { kind: 'visual', level: 'implied' }).passed, true);
+  assert.equal(checkPostText('Bath night, nudes in my DMs', { kind: 'visual', level: 'implied' }).passed, false);
+});
+
+test('explicit projects allow adult sexual content but keep every minor, consent and likeness block', () => {
+  for (const t of ['nude woman lying on bedsheets, morning light', 'grown woman, fully naked in the shower, explicit']) {
+    assert.equal(checkImagePrompt('Scene', t, 'explicit').passed, true, t);
+    assert.equal(checkImagePrompt('Scene', t).passed, false, `sfw: ${t}`);
+  }
+  for (const t of [
+    'teen girl, nude',
+    'naked schoolgirl',
+    '17yo in the shower',
+    'petite young woman, nude',
+    'nude cheerleader',
+    'California girl vibe, naked',
+    'unconscious woman, nude',
+    'stepsister in the shower',
+    'nude, looks just like a famous actress',
+  ]) {
+    assert.equal(checkImagePrompt('Scene', t, 'explicit').passed, false, t);
+  }
+  assert.equal(checkImagePrompt('Scene', 'grown woman, fully naked, explicit', 'implied').passed, false);
+  const p = buildImagePrompt(persona, 'woman with dark curly hair', 'on the bed', undefined, 'explicit');
+  assert.match(p, /a grown woman aged 27/);
+  assert.match(p, /unmistakably mature adult/);
+  assert.match(imageNegative('explicit'), /child, children, teen/);
+  assert.doesNotMatch(imageNegative('explicit'), /nudity/);
+  assert.match(ADULT_RULES, /clearly look 21 or older/);
+});
+
+test('explicit projects never publish and need a persona aged 25+', () => {
+  const look = { appearance: 'grown woman with dark curly hair', contentLevel: 'explicit' as const };
+  const base = influencer();
+  const young = { ...base, persona: { ...base.persona, age: 23 }, look };
+  const readiness = checkLaunchReadiness({ influencer: young, approvedLook: true, approvedPortfolio: MIN_PORTFOLIO, accounts: [], researchConfigured: true });
+  assert.ok(readiness.issues.some((i) => /aged 25 or older/.test(i)));
+  assert.equal(contentLevel({ suggestive: true }), 'implied');
+  assert.equal(contentLevel({ suggestive: true, contentLevel: 'explicit' }), 'explicit');
+  assert.equal(contentLevel({}), 'sfw');
 });
 
 // ── post text ──────────────────────────────────────────────────────────────
