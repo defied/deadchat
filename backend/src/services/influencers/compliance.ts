@@ -26,6 +26,14 @@ export const IMAGE_NEGATIVE_SUGGESTIVE =
   `${NEGATIVE_ALWAYS}, exposed nipples, areola, exposed breasts, genitals, penis, vagina, pubic hair, ` +
   'exposed buttocks, see-through, wardrobe malfunction, sexual act, pornographic, explicit, nsfw';
 
+/** What the vision check enforces on every implied-nudity image. */
+export const COVERAGE_RULES =
+  'No nipple or areola may be visible, including faintly or as an outline or bump through foam, water, fabric, ' +
+  'hair or fingers. No genitals, pubic hair or bare buttocks. Nobody who could look under 21.';
+
+// In implied-nudity scenes, naming these makes image models draw them.
+const NAMED_PART_RE = /\b(?:nipples?|areolae?|areolas|breasts?|boobs?|tits?|cleavage|bosom)\b/i;
+
 export function imageNegative(suggestive?: boolean): string {
   return suggestive ? IMAGE_NEGATIVE_SUGGESTIVE : IMAGE_NEGATIVE;
 }
@@ -174,6 +182,13 @@ export function checkPersona(kind: Influencer['kind'], persona: Persona, attesta
 export function checkImagePrompt(label: string, text: string, suggestive = false): ComplianceResult {
   const issues: string[] = [];
   textChecks(label, text, issues, { explicit: true, minor: 'image', suggestive });
+  const part = suggestive ? NAMED_PART_RE.exec(text) : null;
+  if (part && !issues.length) {
+    issues.push(
+      `${label} names "${part[0]}". Image models draw whatever is named, so describe what covers the body instead ` +
+        '(bubbles up to the collarbones, a towel wrapped high).',
+    );
+  }
   return clean({ issues, warnings: [] });
 }
 
@@ -189,9 +204,11 @@ export function buildImagePrompt(persona: Persona, appearance: string, scene: st
     style?.trim() || 'Natural, candid social media photo, realistic lighting',
     `${appearance.trim()}, ${who} aged ${persona.age ?? MIN_PERSONA_AGE}`,
     scene.trim(),
+    // Image models draw whatever is named, even "covered nipples", so the
+    // prompt only describes what covers the body.
     suggestive
-      ? 'tasteful, sensual implied nudity: nipples, genitals and buttocks fully covered by water, foam, a towel, ' +
-        'sheets, hands, hair or the frame edge; nothing explicit; a clearly mature adult'
+      ? 'tasteful, sensual implied nudity, modestly covered: thick opaque white foam or water up to the collarbones, ' +
+        'or a towel wrapped high and snug, or draped bedsheets, or arms folded; nothing explicit; a clearly mature adult'
       : 'tasteful, fully clothed, safe for work',
   ];
   return parts.filter(Boolean).join('. ').replace(/\s+/g, ' ');

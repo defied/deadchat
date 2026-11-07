@@ -77,35 +77,61 @@ export interface Verdict {
   score: number; // 1-10
   pass: boolean;
   issues: string[];
+  /** A hard rule passed in `rules` was broken. */
+  rulesBroken?: boolean;
 }
 
-/** Ask the vision LLM whether the image satisfies the request. */
-export async function verifyImage(userPrompt: string, imageB64: string): Promise<Verdict> {
+/**
+ * Ask the vision LLM whether the image satisfies the request. `rules` are hard
+ * content rules: breaking any of them fails the image whatever its score.
+ */
+export async function verifyImage(userPrompt: string, imageB64: string, rules?: string): Promise<Verdict> {
   const llm = await pickModel(true);
   const system =
     'You are a strict QA reviewer for AI-generated images. Compare the image with the request. ' +
     'Check: requested subjects present, exact counts, colors, spatial relations, any requested text spelled exactly, ' +
     'and obvious defects (extra/missing fingers or limbs, melted faces, garbled text). ' +
-    'Respond with JSON: {"score": <1-10>, "issues": ["<specific problem>", ...]}. ' +
+    (rules
+      ? `Hard rules (look closely; when unsure, treat the rule as broken): ${rules} ` +
+        'Respond with JSON: {"rulesBroken": <true|false>, "score": <1-10>, "issues": ["<specific problem>", ...]}. ' +
+        'If any hard rule is broken, set rulesBroken true, score 1, and say what is visible and where. '
+      : 'Respond with JSON: {"score": <1-10>, "issues": ["<specific problem>", ...]}. ') +
     'Score 8+ means the image satisfies the request. Issues must be concrete and fixable; empty list if none.';
   const raw = await chat(llm, system, `Request: ${userPrompt}`, [imageB64], true);
   try {
-    const d = JSON.parse(raw) as { score?: number; issues?: unknown };
-    const score = Math.max(1, Math.min(10, Number(d.score) || 1));
+    const d = JSON.parse(raw) as { score?: number; issues?: unknown; rulesBroken?: unknown };
+    const rulesBroken = !!rules && d.rulesBroken !== false;
+    const score = rulesBroken ? 1 : Math.max(1, Math.min(10, Number(d.score) || 1));
     const issues = Array.isArray(d.issues) ? d.issues.map(String).filter(Boolean).slice(0, 6) : [];
-    return { score, issues, pass: score >= 8 };
+    if (rulesBroken && !issues.length) issues.push('A content rule was broken');
+    return { score, issues, pass: !rulesBroken && score >= 8, rulesBroken };
   } catch {
-    return { score: 10, pass: true, issues: [] }; // unparseable → don't block the user
+    // Unparseable: don't block ordinary images, but never pass one that has hard rules.
+    return rules
+      ? { score: 1, pass: false, issues: ['The reviewer gave no usable answer'], rulesBroken: true }
+      : { score: 10, pass: true, issues: [] };
   }
 }
 
 /** Rewrite the prompt so the next attempt fixes the reviewer's issues. */
-export async function correctPrompt(userPrompt: string, previous: string, issues: string[], model: MediaModel): Promise<string> {
+export async function correctPrompt(
+  userPrompt: string,
+  previous: string,
+  issues: string[],
+  model: MediaModel,
+  rules?: string,
+): Promise<string> {
   const llm = await pickModel(false);
   const system =
     `You fix prompts for the ${model.label} image model. ${styleGuide(model)} ` +
     'Rewrite the previous prompt so the listed problems cannot recur: state the missing or wrong elements more ' +
-    'explicitly and earlier in the prompt. Output ONLY the new prompt.';
+    'explicitly and earlier in the prompt. ' +
+    (rules
+      ? `The image must follow these rules: ${rules} Image models draw whatever a prompt names, even when it says ` +
+        '"covered" or "no", so never name what must stay hidden: describe what covers it instead (thicker, opaque ' +
+        'foam higher up, a towel wrapped higher, arms folded, a tighter or higher camera crop). '
+      : '') +
+    'Output ONLY the new prompt.';
   const user = `Original request: ${userPrompt}\n\nPrevious prompt: ${previous}\n\nProblems found in the result:\n- ${issues.join('\n- ')}`;
   const out = await chat(llm, system, user);
   return out.replace(/^["'`]+|["'`]+$/g, '').trim() || previous;

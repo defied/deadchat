@@ -5,7 +5,7 @@
 import { enqueue, getJob, awaitJob } from '../jobQueue';
 import { MEDIA_MODELS, getMediaModel, type MediaModel } from '../media/catalog';
 import { getMediaSettings } from '../media/settings';
-import { buildImagePrompt, checkImagePrompt, imageNegative } from './compliance';
+import { COVERAGE_RULES, buildImagePrompt, checkImagePrompt, imageNegative } from './compliance';
 import { asString, asStringArray, llmJson } from './llm';
 import * as store from './store';
 import type { Influencer, InfluencerMedia, Look } from './types';
@@ -46,9 +46,10 @@ function randomSeed(): number {
 /** What scenes may show, for the scene-planning prompts. */
 export function sceneRule(inf: Influencer): string {
   return inf.look.suggestive
-    ? 'may include a few tasteful, flirtatious implied-nudity scenes (a bubble bath with foam covering the chest, ' +
-        'stepping out of the shower in a towel, bedsheets) where nipples, genitals and buttocks stay covered. ' +
-        'Nothing explicit or sexual, and describe coverage rather than exposed body parts.'
+    ? 'may include a few tasteful, flirtatious implied-nudity scenes (a bubble bath with thick foam up to the ' +
+        'collarbones, stepping out of the shower with a towel wrapped high, tangled in bedsheets). Nothing explicit ' +
+        'or sexual. Never name breasts, nipples or other private body parts, even to say they are covered: image ' +
+        'models draw whatever is named. Describe only what covers the body and how high it comes.'
     : 'are safe for work.';
 }
 
@@ -72,7 +73,9 @@ export function queuePersonaImage(inf: Influencer, scene: string, role: 'look' |
       seed: seed ?? randomSeed(),
       // The locked appearance must reach the model verbatim.
       enhance: false,
-      verifyAttempts: 1,
+      // Implied nudity: a vision check rejects any exposure and retries; if
+      // every attempt fails, the job fails and nothing is saved.
+      ...(suggestive ? { verifyAttempts: 4, verifyRules: COVERAGE_RULES, requireVerified: true } : { verifyAttempts: 1 }),
     },
     { userId: inf.userId, heavy: true },
   );
