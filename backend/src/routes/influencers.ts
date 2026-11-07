@@ -199,6 +199,7 @@ router.patch('/:id', owned, (req, res) =>
     if (b.persona) patch.persona = { ...cur.persona, ...b.persona };
     if (b.look) {
       const look = { ...cur.look, ...b.look };
+      if ('suggestive' in b.look) look.suggestive = b.look.suggestive === true;
       if (b.look.appearance && b.look.appearance !== cur.look.appearance) {
         const check = checkImagePrompt('The look', b.look.appearance);
         if (!check.passed) throw new Error(check.issues.join(' '));

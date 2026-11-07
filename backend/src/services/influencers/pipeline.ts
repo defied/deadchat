@@ -13,7 +13,7 @@ import { checkImagePrompt, checkPostText, domainOf, stripDisclosureTag } from '.
 import { aggregateFactCheck, isTrusted, topicKey, type ClaimEvidence, type FeedItem, type SourceVerdict } from './factcheck';
 import { asString, asStringArray, llmJson } from './llm';
 import { getActiveModel, getModelCapabilities } from '../chatModels';
-import { awaitMedia, queueClip, queuePersonaImage } from './media';
+import { awaitMedia, queueClip, queuePersonaImage, sceneRule } from './media';
 import { getPlatform } from './platforms';
 import { blueskyConversation, fetchFeed, fetchPage, webSearch, type Page } from './research';
 import * as store from './store';
@@ -42,11 +42,15 @@ function personaBrief(p: Persona): string {
     .join(' ');
 }
 
-const POLICY_SYSTEM =
+const policySystem = (suggestive: boolean) =>
   'You review social media posts for an openly AI-generated persona before they are published. Return ' +
   '{"passed": boolean, "issues": [..]} with an issue for anything that breaks these rules: harassment, hate or ' +
   'slurs; targeting or naming a private individual; accusations of crimes or misconduct against named people ' +
-  'that are not established fact; sexual content; anything involving minors in a sexual or exploitative way; ' +
+  'that are not established fact; ' +
+  (suggestive
+    ? 'explicit sexual content, sex acts or solicitation (flirtatious, teasing captions and tasteful implied nudity are allowed); '
+    : 'sexual content; ') +
+  'anything involving minors in a sexual or exploitative way; ' +
   'medical, legal or financial advice presented as authoritative; claiming to be human or hiding that the persona ' +
   'is AI; impersonating a real person or organisation; misleading claims about how, when or where to vote; ' +
   'calls to violence; spam or engagement bait ("like and share"). Opinions are fine when they are clearly ' +
@@ -54,7 +58,8 @@ const POLICY_SYSTEM =
 
 /** Deterministic rules plus an LLM policy review. */
 export async function reviewPost(inf: Influencer, text: string, sources: Source[], imageB64?: string): Promise<ComplianceResult> {
-  const rules = checkPostText(text, { kind: inf.kind, research: inf.research, sources });
+  const suggestive = inf.kind === 'visual' && !!inf.look.suggestive;
+  const rules = checkPostText(text, { kind: inf.kind, research: inf.research, sources, suggestive });
   const issues = [...rules.issues];
   const warnings = [...rules.warnings];
   if (imageB64) {
@@ -66,9 +71,15 @@ export async function reviewPost(inf: Influencer, text: string, sources: Source[
   }
   try {
     const review = await llmJson<{ passed?: boolean; issues?: unknown }>(
-      POLICY_SYSTEM,
+      policySystem(suggestive),
       `Persona: ${personaBrief(inf.persona)}\n\nPost:\n${text}` +
-        (imageB64 ? '\n\nThe attached image goes with the post: also flag it if it shows a minor, nudity, a real identifiable person or a logo.' : ''),
+        (imageB64
+          ? suggestive
+            ? '\n\nThe attached image goes with the post: also flag it if it shows anyone who could be a minor, ' +
+              'exposed nipples or areolae, genitals or pubic hair, exposed buttocks, a sexual act, a real identifiable ' +
+              'person or a logo. Implied nudity with those areas covered is allowed.'
+            : '\n\nThe attached image goes with the post: also flag it if it shows a minor, nudity, a real identifiable person or a logo.'
+          : ''),
       { temperature: 0, images: imageB64 ? [imageB64] : undefined },
     );
     if (review.passed === false) issues.push(...asStringArray(review.issues, 8).map((i) => `Policy review: ${i}`));
@@ -376,13 +387,15 @@ export async function generateVisualPost(inf: Influencer, opts: GenerateOptions)
     `You plan one social media photo post for this persona. ${personaBrief(inf.persona)}\n` +
       'Return {"scene": "concrete photo scene: setting, activity, outfit, framing, light", "caption": "...", "alt": "image description"}. ' +
       `The caption is in the persona's voice, at most ${textBudget(inf)} characters, with at most 3 hashtags, ` +
-      'never claims to be human, never @-mentions anyone, no links. Safe for work; no other identifiable people.',
+      'never claims to be human, never @-mentions anyone, no links. No other identifiable people. The scene ' +
+      `${sceneRule(inf)}` +
+      (inf.look.suggestive ? ' The caption may be flirtatious and teasing, never explicit.' : ''),
     `Theme: ${theme}`,
     { temperature: 0.8 },
   );
   const scene = asString(out.scene, 400);
   if (!scene) throw new Error('The model did not return a scene');
-  const sceneCheck = checkImagePrompt('The scene', scene);
+  const sceneCheck = checkImagePrompt('The scene', scene, !!inf.look.suggestive);
   const caption = stripDisclosureTag(asString(out.caption, textBudget(inf) + 40));
   if (!sceneCheck.passed) {
     return store.createPost(inf.id, {

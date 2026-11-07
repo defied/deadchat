@@ -253,14 +253,16 @@ export function StepLook({ detail, meta, save, apply, back, next }: StepProps) {
   const [style, setStyle] = useState(inf.look.style ?? '');
   const [model, setModel] = useState(inf.look.imageModel ?? meta.models.image[0]?.id ?? '');
   const [ratio, setRatio] = useState(inf.look.ratio ?? '3:4');
+  const [suggestive, setSuggestive] = useState(!!inf.look.suggestive);
   const [feedback, setFeedback] = useState('');
   const { busy, error, run } = useAction();
   const looks = detail.media.filter((m) => m.role === 'look');
   const shown = [...looks.filter((m) => m.status !== 'rejected'), ...looks.filter((m) => m.status === 'rejected')].slice(0, 16);
   const dirty =
-    appearance !== (inf.look.appearance ?? '') || style !== (inf.look.style ?? '') || model !== (inf.look.imageModel ?? '') || ratio !== (inf.look.ratio ?? '3:4');
+    appearance !== (inf.look.appearance ?? '') || style !== (inf.look.style ?? '') || model !== (inf.look.imageModel ?? '') || ratio !== (inf.look.ratio ?? '3:4') ||
+    suggestive !== !!inf.look.suggestive;
 
-  const persist = () => save({ look: { appearance, style, imageModel: model, ratio } });
+  const persist = () => save({ look: { appearance, style, imageModel: model, ratio, suggestive } });
 
   return (
     <div>
@@ -293,6 +295,15 @@ export function StepLook({ detail, meta, save, apply, back, next }: StepProps) {
           </select>
         </Field>
       </div>
+      <label className="toggle" style={{ marginBottom: 14 }}>
+        <input type="checkbox" checked={suggestive} onChange={(e) => setSuggestive(e.target.checked)} />
+        <span>
+          <strong>Allow tasteful implied nudity.</strong> Portfolio and post photos may show scenes like a bubble bath or a
+          towel after a shower, with nipples, genitals and buttocks always covered and nothing explicit. Captions may be
+          flirtatious. Instagram and Threads allow this but may show it to fewer people. Bluesky and Mastodon posts are
+          marked sensitive.
+        </span>
+      </label>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <button
           className="btn btn-primary"
@@ -343,7 +354,7 @@ export function StepLook({ detail, meta, save, apply, back, next }: StepProps) {
       {error && <Alert>{error}</Alert>}
       <StepNav
         onBack={back}
-        onNext={() => run('next', async () => (dirty ? save({ look: { appearance, style, imageModel: model, ratio } }, true) : next()))}
+        onNext={() => run('next', async () => (dirty ? save({ look: { appearance, style, imageModel: model, ratio, suggestive } }, true) : next()))}
         nextLabel={inf.look.approvedMediaId ? 'Continue with this look' : 'Approve a look to continue'}
         nextDisabled={!inf.look.approvedMediaId}
         busy={!!busy}

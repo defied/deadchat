@@ -36,6 +36,11 @@ export interface Look {
   imageModel?: string;
   videoModel?: string;
   ratio?: string;
+  /**
+   * Allow tasteful implied nudity (a bath with the chest covered by foam, a towel
+   * after a shower). Nipples, genitals and buttocks stay covered; nothing explicit.
+   */
+  suggestive?: boolean;
   /** Seed of the approved look, reused as the base seed for consistency. */
   seed?: number;
   approvedMediaId?: number;

@@ -15,9 +15,20 @@ export const MIN_MINUTES_BETWEEN_POSTS = 60;
 export const MIN_PORTFOLIO = 6;
 export const DEFAULT_DISCLOSURE = 'AI-generated persona';
 
-export const IMAGE_NEGATIVE =
-  'child, children, teen, teenager, minor, young-looking, school uniform, nudity, nsfw, explicit, ' +
-  'lingerie, cleavage focus, watermark, text, logo, signature, celebrity, famous person';
+const NEGATIVE_ALWAYS =
+  'child, children, teen, teenager, minor, young-looking, youthful face, childlike body, school uniform, ' +
+  'watermark, text, logo, signature, celebrity, famous person';
+
+export const IMAGE_NEGATIVE = `${NEGATIVE_ALWAYS}, nudity, nsfw, explicit, lingerie, cleavage focus`;
+
+/** Implied nudity allowed; anything that would expose the body is pushed away. */
+export const IMAGE_NEGATIVE_SUGGESTIVE =
+  `${NEGATIVE_ALWAYS}, exposed nipples, areola, exposed breasts, genitals, penis, vagina, pubic hair, ` +
+  'exposed buttocks, see-through, wardrobe malfunction, sexual act, pornographic, explicit, nsfw';
+
+export function imageNegative(suggestive?: boolean): string {
+  return suggestive ? IMAGE_NEGATIVE_SUGGESTIVE : IMAGE_NEGATIVE;
+}
 
 // Ages under 18 written out ("16 years old", "16-year-old", "16yo").
 const UNDERAGE_AGE = String.raw`\b(?:1[0-7]|[1-9])\s*-?\s*(?:years?|yrs?)\s*-?\s*old\b|\b(?:1[0-7]|[1-9])\s*(?:yo|y/o|y\.o\.)\b`;
@@ -57,6 +68,18 @@ const LIKENESS_RE =
 
 // Sexual content is kept out entirely: mainstream platforms restrict it.
 const EXPLICIT_RE = /\b(?:nude|nudes|naked|nsfw|explicit|topless|bottomless|porn\w*|sex\s?tape|xxx|fetish)\b/i;
+// Suggestive projects allow implied nudity ("naked in a bubble bath", "topless
+// under the foam"), but never exposure, sex acts or porn.
+const EXPLICIT_SUGGESTIVE_RE = new RegExp(
+  [
+    String.raw`\b(?:nsfw|explicit|bottomless|porn\w*|sex\s?tape|xxx|fetish\w*|hardcore|erotica|onlyfans|nudes|full[\s-]frontal)\b`,
+    String.raw`\b(?:genitals?|genitalia|penis|vagina|vulva|labia|pubic|crotch\s+shot|spread\s+legs)\b`,
+    String.raw`\b(?:sex|intercourse|masturbat\w*|orgasm\w*|oral\s+sex|blowjob|groping|fondling)\b`,
+    String.raw`\b(?:exposed|bare|visible|uncovered|showing|see-?through)\s+(?:nipples?|areolae?|breasts?|chest|buttocks?|butt|bum)\b`,
+    String.raw`\b(?:nipples?|areolae?)\s+(?:showing|exposed|visible|out)\b`,
+  ].join('|'),
+  'i',
+);
 
 const MENTION_RE = /(^|[^\w])@[A-Za-z0-9_.-]{2,}/;
 const URL_RE = /\bhttps?:\/\/[^\s)\]}>"']+/gi;
@@ -76,7 +99,12 @@ function clean(result: { issues: string[]; warnings: string[] }): ComplianceResu
   return { passed: result.issues.length === 0, issues: result.issues, warnings: result.warnings };
 }
 
-function textChecks(label: string, text: string | undefined, issues: string[], opts: { explicit: boolean; minor: MinorMode }): void {
+function textChecks(
+  label: string,
+  text: string | undefined,
+  issues: string[],
+  opts: { explicit: boolean; minor: MinorMode; suggestive?: boolean },
+): void {
   if (!text) return;
   const re =
     opts.minor === 'image'
@@ -97,8 +125,14 @@ function textChecks(label: string, text: string | undefined, issues: string[], o
   const likeness = LIKENESS_RE.exec(text);
   if (likeness) issues.push(`${label} refers to a real person's likeness ("${likeness[0]}"). Personas must be invented.`);
   if (opts.explicit) {
-    const explicit = EXPLICIT_RE.exec(text);
-    if (explicit) issues.push(`${label} includes sexual content ("${explicit[0]}"), which mainstream platforms prohibit.`);
+    const explicit = (opts.suggestive ? EXPLICIT_SUGGESTIVE_RE : EXPLICIT_RE).exec(text);
+    if (explicit) {
+      issues.push(
+        opts.suggestive
+          ? `${label} goes past implied nudity ("${explicit[0]}"). Nipples, genitals and buttocks stay covered and nothing is sexual.`
+          : `${label} includes sexual content ("${explicit[0]}"), which mainstream platforms prohibit.`,
+      );
+    }
   }
 }
 
@@ -137,9 +171,9 @@ export function checkPersona(kind: Influencer['kind'], persona: Persona, attesta
 }
 
 /** Appearance text and scene prompts that go to the image model. */
-export function checkImagePrompt(label: string, text: string): ComplianceResult {
+export function checkImagePrompt(label: string, text: string, suggestive = false): ComplianceResult {
   const issues: string[] = [];
-  textChecks(label, text, issues, { explicit: true, minor: 'image' });
+  textChecks(label, text, issues, { explicit: true, minor: 'image', suggestive });
   return clean({ issues, warnings: [] });
 }
 
@@ -148,14 +182,17 @@ export function checkImagePrompt(label: string, text: string): ComplianceResult 
  * age go into every prompt so the model can't drift younger or into a
  * different person.
  */
-export function buildImagePrompt(persona: Persona, appearance: string, scene: string, style?: string): string {
+export function buildImagePrompt(persona: Persona, appearance: string, scene: string, style?: string, suggestive = false): string {
   const gender = persona.gender?.trim();
   const who = gender ? `a grown ${gender}` : 'a grown adult';
   const parts = [
     style?.trim() || 'Natural, candid social media photo, realistic lighting',
     `${appearance.trim()}, ${who} aged ${persona.age ?? MIN_PERSONA_AGE}`,
     scene.trim(),
-    'tasteful, fully clothed, safe for work',
+    suggestive
+      ? 'tasteful, sensual implied nudity: nipples, genitals and buttocks fully covered by water, foam, a towel, ' +
+        'sheets, hands, hair or the frame edge; nothing explicit; a clearly mature adult'
+      : 'tasteful, fully clothed, safe for work',
   ];
   return parts.filter(Boolean).join('. ').replace(/\s+/g, ' ');
 }
@@ -187,14 +224,14 @@ export function domainOf(url: string): string {
 /** Deterministic post checks. `sources` are the URLs the fact-check verified. */
 export function checkPostText(
   text: string,
-  opts: { kind: Influencer['kind']; research?: Research; sources?: Source[] },
+  opts: { kind: Influencer['kind']; research?: Research; sources?: Source[]; suggestive?: boolean },
 ): ComplianceResult {
   const issues: string[] = [];
   const warnings: string[] = [];
   const political = !!opts.research?.political;
 
   if (!text.trim()) issues.push('The post is empty.');
-  textChecks('The post', text, issues, { explicit: true, minor: 'post' });
+  textChecks('The post', text, issues, { explicit: true, minor: 'post', suggestive: opts.suggestive });
 
   if (MENTION_RE.test(text)) {
     const msg = 'The post @-mentions an account. Automated posts respond to topics, not to individual people.';
@@ -284,7 +321,7 @@ export function checkLaunchReadiness(input: ReadinessInput): ComplianceResult {
     if (input.approvedPortfolio < MIN_PORTFOLIO) {
       issues.push(`Approve at least ${MIN_PORTFOLIO} portfolio images (${input.approvedPortfolio} so far).`);
     }
-    if (inf.look.appearance) issues.push(...checkImagePrompt('The look', inf.look.appearance).issues);
+    if (inf.look.appearance) issues.push(...checkImagePrompt('The look', inf.look.appearance, !!inf.look.suggestive).issues);
   } else {
     if (!(inf.research.topics ?? []).length) issues.push('Add at least one topic to cover.');
     if (!input.researchConfigured) issues.push('Configure a web search provider so posts can be fact-checked.');
