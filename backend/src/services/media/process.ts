@@ -61,6 +61,18 @@ function rank(v: Verdict): number {
 }
 
 export async function processCatalogJob(job: Job, raw: Record<string, unknown>): Promise<void> {
+  try {
+    await runCatalogJob(job, raw);
+  } finally {
+    // Unload the image/video model when the job ends, pass or fail. On the
+    // 24 GB card a resident Qwen-Image or FLUX.2 (~20 GB) leaves no room for
+    // the chat model, so the caption and policy review that follow an
+    // influencer image would otherwise run mostly on the CPU.
+    await freeMemory();
+  }
+}
+
+async function runCatalogJob(job: Job, raw: Record<string, unknown>): Promise<void> {
   const kind = job.type as 'image' | 'video';
   const p = normalizeParams(kind, raw);
   const model = getMediaModel(p.catalogId);
