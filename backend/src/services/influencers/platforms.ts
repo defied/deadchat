@@ -268,6 +268,8 @@ export interface PublishInput {
   mediaIds: number[];
   sources: Source[];
   alt?: string;
+  /** Mark the media as sensitive where the platform supports it (implied nudity). */
+  sensitive?: boolean;
 }
 
 export interface PublishResult {
@@ -345,6 +347,8 @@ async function publishBluesky(creds: Record<string, unknown>, input: PublishInpu
     langs: ['en'],
   };
   if (images.length) record.embed = { $type: 'app.bsky.embed.images', images };
+  // "sexual" is Bluesky's self-label for suggestive content; viewers' settings decide whether it shows.
+  if (images.length && input.sensitive) record.labels = { $type: 'com.atproto.label.defs#selfLabels', values: [{ val: 'sexual' }] };
   const post = await xrpc<{ uri: string; cid: string }>(service, 'com.atproto.repo.createRecord', {
     method: 'POST',
     token: session.accessJwt,
@@ -415,7 +419,7 @@ async function publishMastodon(creds: Record<string, unknown>, input: PublishInp
   const res = await mastodon<{ url: string }>(instance, token, '/api/v1/statuses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `deadchat-${Date.now()}` },
-    body: JSON.stringify({ status, media_ids: mediaIds, visibility: 'public', language: 'en' }),
+    body: JSON.stringify({ status, media_ids: mediaIds, visibility: 'public', language: 'en', sensitive: !!input.sensitive && mediaIds.length > 0 }),
   });
   return { url: res.body.url };
 }

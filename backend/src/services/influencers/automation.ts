@@ -90,6 +90,7 @@ export async function publishPost(postId: number): Promise<store.Post> {
           mediaIds: post.mediaIds,
           sources: post.sources,
           alt: post.topic ?? undefined,
+          sensitive: inf.kind === 'visual' && !!inf.look.suggestive,
         },
         // Renewed tokens (Meta) are stored straight away.
         { saveCredentials: (c) => store.upsertAccount(inf.id, platform, { credentials: encryptObject(c) }) },

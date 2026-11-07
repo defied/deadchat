@@ -322,3 +322,16 @@ test('public media endpoint serves signed links only, converting for Instagram',
     server.close();
   }
 });
+
+// ── sensitive media ────────────────────────────────────────────────────────
+
+test('Mastodon: implied-nudity posts mark their media sensitive', async () => {
+  on((c) => c.url.endsWith('/api/v2/media'), () => json({ id: 'M1', url: 'https://m.test/1.png' }));
+  on((c) => c.url.endsWith('/api/v1/statuses'), () => json({ url: 'https://m.test/@maya/1' }));
+  const creds = { instance: 'https://m.test', accessToken: 'T' };
+  await platforms.publish('mastodon', creds, { text: 'Bath night', mediaIds: [tallPng], sources: [], sensitive: true });
+  assert.equal(JSON.parse(calls.find((c) => c.url.endsWith('/statuses'))!.body).sensitive, true);
+  calls = [];
+  await platforms.publish('mastodon', creds, { text: 'Just words', mediaIds: [], sources: [], sensitive: true });
+  assert.equal(JSON.parse(calls.find((c) => c.url.endsWith('/statuses'))!.body).sensitive, false);
+});

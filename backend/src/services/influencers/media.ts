@@ -5,7 +5,7 @@
 import { enqueue, getJob, awaitJob } from '../jobQueue';
 import { MEDIA_MODELS, getMediaModel, type MediaModel } from '../media/catalog';
 import { getMediaSettings } from '../media/settings';
-import { IMAGE_NEGATIVE, buildImagePrompt, checkImagePrompt } from './compliance';
+import { buildImagePrompt, checkImagePrompt, imageNegative } from './compliance';
 import { asString, asStringArray, llmJson } from './llm';
 import * as store from './store';
 import type { Influencer, InfluencerMedia, Look } from './types';
@@ -43,20 +43,31 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 2_147_483_647);
 }
 
+/** What scenes may show, for the scene-planning prompts. */
+export function sceneRule(inf: Influencer): string {
+  return inf.look.suggestive
+    ? 'may include a few tasteful, flirtatious implied-nudity scenes (a bubble bath with foam covering the chest, ' +
+        'stepping out of the shower in a towel, bedsheets) where nipples, genitals and buttocks stay covered. ' +
+        'Nothing explicit or sexual, and describe coverage rather than exposed body parts.'
+    : 'are safe for work.';
+}
+
 /** Queue one image of the persona. Throws if the prompt breaks the rules. */
 export function queuePersonaImage(inf: Influencer, scene: string, role: 'look' | 'portfolio' | 'post', seed?: number): InfluencerMedia {
   const appearance = inf.look.appearance?.trim();
   if (!appearance) throw new Error('Describe the look first');
-  const check = checkImagePrompt('The scene', scene);
+  // The look portrait is always clothed; only scenes may use implied nudity.
+  const suggestive = !!inf.look.suggestive && role !== 'look';
+  const check = checkImagePrompt('The scene', scene, suggestive);
   if (!check.passed) throw new Error(check.issues.join(' '));
   const model = imageModel(inf.look);
-  const prompt = buildImagePrompt(inf.persona, appearance, scene, inf.look.style);
+  const prompt = buildImagePrompt(inf.persona, appearance, scene, inf.look.style, suggestive);
   const jobId = enqueue(
     'image',
     {
       catalogId: model.id,
       prompt,
-      negative: IMAGE_NEGATIVE,
+      negative: imageNegative(suggestive),
       ratio: ratioFor(model, inf.look.ratio),
       seed: seed ?? randomSeed(),
       // The locked appearance must reach the model verbatim.
@@ -69,7 +80,7 @@ export function queuePersonaImage(inf: Influencer, scene: string, role: 'look' |
 }
 
 export function queueClip(inf: Influencer, fromMediaId: number, motion: string, role: 'clip' | 'post' = 'clip'): InfluencerMedia {
-  const check = checkImagePrompt('The motion prompt', motion);
+  const check = checkImagePrompt('The motion prompt', motion, !!inf.look.suggestive);
   if (!check.passed) throw new Error(check.issues.join(' '));
   const model = videoModel(inf.look);
   const prompt = `${motion.trim()}. Natural, subtle movement; the same adult person throughout.`;
@@ -108,12 +119,12 @@ export async function portfolioScenes(inf: Influencer, count: number): Promise<s
   const out = await llmJson<{ scenes?: unknown }>(
     'You plan photos for an invented adult social media persona. Return {"scenes": [..]}: short, concrete scene ' +
       'descriptions (setting, activity, outfit, framing, light) that fit the persona, vary location and framing, ' +
-      'and are safe for work. Never include other identifiable people, children, brands or logos.',
+      `and ${sceneRule(inf)} Never include other identifiable people, children, brands or logos.`,
     `Persona: ${inf.persona.displayName}, ${inf.persona.niche}. Audience: ${inf.persona.audience ?? 'adults'}. ` +
       `Themes: ${(inf.plan.themes ?? []).join(', ') || 'their everyday life'}. Number of scenes: ${count}.`,
     { temperature: 0.8 },
   );
-  return asStringArray(out.scenes, count, 400).filter((s) => checkImagePrompt('Scene', s).passed);
+  return asStringArray(out.scenes, count, 400).filter((s) => checkImagePrompt('Scene', s, !!inf.look.suggestive).passed);
 }
 
 export async function generatePortfolio(inf: Influencer, count: number): Promise<InfluencerMedia[]> {

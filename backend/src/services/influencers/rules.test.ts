@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  IMAGE_NEGATIVE,
+  IMAGE_NEGATIVE_SUGGESTIVE,
   MAX_POSTS_PER_DAY,
   MIN_PORTFOLIO,
   buildImagePrompt,
@@ -103,6 +105,41 @@ test('buildImagePrompt pins the adult age and the locked appearance', () => {
   const p = buildImagePrompt(persona, 'woman with dark curly hair', 'drinking coffee at a trailhead');
   assert.match(p, /woman with dark curly hair, a grown woman aged 27/);
   assert.match(p, /safe for work/);
+});
+
+test('suggestive projects allow implied nudity but never exposure, sex or minors', () => {
+  for (const t of [
+    'naked woman relaxing in a bubble bath, foam covering her chest just above the nipples',
+    'man stepping out of the shower with a towel around his waist',
+    'topless under the bedsheets, morning light, flirtatious smile',
+  ]) {
+    assert.equal(checkImagePrompt('Scene', t, true).passed, true, t);
+    assert.equal(checkImagePrompt('Scene', t).passed, t.startsWith('man'), `sfw: ${t}`);
+  }
+  for (const t of [
+    'nude woman in the bath, exposed nipples',
+    'full frontal shower shot',
+    'towel slipping, genitals visible',
+    'couple having sex in the shower',
+    'pornographic bath scene',
+    'teen girl in a bubble bath',
+    '17yo in a towel',
+    'naked schoolgirl',
+  ]) {
+    assert.equal(checkImagePrompt('Scene', t, true).passed, false, t);
+  }
+});
+
+test('suggestive prompts require coverage and keep the minor safeguards', () => {
+  const p = buildImagePrompt(persona, 'woman with dark curly hair', 'in a bubble bath', undefined, true);
+  assert.match(p, /aged 27/);
+  assert.match(p, /nipples, genitals and buttocks fully covered/);
+  assert.doesNotMatch(p, /fully clothed/);
+  for (const n of [IMAGE_NEGATIVE, IMAGE_NEGATIVE_SUGGESTIVE]) assert.match(n, /child, children, teen/);
+  assert.match(IMAGE_NEGATIVE_SUGGESTIVE, /exposed nipples, areola/);
+  assert.doesNotMatch(IMAGE_NEGATIVE_SUGGESTIVE, /\bnudity\b/);
+  assert.equal(checkPostText('Bath night 🛁 come closer', { kind: 'visual', suggestive: true }).passed, true);
+  assert.equal(checkPostText('Bath night, nudes in my DMs', { kind: 'visual', suggestive: true }).passed, false);
 });
 
 // ── post text ──────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ export interface Look {
   imageModel?: string;
   videoModel?: string;
   ratio?: string;
+  suggestive?: boolean;
   seed?: number;
   approvedMediaId?: number;
 }
