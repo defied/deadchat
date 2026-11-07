@@ -9,7 +9,7 @@
 // Nothing here publishes. A post that fails the fact-check or any rule is
 // stored as `blocked` with the reasons, so the user can see why.
 
-import { checkImagePrompt, checkPostText, domainOf, stripDisclosureTag } from './compliance';
+import { checkImagePrompt, checkPostText, contentLevel, domainOf, stripDisclosureTag, type ContentLevel } from './compliance';
 import { aggregateFactCheck, isTrusted, topicKey, type ClaimEvidence, type FeedItem, type SourceVerdict } from './factcheck';
 import { asString, asStringArray, llmJson } from './llm';
 import { getActiveModel, getModelCapabilities } from '../chatModels';
@@ -42,14 +42,16 @@ function personaBrief(p: Persona): string {
     .join(' ');
 }
 
-const policySystem = (suggestive: boolean) =>
+const policySystem = (level: ContentLevel) =>
   'You review social media posts for an openly AI-generated persona before they are published. Return ' +
   '{"passed": boolean, "issues": [..]} with an issue for anything that breaks these rules: harassment, hate or ' +
   'slurs; targeting or naming a private individual; accusations of crimes or misconduct against named people ' +
   'that are not established fact; ' +
-  (suggestive
-    ? 'explicit sexual content, sex acts or solicitation (flirtatious, teasing captions and tasteful implied nudity are allowed); '
-    : 'sexual content; ') +
+  (level === 'explicit'
+    ? 'sexual content involving anyone who could be under 21, non-consent, incest or animals (other adult sexual content is allowed; this post is never published); '
+    : level === 'implied'
+      ? 'explicit sexual content, sex acts or solicitation (flirtatious, teasing captions and tasteful implied nudity are allowed); '
+      : 'sexual content; ') +
   'anything involving minors in a sexual or exploitative way; ' +
   'medical, legal or financial advice presented as authoritative; claiming to be human or hiding that the persona ' +
   'is AI; impersonating a real person or organisation; misleading claims about how, when or where to vote; ' +
@@ -58,8 +60,8 @@ const policySystem = (suggestive: boolean) =>
 
 /** Deterministic rules plus an LLM policy review. */
 export async function reviewPost(inf: Influencer, text: string, sources: Source[], imageB64?: string): Promise<ComplianceResult> {
-  const suggestive = inf.kind === 'visual' && !!inf.look.suggestive;
-  const rules = checkPostText(text, { kind: inf.kind, research: inf.research, sources, suggestive });
+  const level: ContentLevel = inf.kind === 'visual' ? contentLevel(inf.look) : 'sfw';
+  const rules = checkPostText(text, { kind: inf.kind, research: inf.research, sources, level });
   const issues = [...rules.issues];
   const warnings = [...rules.warnings];
   if (imageB64) {
@@ -71,10 +73,13 @@ export async function reviewPost(inf: Influencer, text: string, sources: Source[
   }
   try {
     const review = await llmJson<{ passed?: boolean; issues?: unknown }>(
-      policySystem(suggestive),
+      policySystem(level),
       `Persona: ${personaBrief(inf.persona)}\n\nPost:\n${text}` +
         (imageB64
-          ? suggestive
+          ? level === 'explicit'
+            ? '\n\nThe attached image goes with the post: also flag it if it shows anyone who could be under 21, ' +
+              'a recognisable real person, or anything non-consensual. Adult nudity and sex are allowed.'
+            : level === 'implied'
             ? '\n\nThe attached image goes with the post: also flag it if it shows anyone who could be a minor, ' +
               'exposed nipples or areolae, genitals or pubic hair, exposed buttocks, a sexual act, a real identifiable ' +
               'person or a logo. Implied nudity with those areas covered is allowed.'
@@ -389,13 +394,13 @@ export async function generateVisualPost(inf: Influencer, opts: GenerateOptions)
       `The caption is in the persona's voice, at most ${textBudget(inf)} characters, with at most 3 hashtags, ` +
       'never claims to be human, never @-mentions anyone, no links. No other identifiable people. The scene ' +
       `${sceneRule(inf)}` +
-      (inf.look.suggestive ? ' The caption may be flirtatious and teasing, never explicit.' : ''),
+      (contentLevel(inf.look) !== 'sfw' ? ' The caption may be flirtatious and teasing.' : ''),
     `Theme: ${theme}`,
     { temperature: 0.8 },
   );
   const scene = asString(out.scene, 400);
   if (!scene) throw new Error('The model did not return a scene');
-  const sceneCheck = checkImagePrompt('The scene', scene, !!inf.look.suggestive);
+  const sceneCheck = checkImagePrompt('The scene', scene, contentLevel(inf.look));
   const caption = stripDisclosureTag(asString(out.caption, textBudget(inf) + 40));
   if (!sceneCheck.passed) {
     return store.createPost(inf.id, {
@@ -436,7 +441,7 @@ export async function generateVisualPost(inf: Influencer, opts: GenerateOptions)
   } catch { /* review without the image */ }
   const compliance = await reviewPost(inf, caption, [], imageB64);
   return store.createPost(inf.id, {
-    status: compliance.passed ? (inf.plan.autoPublish ? 'approved' : 'review') : 'blocked',
+    status: compliance.passed ? (inf.plan.autoPublish && contentLevel(inf.look) !== 'explicit' ? 'approved' : 'review') : 'blocked',
     origin: opts.origin,
     topic: theme,
     topicKey: topicKey(theme),

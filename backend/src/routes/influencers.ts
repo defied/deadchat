@@ -200,6 +200,10 @@ router.patch('/:id', owned, (req, res) =>
     if (b.look) {
       const look = { ...cur.look, ...b.look };
       if ('suggestive' in b.look) look.suggestive = b.look.suggestive === true;
+      if ('contentLevel' in b.look) {
+        look.contentLevel = ['implied', 'explicit'].includes(b.look.contentLevel) ? b.look.contentLevel : 'sfw';
+        look.suggestive = look.contentLevel === 'implied';
+      }
       if (b.look.appearance && b.look.appearance !== cur.look.appearance) {
         const check = checkImagePrompt('The look', b.look.appearance);
         if (!check.passed) throw new Error(check.issues.join(' '));

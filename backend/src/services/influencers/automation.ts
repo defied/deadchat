@@ -7,7 +7,7 @@
 
 import { decryptObject, encryptObject } from '../secrets';
 import { getMedia } from '../mediaStore';
-import { checkPostText, checkRate } from './compliance';
+import { checkPostText, checkRate, contentLevel } from './compliance';
 import { generatePost } from './pipeline';
 import { acceptsPost, getPlatform, publish } from './platforms';
 import { isPostDue, nextWindowStart } from './schedule';
@@ -45,11 +45,19 @@ async function tick(): Promise<void> {
 
 /** Why a post can't be published right now, or null if it can. */
 export function publishBlocker(inf: Influencer, post: store.Post): string | null {
+  if (inf.kind === 'visual' && contentLevel(inf.look) === 'explicit') {
+    return 'Explicit projects never publish to social platforms. Download the image to use it yourself.';
+  }
   if (inf.kind === 'text') {
     if (!post.factCheck?.passed) return 'The post has not passed the fact-check';
     if (post.checkedText !== post.text) return 'The post was edited after its fact-check; re-check it first';
   }
-  const rules = checkPostText(post.text, { kind: inf.kind, research: inf.research, sources: post.sources });
+  const rules = checkPostText(post.text, {
+    kind: inf.kind,
+    research: inf.research,
+    sources: post.sources,
+    level: inf.kind === 'visual' ? contentLevel(inf.look) : 'sfw',
+  });
   if (!rules.passed) return rules.issues.join(' ');
   if (post.compliance && !post.compliance.passed) return 'The post failed the policy review';
   return null;
@@ -90,7 +98,7 @@ export async function publishPost(postId: number): Promise<store.Post> {
           mediaIds: post.mediaIds,
           sources: post.sources,
           alt: post.topic ?? undefined,
-          sensitive: inf.kind === 'visual' && !!inf.look.suggestive,
+          sensitive: inf.kind === 'visual' && contentLevel(inf.look) !== 'sfw',
         },
         // Renewed tokens (Meta) are stored straight away.
         { saveCredentials: (c) => store.upsertAccount(inf.id, platform, { credentials: encryptObject(c) }) },

@@ -25,6 +25,7 @@ export interface Look {
   videoModel?: string;
   ratio?: string;
   suggestive?: boolean;
+  contentLevel?: 'sfw' | 'implied' | 'explicit';
   seed?: number;
   approvedMediaId?: number;
 }

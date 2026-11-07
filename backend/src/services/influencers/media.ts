@@ -5,7 +5,7 @@
 import { enqueue, getJob, awaitJob } from '../jobQueue';
 import { MEDIA_MODELS, getMediaModel, type MediaModel } from '../media/catalog';
 import { getMediaSettings } from '../media/settings';
-import { COVERAGE_RULES, buildImagePrompt, checkImagePrompt, imageNegative } from './compliance';
+import { ADULT_RULES, COVERAGE_RULES, MIN_EXPLICIT_AGE, buildImagePrompt, checkImagePrompt, contentLevel, imageNegative } from './compliance';
 import { asString, asStringArray, llmJson } from './llm';
 import * as store from './store';
 import type { Influencer, InfluencerMedia, Look } from './types';
@@ -45,7 +45,13 @@ function randomSeed(): number {
 
 /** What scenes may show, for the scene-planning prompts. */
 export function sceneRule(inf: Influencer): string {
-  return inf.look.suggestive
+  const level = contentLevel(inf.look);
+  if (level === 'explicit') {
+    return 'may include nude and sexual scenes. Everyone shown is a consenting adult who clearly looks 21 or ' +
+      'older; never anyone young-looking, no school or childhood settings, no non-consent, no family roles, no ' +
+      'animals, no real or famous people.';
+  }
+  return level === 'implied'
     ? 'may include a few tasteful, flirtatious implied-nudity scenes. Image models draw the body under foam or thin ' +
         'fabric, so frame each one so the chest is out of shot or turned away: a close-up in the bath cropped at the ' +
         'collarbones, sitting in the tub with knees hugged to the chest and arms wrapped around them, back to the ' +
@@ -60,24 +66,32 @@ export function queuePersonaImage(inf: Influencer, scene: string, role: 'look' |
   const appearance = inf.look.appearance?.trim();
   if (!appearance) throw new Error('Describe the look first');
   // The look portrait is always clothed; only scenes may use implied nudity.
-  const suggestive = !!inf.look.suggestive && role !== 'look';
-  const check = checkImagePrompt('The scene', scene, suggestive);
+  const level = role === 'look' ? 'sfw' : contentLevel(inf.look);
+  if (level === 'explicit' && (inf.persona.age ?? 0) < MIN_EXPLICIT_AGE) {
+    throw new Error(`Explicit images need a persona aged ${MIN_EXPLICIT_AGE} or older.`);
+  }
+  const check = checkImagePrompt('The scene', scene, level);
   if (!check.passed) throw new Error(check.issues.join(' '));
   const model = imageModel(inf.look);
-  const prompt = buildImagePrompt(inf.persona, appearance, scene, inf.look.style, suggestive);
+  const prompt = buildImagePrompt(inf.persona, appearance, scene, inf.look.style, level);
   const jobId = enqueue(
     'image',
     {
       catalogId: model.id,
       prompt,
-      negative: imageNegative(suggestive),
+      negative: imageNegative(level),
       ratio: ratioFor(model, inf.look.ratio),
       seed: seed ?? randomSeed(),
       // The locked appearance must reach the model verbatim.
       enhance: false,
       // Implied nudity: a vision check rejects any exposure and retries; if
       // every attempt fails, the job fails and nothing is saved.
-      ...(suggestive ? { verifyAttempts: 4, verifyRules: COVERAGE_RULES, requireVerified: true } : { verifyAttempts: 1 }),
+      // Explicit: every image must pass a vision check that everyone looks clearly adult.
+      ...(level === 'implied'
+        ? { verifyAttempts: 4, verifyRules: COVERAGE_RULES, requireVerified: true }
+        : level === 'explicit'
+          ? { verifyAttempts: 3, verifyRules: ADULT_RULES, requireVerified: true }
+          : { verifyAttempts: 1 }),
     },
     { userId: inf.userId, heavy: true },
   );
@@ -85,7 +99,7 @@ export function queuePersonaImage(inf: Influencer, scene: string, role: 'look' |
 }
 
 export function queueClip(inf: Influencer, fromMediaId: number, motion: string, role: 'clip' | 'post' = 'clip'): InfluencerMedia {
-  const check = checkImagePrompt('The motion prompt', motion, !!inf.look.suggestive);
+  const check = checkImagePrompt('The motion prompt', motion, contentLevel(inf.look));
   if (!check.passed) throw new Error(check.issues.join(' '));
   const model = videoModel(inf.look);
   const prompt = `${motion.trim()}. Natural, subtle movement; the same adult person throughout.`;
@@ -129,7 +143,7 @@ export async function portfolioScenes(inf: Influencer, count: number): Promise<s
       `Themes: ${(inf.plan.themes ?? []).join(', ') || 'their everyday life'}. Number of scenes: ${count}.`,
     { temperature: 0.8 },
   );
-  return asStringArray(out.scenes, count, 400).filter((s) => checkImagePrompt('Scene', s, !!inf.look.suggestive).passed);
+  return asStringArray(out.scenes, count, 400).filter((s) => checkImagePrompt('Scene', s, contentLevel(inf.look)).passed);
 }
 
 export async function generatePortfolio(inf: Influencer, count: number): Promise<InfluencerMedia[]> {
