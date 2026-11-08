@@ -30,6 +30,8 @@ export interface CatalogJobParams {
   verifyAttempts?: number;
   /** Hard content rules the vision check enforces (images only). */
   verifyRules?: string;
+  /** Content the vision check must accept (e.g. adult nudity in a private explicit project). */
+  verifyAllowed?: string;
   /** Fail the job unless an attempt passed the vision check's hard rules. */
   requireVerified?: boolean;
   imageMediaId?: number;
@@ -152,7 +154,7 @@ async function runCatalogJob(job: Job, raw: Record<string, unknown>): Promise<vo
       stage(`Checking the result (${i + 1}/${attempts})`);
       if (model.backend === 'local') await freeMemory(); // let the vision LLM load
       try {
-        verdict = await verifyImage(p.prompt, outputs[0].bytes.toString('base64'), p.verifyRules);
+        verdict = await verifyImage(p.prompt, outputs[0].bytes.toString('base64'), p.verifyRules, p.verifyAllowed);
       } catch (e) {
         if (p.requireVerified) throw new Error(`The image couldn't be checked against the content rules: ${(e as Error).message}`);
         console.warn(`[media] verification skipped: ${(e as Error).message}`);

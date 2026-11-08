@@ -85,12 +85,13 @@ export interface Verdict {
  * Ask the vision LLM whether the image satisfies the request. `rules` are hard
  * content rules: breaking any of them fails the image whatever its score.
  */
-export async function verifyImage(userPrompt: string, imageB64: string, rules?: string): Promise<Verdict> {
+export async function verifyImage(userPrompt: string, imageB64: string, rules?: string, allowed?: string): Promise<Verdict> {
   const llm = await pickModel(true);
   const system =
     'You are a strict QA reviewer for AI-generated images. Compare the image with the request. ' +
     'Check: requested subjects present, exact counts, colors, spatial relations, any requested text spelled exactly, ' +
     'and obvious defects (extra/missing fingers or limbs, melted faces, garbled text). ' +
+    (allowed ? `Allowed in this request, never a problem or a rule break: ${allowed} ` : '') +
     (rules
       ? `Hard rules (look closely; when unsure, treat the rule as broken): ${rules} ` +
         'Respond with JSON: {"rulesBroken": <true|false>, "score": <1-10>, "issues": ["<specific problem>", ...]}. ' +
