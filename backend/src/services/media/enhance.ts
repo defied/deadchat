@@ -94,7 +94,9 @@ export async function verifyImage(userPrompt: string, imageB64: string, rules?: 
     (rules
       ? `Hard rules (look closely; when unsure, treat the rule as broken): ${rules} ` +
         'Respond with JSON: {"rulesBroken": <true|false>, "score": <1-10>, "issues": ["<specific problem>", ...]}. ' +
-        'If any hard rule is broken, set rulesBroken true, score 1, and say what is visible and where. '
+        'If any hard rule is broken, set rulesBroken true, score 1, and say what is visible and where. ' +
+        'rulesBroken is ONLY for the hard rules: framing, pose, clothing or other differences from the request ' +
+        'lower the score and go in issues, but never set rulesBroken. '
       : 'Respond with JSON: {"score": <1-10>, "issues": ["<specific problem>", ...]}. ') +
     'Score 8+ means the image satisfies the request. Issues must be concrete and fixable; empty list if none.';
   const raw = await chat(llm, system, `Request: ${userPrompt}`, [imageB64], true);

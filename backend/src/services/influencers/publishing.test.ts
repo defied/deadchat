@@ -355,6 +355,7 @@ test('verifyImage fails any image that breaks a hard rule, and unclear answers',
   const broken = await enhance.verifyImage('bath scene', 'AAAA', 'No nipple may be visible.');
   assert.deepEqual([broken.pass, broken.rulesBroken, broken.score], [false, true, 1]);
   assert.match(system, /Hard rules .*No nipple may be visible/);
+  assert.match(system, /rulesBroken is ONLY for the hard rules/);
 
   reply = JSON.stringify({ rulesBroken: false, score: 9, issues: [] });
   assert.equal((await enhance.verifyImage('bath scene', 'AAAA', 'No nipple may be visible.')).pass, true);
