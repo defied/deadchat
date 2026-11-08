@@ -116,6 +116,12 @@ export async function verifyImage(userPrompt: string, imageB64: string, rules?: 
   }
 }
 
+/** One chat turn with the local model (vision when images are given). */
+export async function localChat(system: string, user: string, images?: string[]): Promise<{ model: string; text: string }> {
+  const model = await pickModel(!!images?.length);
+  return { model, text: await chat(model, system, user, images) };
+}
+
 /** Describe an image with the vision model, following `instruction`. */
 export async function describeImage(imageB64: string, instruction: string): Promise<string> {
   const llm = await pickModel(true);
