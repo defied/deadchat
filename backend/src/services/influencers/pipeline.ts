@@ -13,7 +13,7 @@ import { checkImagePrompt, checkPostText, contentLevel, domainOf, stripDisclosur
 import { aggregateFactCheck, isTrusted, topicKey, type ClaimEvidence, type FeedItem, type SourceVerdict } from './factcheck';
 import { asString, asStringArray, llmJson } from './llm';
 import { getActiveModel, getModelCapabilities } from '../chatModels';
-import { awaitMedia, queueClip, queuePersonaImage, sceneRule } from './media';
+import { SCENE_SUBJECT_RULE, awaitMedia, queueClip, queuePersonaImage, sceneRule } from './media';
 import { getPlatform } from './platforms';
 import { blueskyConversation, fetchFeed, fetchPage, webSearch, type Page } from './research';
 import * as store from './store';
@@ -393,9 +393,13 @@ export async function generateVisualPost(inf: Influencer, opts: GenerateOptions)
       'Return {"scene": "concrete photo scene: setting, activity, outfit, framing, light", "caption": "...", "alt": "image description"}. ' +
       `The caption is in the persona's voice, at most ${textBudget(inf)} characters, with at most 3 hashtags, ` +
       'never claims to be human, never @-mentions anyone, no links. No other identifiable people. The scene ' +
-      `${sceneRule(inf)}` +
+      `${sceneRule(inf)} ${SCENE_SUBJECT_RULE}` +
+      (opts.topicHint
+        ? ' The user described the photo they want: keep every detail they gave (outfit, setting, weather, mood, ' +
+          'framing) exactly, never contradict it, and only fill in what they left out.'
+        : '') +
       (contentLevel(inf.look) !== 'sfw' ? ' The caption may be flirtatious and teasing.' : ''),
-    `Theme: ${theme}`,
+    opts.topicHint ? `Requested photo: ${opts.topicHint}` : `Theme: ${theme}`,
     { temperature: 0.8 },
   );
   const scene = asString(out.scene, 400);
