@@ -141,6 +141,20 @@ Meta tokens are renewed automatically about once a week (they expire after 60 da
 
 Music needs the ACE-Step checkpoint on the GPU box: `ace_step_v1_3.5b.safetensors` in `ComfyUI/models/checkpoints` (from Comfy-Org/ACE-Step_ComfyUI_repackaged).
 
+## Medical cases
+
+**Create → Medical cases** brings a case's evidence together and presents it with drill-down.
+
+- **Evidence:** drop in files or whole folders.
+  - DICOM: single images, ultrasound and angiography **cine loops**, CT/MRI series (slices are stacked into one scrollable item, ordered by position) and PDFs embedded in DICOM.
+  - Photos, videos, PDFs, text and CSV lab exports.
+  - Patient names, IDs and birth dates in DICOM headers are not kept. Text burned into images is, so each image has a "cover top" band for presenting.
+  - Compressed DICOM previews support uncompressed, JPEG baseline and RLE. JPEG-LS, JPEG 2000 and MPEG-in-DICOM are stored and downloadable but not previewed yet.
+- **Profile (optional):** demographics with BSA, presentation, history, medications, vitals, labs with trend charts (paste from a spreadsheet), a timeline, the clinical question and teaching points.
+- **Overview:** the case at a glance (summary, timeline, evidence by category, lab trends, background). Every card opens a full viewer with notes and details; ← / → move through the case. Loops play with frame step, speed and brightness/contrast; stacks scroll with the mouse wheel.
+- **Present:** full-screen slides (title, summary, background, each piece of evidence, labs, take-home points). ← / → move, N toggles notes, G shows all slides.
+- **AI notes and summary:** optional drafts from the local Ollama model (images and sampled loop frames need a vision model, e.g. a medical one like Lingshu). They're labelled as drafts and editable. These are presentation aids, not diagnostic tools.
+
 ## Default Credentials
 
 - **Username:** admin

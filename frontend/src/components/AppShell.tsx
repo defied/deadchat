@@ -13,7 +13,7 @@ import {
   Menu,
   MessageSquare,
   Shield,
-  Skull, ScrollText } from 'lucide-react';
+  Skull, ScrollText, Stethoscope } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import wsManager from '../api/ws';
 import client from '../api/client';
@@ -40,6 +40,7 @@ const GROUPS: Array<{ label: string; items: NavDef[]; admin?: boolean }> = [
       { to: '/studio', label: 'Studio', icon: <Clapperboard size={17} />, hint: 'Characters: portraits and voices' },
       { to: '/social', label: 'Social Media', icon: <Megaphone size={17} />, hint: 'AI influencers: personas, portfolios and posting' },
       { to: '/screenplays', label: 'Screenplay', icon: <ScrollText size={17} />, hint: 'Write scripts; storyboard shots, characters, set plans' },
+      { to: '/cases', label: 'Medical cases', icon: <Stethoscope size={17} />, hint: 'Case evidence (DICOM, cine, labs, reports) and presenting' },
     ],
   },
   {

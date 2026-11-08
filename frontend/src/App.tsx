@@ -15,6 +15,8 @@ const SocialPage = lazy(() => import('./pages/SocialPage').then((m) => ({ defaul
 const InfluencerPage = lazy(() => import('./pages/InfluencerPage').then((m) => ({ default: m.InfluencerPage })));
 const ScreenplaysPage = lazy(() => import('./pages/ScreenplaysPage').then((m) => ({ default: m.ScreenplaysPage })));
 const ScreenplayPage = lazy(() => import('./pages/ScreenplayPage').then((m) => ({ default: m.ScreenplayPage })));
+const CasesPage = lazy(() => import('./pages/CasesPage').then((m) => ({ default: m.CasesPage })));
+const CasePage = lazy(() => import('./pages/CasePage').then((m) => ({ default: m.CasePage })));
 const TokensPage = lazy(() => import('./pages/TokensPage').then((m) => ({ default: m.TokensPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
@@ -75,6 +77,9 @@ export function App() {
             <Route path="/screenplays" element={<Page><ScreenplaysPage /></Page>} />
             <Route path="/screenplays/:id" element={<Navigate to="script" replace />} />
             <Route path="/screenplays/:id/:tab" element={<Page><ScreenplayPage /></Page>} />
+            <Route path="/cases" element={<Page><CasesPage /></Page>} />
+            <Route path="/cases/:id" element={<Navigate to="overview" replace />} />
+            <Route path="/cases/:id/:tab" element={<Page><CasePage /></Page>} />
             <Route path="/tokens" element={<Page><TokensPage /></Page>} />
             <Route
               path="/admin/:tab?"
