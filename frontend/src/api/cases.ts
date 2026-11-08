@@ -124,6 +124,139 @@ export interface CaseItem {
   originals: number;
   stack: boolean;
   dicom: DicomMeta | null;
+  sampledFrames: { count: number; fps: number } | null;
+  analysis: AnalysisBrief | null;
+}
+
+// ── multi-model analysis ──
+
+export type PipelineId = 'general' | 'peds-echo' | 'adult-echo' | 'angio' | 'cardiac-mri' | 'ct';
+export type AnalysisStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+
+export interface AnalysisBrief {
+  id: number;
+  status: AnalysisStatus;
+  pipeline: PipelineId;
+  etaS: number | null;
+  elapsedS: number | null;
+  framesDone: number;
+  framesTotal: number;
+}
+
+export interface AnalysisStage {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'failed' | 'skipped' | 'canceled';
+  done: number;
+  total: number;
+  unit: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationS?: number;
+  secPerUnit?: number;
+  error?: string;
+  etaS: number | null;
+  elapsedS: number | null;
+}
+
+export interface SpecialistFinding {
+  label: string;
+  value?: string | number | boolean | null;
+  unit?: string;
+  probability?: number;
+  frames?: [number, number];
+  note?: string;
+}
+
+export interface SpecialistResult {
+  model: string;
+  version?: string;
+  durationS: number;
+  findings: SpecialistFinding[];
+  warnings?: string[];
+}
+
+export interface AnalysisResults {
+  frameModel?: string;
+  frameUnit?: 'frame' | 'slice' | 'image';
+  frameCount?: number;
+  fps?: number | null;
+  windows?: Array<{ start: number; end: number; summary: string; durationS: number; observations: Array<{ frame: number; time?: string | null; finding: string }> }>;
+  specialists?: Record<string, SpecialistResult | { error: string }>;
+  report?: string;
+  reportModel?: string;
+}
+
+export interface Analysis {
+  id: number;
+  itemId: number;
+  pipeline: PipelineId;
+  pipelineLabel: string;
+  frameModel: string;
+  status: AnalysisStatus;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  stages: AnalysisStage[];
+  etaS: number | null;
+  elapsedS: number | null;
+  results: AnalysisResults;
+}
+
+export interface AnalysisOptions {
+  pipelines: Array<{
+    id: PipelineId;
+    label: string;
+    description: string;
+    specialists: Array<{ id: string; label: string; ready: boolean; error: string | null; license: string | null }>;
+  }>;
+  frameModels: Array<{ name: string; installed: boolean; recommended: boolean; parameterSize: string | null; sizeBytes: number }>;
+  defaultFrameModel: string;
+  ollamaReachable: boolean;
+  medService: { url: string; reachable: boolean; gpu: string | null; error: string | null };
+}
+
+export async function analysisOptions(): Promise<AnalysisOptions> {
+  const { data } = await client.get<AnalysisOptions>('/api/cases/analysis/options', { timeout: 20_000 });
+  return data;
+}
+
+export async function suggestAnalysis(id: number, itemId: number): Promise<{ pipeline: PipelineId; reasons: string[] }> {
+  const { data } = await client.post<{ pipeline: PipelineId; reasons: string[] }>(`/api/cases/${id}/items/${itemId}/analysis/suggest`, {}, { timeout: 180_000 });
+  return data;
+}
+
+export async function getItemAnalysis(id: number, itemId: number): Promise<{ current: Analysis | null; history: AnalysisBrief[] }> {
+  const { data } = await client.get<{ current: Analysis | null; history: AnalysisBrief[] }>(`/api/cases/${id}/items/${itemId}/analysis`);
+  return data;
+}
+
+export async function getAnalysisRun(id: number, itemId: number, aid: number): Promise<Analysis> {
+  const { data } = await client.get<{ analysis: Analysis }>(`/api/cases/${id}/items/${itemId}/analysis/${aid}`);
+  return data.analysis;
+}
+
+export async function startAnalysis(id: number, itemId: number, pipeline: PipelineId, frameModel: string, skipSpecialists = false): Promise<Analysis> {
+  const { data } = await client.post<{ analysis: Analysis }>(`/api/cases/${id}/items/${itemId}/analysis`, { pipeline, frameModel, skipSpecialists }, { timeout: 60_000 });
+  return data.analysis;
+}
+
+export async function cancelAnalysis(id: number, itemId: number, aid: number): Promise<Analysis> {
+  const { data } = await client.post<{ analysis: Analysis }>(`/api/cases/${id}/items/${itemId}/analysis/${aid}/cancel`);
+  return data.analysis;
+}
+
+export async function uploadSampledFrames(id: number, itemId: number, frames: Blob[], fps: number, onProgress?: (f: number) => void): Promise<CaseItem> {
+  const form = new FormData();
+  form.append('fps', String(fps));
+  frames.forEach((b, i) => form.append('frames', b, `${String(i).padStart(5, '0')}.jpg`));
+  const { data } = await client.post<{ item: CaseItem }>(`/api/cases/${id}/items/${itemId}/sampled-frames`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 0,
+    onUploadProgress: (e) => e.total && onProgress?.(e.loaded / e.total),
+  });
+  return data.item;
 }
 
 export interface CaseDetail {

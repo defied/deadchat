@@ -89,6 +89,8 @@ export interface ItemMeta {
   table?: { columns: string[]; rows: string[][]; total: number };
   originals?: string[];
   playable?: boolean;
+  /** Frames sampled from a video in the browser (the server has no video decoder), for analysis. */
+  sampledFrames?: { files: string[]; fps: number };
 }
 
 export interface CaseItem {

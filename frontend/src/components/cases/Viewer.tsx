@@ -14,16 +14,23 @@ interface ViewerProps {
   autoplay?: boolean;
   /** Fill the available height (slides, drill-down). */
   tall?: boolean;
+  /** Jump to a frame (0-based); `n` changes on every request so the same frame can be asked for twice. */
+  seek?: Seek | null;
 }
 
-export function Viewer({ caseId, item, autoplay = true, tall }: ViewerProps) {
+export interface Seek {
+  frame: number;
+  n: number;
+}
+
+export function Viewer({ caseId, item, autoplay = true, tall, seek }: ViewerProps) {
   const base = `/api/cases/${caseId}/items/${item.id}`;
   if (item.status === 'processing') {
     return <Placeholder icon={<Loader2 size={20} className="spin" />}>Preparing…</Placeholder>;
   }
-  if (item.frames > 0) return <FramePlayer base={base} item={item} autoplay={autoplay} tall={tall} />;
+  if (item.frames > 0) return <FramePlayer base={base} item={item} autoplay={autoplay} tall={tall} seek={seek} />;
   if (item.kind === 'image' && item.hasDisplay) return <ImageView url={`${base}/display`} item={item} tall={tall} />;
-  if (item.kind === 'video' && item.hasDisplay && item.playable) return <VideoView url={`${base}/display`} item={item} tall={tall} autoplay={autoplay} />;
+  if (item.kind === 'video' && item.hasDisplay && item.playable) return <VideoView url={`${base}/display`} item={item} tall={tall} autoplay={autoplay} seek={seek} />;
   if (item.hasDisplay && item.displayMime === 'application/pdf') return <PdfView url={`${base}/display`} tall={tall} />;
   if (item.hasDisplay && item.displayMime === 'text/plain') return <TextView url={`${base}/display`} tall={tall} />;
   if (item.table) return <TableView table={item.table} tall={tall} />;
@@ -113,7 +120,7 @@ function AdjustBar({ adjust, onChange }: { adjust: Adjust; onChange: (a: Adjust)
 
 const SPEEDS = [0.25, 0.5, 1, 2];
 
-function FramePlayer({ base, item, autoplay, tall }: { base: string; item: CaseItem; autoplay: boolean; tall?: boolean }) {
+function FramePlayer({ base, item, autoplay, tall, seek }: { base: string; item: CaseItem; autoplay: boolean; tall?: boolean; seek?: Seek | null }) {
   const count = item.frames;
   const stack = item.stack;
   const start = stack ? Math.floor(count / 2) : 0;
@@ -124,6 +131,12 @@ function FramePlayer({ base, item, autoplay, tall }: { base: string; item: CaseI
   const [adjust, setAdjust] = useState<Adjust>(NO_ADJUST);
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const fps = item.fps || 30;
+
+  useEffect(() => {
+    if (!seek) return;
+    setPlaying(false);
+    setIndex(Math.min(count - 1, Math.max(0, seek.frame)));
+  }, [seek, count]);
 
   // Draw the current frame (or the nearest loaded one while loading).
   useEffect(() => {
@@ -275,15 +288,22 @@ function ImageView({ url, item, tall }: { url: string; item: CaseItem; tall?: bo
   );
 }
 
-function VideoView({ url, item, tall, autoplay }: { url: string; item: CaseItem; tall?: boolean; autoplay: boolean }) {
+function VideoView({ url, item, tall, autoplay, seek }: { url: string; item: CaseItem; tall?: boolean; autoplay: boolean; seek?: Seek | null }) {
   const { url: src, failed } = useBlob(url);
+  const video = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const v = video.current;
+    if (!seek || !v || !item.sampledFrames) return;
+    v.pause();
+    v.currentTime = seek.frame / item.sampledFrames.fps;
+  }, [seek, item.sampledFrames, src]);
   if (failed) return <Placeholder icon={<FileQuestion size={20} />}>Couldn’t load the video.</Placeholder>;
   return (
     <div className={`cs-player ${tall ? 'tall' : ''}`}>
       <div className="cs-stage">
         {src ? (
           <div className="cs-media fit" style={fitStyle(item)}>
-            <video src={src} controls loop muted autoPlay={autoplay} playsInline />
+            <video ref={video} src={src} controls loop muted autoPlay={autoplay} playsInline />
             <Mask amount={item.maskTop} />
           </div>
         ) : (

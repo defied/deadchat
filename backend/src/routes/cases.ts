@@ -6,12 +6,16 @@ import multer from 'multer';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import sharp from 'sharp';
 import { authenticate } from '../middleware/auth';
 import * as store from '../services/cases/store';
 import { CATEGORIES, type CaseItem, type CaseProfile, type Category, type MedicalCase } from '../services/cases/store';
 import { ingest, setThumb } from '../services/cases/ingest';
 import { describeItem, summarizeCase } from '../services/cases/ai';
 import { stacksBySeries } from '../services/cases/dicom';
+import * as analysis from '../services/cases/analysis';
+import { PIPELINES, pipelineById, type PipelineId } from '../services/cases/pipelines';
+import * as med from '../services/cases/medService';
 
 const router = Router();
 router.use(authenticate);
@@ -19,6 +23,7 @@ router.use(authenticate);
 const tmp = path.join(os.tmpdir(), 'deadchat-case-uploads');
 fs.mkdirSync(tmp, { recursive: true });
 const upload = multer({ dest: tmp, limits: { fileSize: 1024 * 1024 * 1024, files: 1 } });
+const framesUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: 1500 } });
 const thumbUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 1 } });
 
 async function wrap(res: Response, fn: () => Promise<unknown> | unknown): Promise<void> {
@@ -135,6 +140,35 @@ function itemView(i: CaseItem) {
     originals: meta.originals?.length ?? 0,
     stack: !!meta.dicom && stacksBySeries(meta.dicom),
     dicom: meta.dicom ?? null,
+    sampledFrames: meta.sampledFrames ? { count: meta.sampledFrames.files.length, fps: meta.sampledFrames.fps } : null,
+    analysis: analysisBrief(analysis.listAnalyses(i.id, 1)[0]),
+  };
+}
+
+function analysisBrief(a?: analysis.Analysis) {
+  if (!a) return null;
+  const e = analysis.withEstimates(a);
+  const frames = a.stages.find((s) => s.id === 'frames');
+  return { id: a.id, status: a.status, pipeline: a.pipeline, etaS: e.etaS, elapsedS: e.elapsedS, framesDone: frames?.done ?? 0, framesTotal: frames?.total ?? 0 };
+}
+
+function analysisView(a: analysis.Analysis) {
+  const e = analysis.withEstimates(a);
+  return {
+    id: a.id,
+    itemId: a.item_id,
+    pipeline: a.pipeline,
+    pipelineLabel: pipelineById(a.pipeline)?.label ?? a.pipeline,
+    frameModel: a.frame_model,
+    status: a.status,
+    error: a.error,
+    createdAt: a.created_at,
+    startedAt: a.started_at,
+    finishedAt: a.finished_at,
+    stages: e.stages,
+    etaS: e.etaS,
+    elapsedS: e.elapsedS,
+    results: a.results,
   };
 }
 
@@ -164,6 +198,39 @@ router.post('/', (req, res) =>
   wrap(res, () => {
     const title = (str(req.body?.title, 200) ?? '').trim() || 'Untitled case';
     return detail(store.createCase(req.user!.id, title));
+  }),
+);
+
+// ── analysis options (before /:id so "analysis" isn't taken for a case id) ──
+
+router.get('/analysis/options', (_req, res) =>
+  wrap(res, async () => {
+    const [models, service] = await Promise.all([analysis.frameModelOptions(), med.health()]);
+    return {
+      pipelines: PIPELINES.map((p) => ({
+        id: p.id,
+        label: p.label,
+        description: p.description,
+        specialists: p.specialists.map((id) => {
+          const m = service.models.find((x) => x.id === id);
+          return { id, label: m?.label ?? id, ready: !!m?.ready, error: m ? m.error ?? null : service.reachable ? 'not installed' : 'service offline', license: m?.license ?? null };
+        }),
+      })),
+      frameModels: models.options,
+      defaultFrameModel: models.default,
+      ollamaReachable: models.reachable,
+      medService: { url: service.url, reachable: service.reachable, gpu: service.gpu ?? null, error: service.error ?? null },
+    };
+  }),
+);
+
+router.put('/analysis/settings', (req, res) =>
+  wrap(res, () => {
+    if (req.user!.role !== 'admin') throw new Error('Admins only');
+    const url = str(req.body?.medServiceUrl, 300)?.trim() || null;
+    if (url && !/^https?:\/\/[\w.-]+(:\d+)?\/?$/.test(url)) throw new Error('Use a URL like http://192.168.0.106:8790');
+    med.setMedServiceUrl(url);
+    return { medServiceUrl: med.medServiceUrl() };
   }),
 );
 
@@ -262,6 +329,83 @@ router.post('/:id/items/:itemId/thumb', owned, thumbUpload.single('thumb'), (req
     const durationS = Number(req.body?.duration);
     if (Number.isFinite(durationS) && durationS > 0) store.mutateItem(theItem(res).id, (it) => ({ meta: { ...it.meta, durationS } }));
     return { item: itemView(store.getItem(theItem(res).id)!) };
+  }),
+);
+
+/** Frames of a video, sampled in the browser at `fps`, so the analysis can look at every one. */
+router.post('/:id/items/:itemId/sampled-frames', owned, framesUpload.array('frames', 1500), (req, res) =>
+  wrap(res, async () => {
+    const item = theItem(res);
+    if (item.kind !== 'video') throw new Error('Only videos need sampled frames');
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    const fps = Number(req.body?.fps);
+    if (!files.length) throw new Error('No frames');
+    if (!Number.isFinite(fps) || fps <= 0 || fps > 120) throw new Error('Bad fps');
+    const dir = store.itemPath(item, 'sampled');
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    const names: string[] = [];
+    for (const [i, f] of files.entries()) {
+      const name = `sampled/${String(i).padStart(5, '0')}.jpg`;
+      // Re-encode: drops anything that isn't an image and any metadata.
+      await sharp(f.buffer).rotate().resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toFile(store.itemPath(item, name));
+      names.push(name);
+    }
+    store.mutateItem(item.id, (it) => ({ meta: { ...it.meta, sampledFrames: { files: names, fps } } }));
+    return { item: itemView(store.getItem(item.id)!) };
+  }),
+);
+
+router.get('/:id/items/:itemId/sampled-frames/:n', owned, (req, res) => {
+  const item = theItem(res);
+  const f = item.meta.sampledFrames?.files[Number(req.params.n)];
+  if (!f) {
+    res.status(404).json({ error: 'No such frame' });
+    return;
+  }
+  send(res, store.itemPath(item, f), 'image/jpeg');
+});
+
+// ── analysis ─────────────────────────────────────────────────────────────────
+
+router.post('/:id/items/:itemId/analysis/suggest', owned, (_req, res) =>
+  wrap(res, async () => {
+    const s = await analysis.suggest(theItem(res), theCase(res));
+    return { pipeline: s.pipeline, reasons: s.reasons, glance: s.glance ?? null, model: s.model ?? null };
+  }),
+);
+
+router.get('/:id/items/:itemId/analysis', owned, (_req, res) =>
+  wrap(res, () => {
+    const list = analysis.listAnalyses(theItem(res).id, 10);
+    return { current: list[0] ? analysisView(list[0]) : null, history: list.slice(1).map((a) => analysisBrief(a)) };
+  }),
+);
+
+router.get('/:id/items/:itemId/analysis/:aid', owned, (req, res) =>
+  wrap(res, () => {
+    const a = analysis.getAnalysis(Number(req.params.aid));
+    if (!a || a.item_id !== theItem(res).id) throw new Error('Analysis not found');
+    return { analysis: analysisView(a) };
+  }),
+);
+
+router.post('/:id/items/:itemId/analysis', owned, (req, res) =>
+  wrap(res, async () => {
+    const pipeline = String(req.body?.pipeline ?? '') as PipelineId;
+    if (!pipelineById(pipeline)) throw new Error('Pick a pipeline');
+    const frameModel = str(req.body?.frameModel, 200)?.trim();
+    if (!frameModel) throw new Error('Pick a frame model');
+    const a = await analysis.createAnalysis(theItem(res), pipeline, frameModel, { skipSpecialists: req.body?.skipSpecialists === true });
+    return { analysis: analysisView(a) };
+  }),
+);
+
+router.post('/:id/items/:itemId/analysis/:aid/cancel', owned, (req, res) =>
+  wrap(res, () => {
+    const a = analysis.getAnalysis(Number(req.params.aid));
+    if (!a || a.item_id !== theItem(res).id) throw new Error('Analysis not found');
+    return { analysis: analysisView(analysis.cancelAnalysis(a.id)!) };
   }),
 );
 

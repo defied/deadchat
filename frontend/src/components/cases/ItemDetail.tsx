@@ -1,10 +1,11 @@
 // Drill-down for one piece of evidence: the full viewer beside its details,
 // notes and AI notes, with ← / → to move through the case.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Bot, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { CATEGORIES, type CaseItem } from '../../api/cases';
-import { DownloadButton, Viewer, kindLabel } from './Viewer';
+import { DownloadButton, Viewer, kindLabel, type Seek } from './Viewer';
+import { AnalysisPanel, canAnalyse } from './AnalysisPanel';
 
 function facts(item: CaseItem): Array<[string, string]> {
   const d = item.dicom;
@@ -37,13 +38,16 @@ export function ItemDetail({
   itemId,
   onClose,
   onGo,
+  onChanged,
 }: {
   caseId: number;
   items: CaseItem[];
   itemId: number;
   onClose: () => void;
   onGo: (id: number) => void;
+  onChanged: () => void;
 }) {
+  const [seek, setSeek] = useState<Seek | null>(null);
   const i = items.findIndex((x) => x.id === itemId);
   const item = items[i];
   useEffect(() => {
@@ -71,7 +75,7 @@ export function ItemDetail({
         </div>
         <div className="cs-detail-body">
           <div className="cs-detail-view">
-            <Viewer key={item.id} caseId={caseId} item={item} tall />
+            <Viewer key={item.id} caseId={caseId} item={item} tall seek={seek} />
           </div>
           <aside className="cs-detail-side">
             {item.notes && (
@@ -85,6 +89,9 @@ export function ItemDetail({
                 <h4><Bot size={12} /> AI notes <span className="field-hint">draft</span></h4>
                 <p>{item.aiNotes}</p>
               </section>
+            )}
+            {canAnalyse(item) && (
+              <AnalysisPanel key={item.id} caseId={caseId} item={item} onSeek={(frame) => setSeek((s) => ({ frame, n: (s?.n ?? 0) + 1 }))} onChanged={onChanged} />
             )}
             <section>
               <h4>Details</h4>

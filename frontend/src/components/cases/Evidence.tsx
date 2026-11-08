@@ -8,6 +8,7 @@ import { CATEGORIES, type CaseDetail, type CaseItem, type Category } from '../..
 import { Alert, EmptyState, errorMessage } from '../ui';
 import { DownloadButton, Thumb, kindLabel } from './Viewer';
 import { forget } from './blobs';
+import { fmtDuration } from './sampleVideo';
 
 interface Props {
   detail: CaseDetail;
@@ -309,6 +310,18 @@ function ItemRow({
         <div className="cs-item-facts">
           {facts.join(' · ')}
           {item.status === 'processing' && <span className="cs-proc"><Loader2 size={11} className="spin" /> processing</span>}
+          {item.analysis && (
+            <button className={`cs-an-badge ${item.analysis.status}`} onClick={onOpen} title="Open the full analysis">
+              {['queued', 'running'].includes(item.analysis.status) ? (
+                <>
+                  <Loader2 size={11} className="spin" /> Analysing {item.analysis.framesDone}/{item.analysis.framesTotal}
+                  {item.analysis.etaS != null && ` · ~${fmtDuration(item.analysis.etaS)} left`}
+                </>
+              ) : (
+                <>Analysis {item.analysis.status === 'done' ? 'ready' : item.analysis.status}</>
+              )}
+            </button>
+          )}
           {d?.burnedInAnnotation && !item.maskTop && (
             <span className="cs-warn"><AlertTriangle size={11} /> The file says text is burned into the image: cover it before presenting</span>
           )}
