@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {
   ADULT_RULES,
   COVERAGE_RULES,
+  COVERAGE_RULES_MALE,
+  coverageRules,
+  isMale,
   contentLevel,
   imageNegative,
   IMAGE_NEGATIVE,
@@ -177,6 +180,17 @@ test('explicit projects allow adult sexual content but keep every minor, consent
   assert.match(imageNegative('explicit'), /child, children, teen/);
   assert.doesNotMatch(imageNegative('explicit'), /nudity/);
   assert.match(ADULT_RULES, /clearly look 21 or older/);
+});
+
+test('implied nudity: a bare chest is fine on a man, not on a woman', () => {
+  const man = { ...persona, gender: 'Male' };
+  assert.equal(isMale(man), true);
+  for (const g of ['Woman', 'Female', 'Non-binary', '', 'female (trans woman)']) assert.equal(isMale({ ...persona, gender: g }), false, g);
+  assert.equal(coverageRules(man), COVERAGE_RULES_MALE);
+  assert.equal(coverageRules(persona), COVERAGE_RULES);
+  assert.match(COVERAGE_RULES_MALE, /bare chest and nipples are allowed/);
+  assert.match(buildImagePrompt(man, 'tall man', 'after a swim', undefined, 'implied'), /bare chest is fine/);
+  assert.doesNotMatch(buildImagePrompt(persona, 'woman', 'in the bath', undefined, 'implied'), /bare chest is fine/);
 });
 
 test('explicit projects never publish and need a persona aged 25+', () => {

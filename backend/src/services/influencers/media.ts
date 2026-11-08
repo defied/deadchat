@@ -5,7 +5,7 @@
 import { enqueue, getJob, awaitJob } from '../jobQueue';
 import { MEDIA_MODELS, getMediaModel, type MediaModel } from '../media/catalog';
 import { getMediaSettings } from '../media/settings';
-import { ADULT_RULES, COVERAGE_RULES, MIN_EXPLICIT_AGE, buildImagePrompt, checkImagePrompt, contentLevel, imageNegative } from './compliance';
+import { ADULT_RULES, MIN_EXPLICIT_AGE, coverageRules, isMale, buildImagePrompt, checkImagePrompt, contentLevel, imageNegative } from './compliance';
 import { asString, asStringArray, llmJson } from './llm';
 import * as store from './store';
 import type { Influencer, InfluencerMedia, Look } from './types';
@@ -51,6 +51,11 @@ export function sceneRule(inf: Influencer): string {
       'older; never anyone young-looking, no school or childhood settings, no non-consent, no family roles, no ' +
       'animals, no real or famous people.';
   }
+  if (level === 'implied' && isMale(inf.persona)) {
+    return 'may include a few tasteful, flirtatious implied-nudity scenes: shirtless after a workout or swim, ' +
+      'stepping out of the shower with a towel wrapped low around the hips, in the bath or tangled in bedsheets. A ' +
+      'bare chest is fine; keep everything below the waist covered by the towel, water, sheets or the frame. Nothing explicit.';
+  }
   return level === 'implied'
     ? 'may include a few tasteful, flirtatious implied-nudity scenes. Image models draw the body under foam or thin ' +
         'fabric, so frame each one so the chest is out of shot or turned away: a close-up in the bath cropped at the ' +
@@ -88,7 +93,7 @@ export function queuePersonaImage(inf: Influencer, scene: string, role: 'look' |
       // every attempt fails, the job fails and nothing is saved.
       // Explicit: every image must pass a vision check that everyone looks clearly adult.
       ...(level === 'implied'
-        ? { verifyAttempts: 4, verifyRules: COVERAGE_RULES, requireVerified: true }
+        ? { verifyAttempts: 4, verifyRules: coverageRules(inf.persona), requireVerified: true }
         : level === 'explicit'
           ? { verifyAttempts: 3, verifyRules: ADULT_RULES, requireVerified: true }
           : { verifyAttempts: 1 }),

@@ -26,10 +26,25 @@ export const IMAGE_NEGATIVE_SUGGESTIVE =
   `${NEGATIVE_ALWAYS}, exposed nipples, areola, exposed breasts, genitals, penis, vagina, pubic hair, ` +
   'exposed buttocks, see-through, wardrobe malfunction, sexual act, pornographic, explicit, nsfw';
 
-/** What the vision check enforces on every implied-nudity image. */
+/** What the vision check enforces on every implied-nudity image of a woman (or unspecified gender). */
 export const COVERAGE_RULES =
   'No nipple or areola may be visible, including faintly or as an outline or bump through foam, water, fabric, ' +
   'hair or fingers. No genitals, pubic hair or bare buttocks. Nobody who could look under 21.';
+
+/** A bare chest is fine on a man (and on every platform), so only the rest stays covered. */
+export const COVERAGE_RULES_MALE =
+  "A man's bare chest and nipples are allowed. No genitals or pubic hair, and no visible outline of genitals " +
+  'through a towel, water or fabric. No bare buttocks. Nobody who could look under 21.';
+
+/** Is the persona a man? Only an explicit male gender counts; anything else gets the stricter rules. */
+export function isMale(persona: Persona): boolean {
+  const g = persona.gender?.trim().toLowerCase() ?? '';
+  return /^(?:m|male|man|men)$|\b(?:male|man|guy)\b/.test(g) && !/female|woman|non-?binary|trans/.test(g);
+}
+
+export function coverageRules(persona: Persona): string {
+  return isMale(persona) ? COVERAGE_RULES_MALE : COVERAGE_RULES;
+}
 
 // In implied-nudity scenes, naming these makes image models draw them.
 const NAMED_PART_RE = /\b(?:nipples?|areolae?|areolas|breasts?|boobs?|tits?|cleavage|bosom)\b/i;
@@ -260,6 +275,9 @@ export function buildImagePrompt(
     // the chest out of shot or turned away is what reliably works.
     l === 'explicit'
       ? 'an unmistakably mature adult with an adult face and adult body'
+      : l === 'implied' && isMale(persona)
+      ? 'tasteful, sensual implied nudity: bare chest is fine; below the waist covered by a towel wrapped low, water, ' +
+        'sheets or the frame edge; nothing explicit; a clearly mature adult'
       : l === 'implied'
       ? 'tasteful, sensual implied nudity, modestly framed: the chest is out of frame or turned away from the camera ' +
         '(close-up cropped at the collarbones, back to the camera looking over the shoulder, knees hugged to the chest ' +
