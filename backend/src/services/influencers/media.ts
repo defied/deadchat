@@ -43,6 +43,14 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 2_147_483_647);
 }
 
+/**
+ * Scenes must not describe the persona's looks: the locked appearance is added
+ * to every image prompt, and a planner that invents "long dark hair" fights it.
+ */
+export const SCENE_SUBJECT_RULE =
+  'Refer to the persona only as "she", "he" or "the subject". Never describe their hair, eyes, skin, face, body ' +
+  'type, age or ethnicity: their locked appearance is added to the image prompt automatically.';
+
 /** What scenes may show, for the scene-planning prompts. */
 export function sceneRule(inf: Influencer): string {
   const level = contentLevel(inf.look);
@@ -143,7 +151,7 @@ export async function portfolioScenes(inf: Influencer, count: number): Promise<s
   const out = await llmJson<{ scenes?: unknown }>(
     'You plan photos for an invented adult social media persona. Return {"scenes": [..]}: short, concrete scene ' +
       'descriptions (setting, activity, outfit, framing, light) that fit the persona, vary location and framing, ' +
-      `and ${sceneRule(inf)} Never include other identifiable people, children, brands or logos.`,
+      `and ${sceneRule(inf)} Never include other identifiable people, children, brands or logos. ${SCENE_SUBJECT_RULE}`,
     `Persona: ${inf.persona.displayName}, ${inf.persona.niche}. Audience: ${inf.persona.audience ?? 'adults'}. ` +
       `Themes: ${(inf.plan.themes ?? []).join(', ') || 'their everyday life'}. Number of scenes: ${count}.`,
     { temperature: 0.8 },
