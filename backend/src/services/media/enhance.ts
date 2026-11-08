@@ -116,6 +116,13 @@ export async function verifyImage(userPrompt: string, imageB64: string, rules?: 
   }
 }
 
+/** Describe an image with the vision model, following `instruction`. */
+export async function describeImage(imageB64: string, instruction: string): Promise<string> {
+  const llm = await pickModel(true);
+  const out = await chat(llm, instruction, 'Describe the attached image.', [imageB64]);
+  return out.replace(/^["'`]+|["'`]+$/g, '').trim().slice(0, 800);
+}
+
 /** Rewrite the prompt so the next attempt fixes the reviewer's issues. */
 export async function correctPrompt(
   userPrompt: string,

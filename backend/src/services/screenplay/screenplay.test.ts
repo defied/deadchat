@@ -1,0 +1,250 @@
+// Screenplay reading, staging, prompts and the re-render loop. The DB is a temp SQLite file.
+
+import { test, before } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'deadchat-screenplay-'));
+process.env.DB_PATH = path.join(tmp, 'test.db');
+process.env.MEDIA_DIR = path.join(tmp, 'media');
+fs.mkdirSync(process.env.MEDIA_DIR, { recursive: true });
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { runMigrations } = require('../../db/migrate') as typeof import('../../db/migrate');
+const db = (require('../../db/connection') as typeof import('../../db/connection')).default;
+const script = require('./script') as typeof import('./script');
+const staging = require('./staging') as typeof import('./staging');
+const prompts = require('./prompts') as typeof import('./prompts');
+const store = require('./store') as typeof import('./store');
+const render = require('./render') as typeof import('./render');
+const { cleanDoc } = require('../../routes/screenplays') as typeof import('../../routes/screenplays');
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+import type { ScreenplayDoc, PlanItem } from './types';
+
+before(() => runMigrations());
+
+function doc(): ScreenplayDoc {
+  return {
+    elements: [
+      { id: 's1', type: 'scene', text: "INT. JANE'S KITCHEN - NIGHT" },
+      { id: 'a1', type: 'action', text: 'Rain hammers the window. JANE stands at the counter, gripping a knife.' },
+      { id: 'c1', type: 'character', text: 'JANE' },
+      { id: 'p1', type: 'parenthetical', text: '(whispering)' },
+      { id: 'd1', type: 'dialogue', text: 'Who is there?' },
+      { id: 'c2', type: 'character', text: 'TOM (O.S.)' },
+      { id: 'd2', type: 'dialogue', text: 'It is me.' },
+      { id: 'a2', type: 'action', text: 'The door creaks open. TOM steps in, soaked.' },
+      { id: 's2', type: 'scene', text: 'EXT. HARBOUR - DAWN' },
+      { id: 'a3', type: 'action', text: 'Gulls wheel over empty boats.' },
+    ],
+    shots: [
+      { id: 'sh1', anchorId: 'a1', type: 'Wide establishing', seconds: 6 },
+      { id: 'sh2', anchorId: 'a2', type: 'Medium', music: 'tense low strings, slow pulse' },
+      { id: 'sh3', anchorId: 's2', type: '' },
+    ],
+    characters: [
+      { id: 'jane', name: 'Jane', kind: 'human', appearance: 'woman in her forties, short grey hair, sharp features', wardrobe: 'a worn green cardigan' },
+      { id: 'tom', name: 'Tom', kind: 'human', appearance: 'tall man, beard, rain-soaked' },
+    ],
+    plans: {},
+    settings: { ratio: '21:9' },
+  };
+}
+
+// ── script ──
+
+test('parseHeading reads the setting, location and time', () => {
+  assert.deepEqual(script.parseHeading("INT. JANE'S KITCHEN - NIGHT"), { setting: 'Interior', location: "Jane's kitchen", time: 'night' });
+  assert.deepEqual(script.parseHeading('EXT./INT. CAR - MOVING - DAY'), { setting: 'Interior/exterior', location: 'Car', time: 'moving, day' });
+  assert.equal(script.parseHeading('12 EXT. HARBOUR - DAWN #12#').location, 'Harbour');
+});
+
+test('a shot covers its anchor up to the next shot or scene heading', () => {
+  const d = doc();
+  const s1 = script.shotSection(d, d.shots[0])!;
+  assert.deepEqual(s1.elements.map((e) => e.id), ['a1', 'c1', 'p1', 'd1', 'c2', 'd2']);
+  assert.equal(s1.scene?.id, 's1');
+  const s2 = script.shotSection(d, d.shots[1])!;
+  assert.deepEqual(s2.elements.map((e) => e.id), ['a2']);
+  assert.equal(script.shotSection(d, d.shots[2])!.heading?.location, 'Harbour');
+});
+
+test('present characters: on-screen cues and names in action, never voice-over or off-screen', () => {
+  const d = doc();
+  const s1 = script.shotSection(d, d.shots[0])!;
+  const present = script.presentCharacters(s1.elements, d.characters);
+  assert.deepEqual(present.map((p) => p.name), ['Jane']);
+  assert.deepEqual(present[0].manner, ['whispering']);
+  assert.equal(script.cueIsOffscreen('TOM (V.O.)'), true);
+  assert.equal(script.cueIsOffscreen("TOM (CONT'D)"), false);
+  assert.equal(script.mentions('JANEWAY looks up', 'Jane'), false);
+});
+
+// ── staging ──
+
+test('staging places characters in frame, judges size, facing and light', () => {
+  const cam: PlanItem = { id: 'cam', kind: 'camera', x: 0, y: 0, rot: 0, ref: 'sh1', lens: 35, height: 'low' };
+  const plan = {
+    items: [
+      cam,
+      // 3 m ahead, slightly to the camera's left (negative y is the camera's left when facing +x), facing the camera.
+      { id: 'j', kind: 'character', x: 3, y: -0.3, rot: 180, ref: 'jane' } as PlanItem,
+      // Far behind and to the right, facing away.
+      { id: 't', kind: 'character', x: 8, y: 1.5, rot: 0, ref: 'tom' } as PlanItem,
+      // Behind the camera: not in frame.
+      { id: 'x', kind: 'character', x: -2, y: 0, rot: 0, label: 'Ghost' } as PlanItem,
+      { id: 'l', kind: 'light', x: 3, y: -3, rot: 90, color: 'warm', quality: 'hard' } as PlanItem,
+      { id: 'b', kind: 'light', x: 6, y: -0.6, rot: 180, color: 'cool' } as PlanItem,
+    ],
+  };
+  const s = staging.describeStaging(plan, cam, doc().characters, 21 / 9);
+  assert.deepEqual(s.inFrame, ['Jane', 'Tom']);
+  assert.match(s.text, /^Low-angle camera looking up, 35mm lens\. Framing: medium shot\./);
+  assert.match(s.text, /Jane, centre frame, facing the camera, in the foreground/);
+  assert.match(s.text, /Tom, frame right, back to the camera, in the background/);
+  assert.match(s.text, /hard warm tungsten key light from screen left/);
+  assert.match(s.text, /soft cool daylight-blue backlight/);
+  assert.doesNotMatch(s.text, /Ghost/);
+});
+
+test('framing follows distance and lens', () => {
+  assert.equal(staging.framingFor(1, 85), 'extreme close-up');
+  assert.equal(staging.framingFor(1.6, 85), 'close-up');
+  assert.equal(staging.framingFor(3, 50), 'medium shot');
+  assert.equal(staging.framingFor(5, 35), 'full shot');
+  assert.equal(staging.framingFor(20, 24), 'extreme wide shot');
+  assert.equal(staging.defaultLens('Extreme close-up'), 100);
+  assert.equal(staging.defaultLens('Wide establishing'), 24);
+});
+
+// ── prompts ──
+
+test('planShot waits for a shot type and a description, then builds the prompt', () => {
+  const d = doc();
+  assert.match(prompts.planShot(d, d.shots[2]).waiting!, /shot type/);
+  const p = prompts.planShot(d, d.shots[0]);
+  assert.ok(p.prompt);
+  assert.match(p.prompt!, /^Cinematic film still, Wide establishing shot, 24mm lens\. Interior, Jane's kitchen, night\. Rain hammers the window/);
+  assert.match(p.prompt!, /Characters: Jane: woman in her forties, short grey hair, sharp features, wearing a worn green cardigan, whispering/);
+  assert.doesNotMatch(p.prompt!, /Who is there/, 'dialogue is not visual');
+  assert.doesNotMatch(p.prompt!, /Tom/, 'off-screen Tom is not in the shot');
+});
+
+test('editing a section changes only that shot’s hash', () => {
+  const d = doc();
+  const before1 = prompts.planShot(d, d.shots[0]).hash;
+  const before2 = prompts.planShot(d, d.shots[1]).hash;
+  d.elements[7].text = 'The door bursts open. TOM staggers in, bleeding.';
+  assert.equal(prompts.planShot(d, d.shots[0]).hash, before1);
+  assert.notEqual(prompts.planShot(d, d.shots[1]).hash, before2);
+  d.characters[1].appearance = 'short man, clean-shaven';
+  assert.notEqual(prompts.planShot(d, d.shots[1]).hash, before2, 'character changes re-render shots they appear in');
+  assert.equal(prompts.planShot(d, d.shots[0]).hash, before1, '…and only those');
+});
+
+test('a set-plan camera adds staging and limits the cast to who it sees', () => {
+  const d = doc();
+  d.plans.s1 = {
+    items: [
+      { id: 'cam', kind: 'camera', x: 0, y: 0, rot: 0, ref: 'sh2', lens: 50 },
+      { id: 'j', kind: 'character', x: -3, y: 0, rot: 0, ref: 'jane' },
+      { id: 't', kind: 'character', x: 3, y: 0, rot: 180, ref: 'tom' },
+    ],
+  };
+  const p = prompts.planShot(d, d.shots[1]);
+  assert.match(p.prompt!, /Characters: Tom: tall man/);
+  assert.match(p.staging!, /Tom, centre frame, facing the camera/);
+  assert.doesNotMatch(p.prompt!, /Jane:/);
+});
+
+test('references add a look; sexual content with a minor is never rendered', () => {
+  const d = doc();
+  const p = prompts.planShot(d, d.shots[0], [{ target: '', caption: 'low-key teal lighting, anamorphic flares' }]);
+  assert.match(p.prompt!, /Look and feel: low-key teal lighting, anamorphic flares/);
+  d.elements[1].text = 'A naked teenager stands at the counter.';
+  const blocked = prompts.planShot(d, d.shots[0]);
+  assert.match(blocked.blocked!, /child or teenager/);
+  assert.equal(blocked.prompt, undefined);
+});
+
+test('planMusic clamps the cue length and changes hash with the description', () => {
+  const d = doc();
+  const m = prompts.planMusic(d.shots[1]);
+  assert.equal(m.seconds, 20);
+  assert.match(m.prompt!, /tense low strings, slow pulse, film score, instrumental/);
+  assert.notEqual(prompts.planMusic({ ...d.shots[1], music: 'warm piano' }).hash, m.hash);
+  assert.equal(prompts.planMusic({ ...d.shots[1], seconds: 900 }).seconds, 120);
+  assert.deepEqual(prompts.planMusic(d.shots[0]), {});
+});
+
+test('cleanDoc drops malformed parts and caps sizes', () => {
+  const c = cleanDoc({
+    elements: [{ id: 'ok', type: 'scene', text: 'INT. A' }, { id: 'bad id!', type: 'scene', text: 'x' }, { id: 'e2', type: 'weird', text: 5 }],
+    shots: [{ id: 'sh', anchorId: 'ok', seconds: -4, lens: 9999 }, { id: 'nope' }],
+    plans: { ok: { items: [{ id: 'i', kind: 'camera', x: 1e9, y: 0, rot: 0, height: 'sideways' }] } },
+    settings: { ratio: '7:3' },
+  });
+  assert.deepEqual(c.elements, [{ id: 'ok', type: 'scene', text: 'INT. A' }, { id: 'e2', type: 'action', text: '' }]);
+  assert.deepEqual([c.shots.length, c.shots[0].seconds, c.shots[0].lens], [1, 0, 800]);
+  assert.deepEqual([c.plans.ok.items[0].x, c.plans.ok.items[0].height], [500, undefined]);
+  assert.equal(c.settings.ratio, '21:9');
+});
+
+// ── re-render loop ──
+
+function jobs() {
+  return db.prepare('SELECT id, type, status, params FROM jobs ORDER BY id').all() as Array<{ id: number; type: string; status: string; params: string }>;
+}
+
+test('renders wait for the description to settle, then re-render only what changed', () => {
+  db.prepare("INSERT INTO settings (key, value) VALUES ('media.default_image_model', 'z-image-turbo')").run();
+  const sp = store.createScreenplay(1, 'Test', doc());
+  const t0 = 1_000_000;
+
+  // First pass only notes the hashes; nothing is queued until they hold for STABLE_MS.
+  assert.equal(render.reconcile(sp.id, t0), true);
+  assert.equal(jobs().length, 0);
+  render.reconcile(sp.id, t0 + render.STABLE_MS);
+  const first = jobs();
+  assert.deepEqual(first.map((j) => j.type).sort(), ['audio', 'image', 'image']);
+  const audio = JSON.parse(first.find((j) => j.type === 'audio')!.params);
+  assert.deepEqual([audio.catalogId, audio.duration], ['ace-step-v1', 20]);
+  const img = JSON.parse(first.find((j) => j.type === 'image')!.params);
+  assert.deepEqual([img.catalogId, img.ratio, img.enhance], ['z-image-turbo', '21:9', false]);
+
+  // Nothing changed: nothing new.
+  render.reconcile(sp.id, t0 + 3 * render.STABLE_MS);
+  assert.equal(jobs().length, 3);
+
+  // Revise shot 2's action: its queued render is cancelled and replaced; shot 1 is untouched.
+  const d = store.getScreenplay(sp.id)!.doc;
+  d.elements[7].text = 'The door bursts open. TOM staggers in.';
+  const saved = store.saveScreenplay(sp.id, 1, { doc: d });
+  render.reconcile(sp.id, t0 + 10 * render.STABLE_MS);
+  render.reconcile(sp.id, t0 + 11 * render.STABLE_MS);
+  const after = jobs();
+  assert.equal(after.length, 4);
+  const sh2Rows = store.listMedia(sp.id, 'frame').filter((r) => r.target === 'sh2');
+  assert.deepEqual(sh2Rows.map((r) => r.status), ['superseded', 'pending']);
+  assert.equal(after.find((j) => j.id === sh2Rows[0].job_id)!.status, 'canceled');
+  assert.match(JSON.parse(after[3].params).prompt, /staggers in/);
+
+  // Same seed for the revision, so the picture changes only where the words did.
+  assert.equal(JSON.parse(after[3].params).seed, JSON.parse(after.find((j) => j.id === sh2Rows[0].job_id)!.params).seed);
+
+  // Deleting a shot stops its pending work.
+  const d2 = store.getScreenplay(sp.id)!.doc;
+  d2.shots = d2.shots.filter((s) => s.id !== 'sh2');
+  store.saveScreenplay(sp.id, saved.version, { doc: d2 });
+  render.reconcile(sp.id, t0 + 20 * render.STABLE_MS);
+  assert.ok(store.listMedia(sp.id).filter((r) => r.target === 'sh2').every((r) => r.status === 'superseded'));
+});
+
+test('saving with a stale version is refused', () => {
+  const sp = store.createScreenplay(1, 'Conflict', doc());
+  store.saveScreenplay(sp.id, 1, { title: 'A' });
+  assert.throws(() => store.saveScreenplay(sp.id, 1, { title: 'B' }), store.VersionConflict);
+});

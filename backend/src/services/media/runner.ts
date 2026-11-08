@@ -52,7 +52,7 @@ export async function runGraph(
     throw new Error(`ComfyUI rejected the ${model.label} workflow (${r.status}): ${summarizeComfyError(text)}`);
   }
   const { prompt_id } = (await r.json()) as { prompt_id: string };
-  const timeout = model.kind === 'video' ? 45 * 60_000 : 15 * 60_000;
+  const timeout = model.kind === 'image' ? 15 * 60_000 : 45 * 60_000;
   const files = await pollHistory(prompt_id, onProgress, timeout);
   const wanted = files.filter((f) => f.type === 'output');
   if (wanted.length === 0) throw new Error(`${model.label} finished without producing a file`);

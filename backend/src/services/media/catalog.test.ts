@@ -23,7 +23,7 @@ for (const m of MEDIA_MODELS.filter((x) => x.backend !== 'cloudflare')) {
     for (const [id, key, target] of links(g)) {
       assert.ok(g[target], `${id}.${key} links to missing node ${target}`);
     }
-    const outputs = Object.values(g).filter((n) => /^Save(Image|Video|ImageAdvanced)$/.test(n.class_type));
+    const outputs = Object.values(g).filter((n) => /^Save(Image|Video|ImageAdvanced|Audio)$/.test(n.class_type));
     assert.ok(outputs.length >= 1, 'no output node');
     if (m.needsImage) {
       const loaders = Object.values(g).filter((n) => n.class_type === 'LoadImage');
