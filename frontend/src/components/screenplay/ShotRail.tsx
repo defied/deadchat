@@ -171,7 +171,8 @@ function ShotCard({
         <span className="sp-shot-tc" title="Starts at">
           <Clock size={11} /> {timecode(start)}
         </span>
-        {cueReady?.media_id && <MusicButton mediaId={cueReady.media_id} />}
+        {cueReady?.media_id && <MusicButton key={cueReady.media_id} mediaId={cueReady.media_id} label={cue?.status === 'pending' ? 'Play the previous cue (new one rendering)' : 'Play music cue'} />}
+        {cue?.status === 'pending' && <Loader2 size={12} className="spin" aria-label="Music updating" />}
         <span className="sp-grow" />
         <button className="icon-btn" title="Set plan: camera, cast and lights" onClick={onPlan}>
           <LayoutGrid size={14} />

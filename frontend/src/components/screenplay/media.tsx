@@ -49,7 +49,14 @@ let playing: HTMLAudioElement | null = null;
 export function MusicButton({ mediaId, label = 'Play music cue' }: { mediaId: number; label?: string }) {
   const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle');
   const audio = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => () => audio.current?.pause(), []);
+  // A new cue (the description changed and it re-rendered): drop the old audio.
+  useEffect(() => {
+    setState('idle');
+    return () => {
+      audio.current?.pause();
+      audio.current = null;
+    };
+  }, [mediaId]);
   const toggle = async () => {
     if (state === 'playing') {
       audio.current?.pause();
