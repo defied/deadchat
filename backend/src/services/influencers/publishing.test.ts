@@ -357,6 +357,10 @@ test('verifyImage fails any image that breaks a hard rule, and unclear answers',
   assert.match(system, /Hard rules .*No nipple may be visible/);
   assert.match(system, /rulesBroken is ONLY for the hard rules/);
 
+  await enhance.verifyImage('scene', 'AAAA', 'Everyone must look 21+.', 'Adult nudity is permitted.');
+  assert.match(system, /Allowed in this request, never a problem or a rule break: Adult nudity is permitted\./);
+  assert.match(system, /Hard rules .*Everyone must look 21\+/);
+
   reply = JSON.stringify({ rulesBroken: false, score: 9, issues: [] });
   assert.equal((await enhance.verifyImage('bath scene', 'AAAA', 'No nipple may be visible.')).pass, true);
 

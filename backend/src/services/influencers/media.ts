@@ -5,7 +5,7 @@
 import { enqueue, getJob, awaitJob } from '../jobQueue';
 import { MEDIA_MODELS, getMediaModel, type MediaModel } from '../media/catalog';
 import { getMediaSettings } from '../media/settings';
-import { ADULT_RULES, MIN_EXPLICIT_AGE, coverageRules, isMale, buildImagePrompt, checkImagePrompt, contentLevel, imageNegative } from './compliance';
+import { ADULT_RULES, EXPLICIT_ALLOWED, MIN_EXPLICIT_AGE, coverageRules, isMale, buildImagePrompt, checkImagePrompt, contentLevel, imageNegative } from './compliance';
 import { asString, asStringArray, llmJson } from './llm';
 import * as store from './store';
 import type { Influencer, InfluencerMedia, Look } from './types';
@@ -103,7 +103,7 @@ export function queuePersonaImage(inf: Influencer, scene: string, role: 'look' |
       ...(level === 'implied'
         ? { verifyAttempts: 4, verifyRules: coverageRules(inf.persona), requireVerified: true }
         : level === 'explicit'
-          ? { verifyAttempts: 3, verifyRules: ADULT_RULES, requireVerified: true }
+          ? { verifyAttempts: 3, verifyRules: ADULT_RULES, verifyAllowed: EXPLICIT_ALLOWED, requireVerified: true }
           : { verifyAttempts: 1 }),
     },
     { userId: inf.userId, heavy: true },

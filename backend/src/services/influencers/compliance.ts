@@ -62,6 +62,11 @@ const asLevel = (l: ContentLevel | boolean | undefined): ContentLevel => (l === 
 /** Explicit projects need a wider age margin so nothing can read as young. */
 export const MIN_EXPLICIT_AGE = 25;
 
+/** What the vision check is told to accept in explicit projects (they never publish). */
+export const EXPLICIT_ALLOWED =
+  'This is a private adult project that is never published. Nudity and consensual sexual activity between ' +
+  'adults, including explicit sex, are permitted. Judge only the hard rules and how well the image matches the request.';
+
 /** What the vision check enforces on every explicit image. */
 export const ADULT_RULES =
   'Every person shown must clearly look 21 or older, with an adult face and adult body; anything childlike, ' +
