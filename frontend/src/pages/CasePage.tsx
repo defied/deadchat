@@ -23,7 +23,7 @@ export function CasePage() {
     queryFn: () => api.getCase(id),
     refetchInterval: (query) => {
       const d = query.state.data as CaseDetail | undefined;
-      return d?.items.some((i) => i.status === 'processing' || i.aiStatus === 'running') ? 2000 : false;
+      return d?.items.some((i) => i.status === 'processing' || i.aiStatus === 'running' || (i.analysis && ['queued', 'running'].includes(i.analysis.status))) ? 2000 : false;
     },
   });
   const setDetail = useCallback((fn: (d: CaseDetail) => CaseDetail) => qc.setQueryData<CaseDetail>(['case', id], (d) => (d ? fn(d) : d)), [id, qc]);
@@ -165,6 +165,7 @@ export function CasePage() {
           itemId={open}
           onClose={() => setOpen(null)}
           onGo={setOpen}
+          onChanged={() => void q.refetch()}
         />
       )}
       {presenting && <Present detail={detail} startItem={presenting.start} onClose={() => setPresenting(null)} />}

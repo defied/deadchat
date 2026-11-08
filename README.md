@@ -154,6 +154,12 @@ Music needs the ACE-Step checkpoint on the GPU box: `ace_step_v1_3.5b.safetensor
 - **Overview:** the case at a glance (summary, timeline, evidence by category, lab trends, background). Every card opens a full viewer with notes and details; ← / → move through the case. Loops play with frame step, speed and brightness/contrast; stacks scroll with the mouse wheel.
 - **Present:** full-screen slides (title, summary, background, each piece of evidence, labs, take-home points). ← / → move, N toggles notes, G shows all slides.
 - **AI notes and summary:** optional drafts from the local Ollama model (images and sampled loop frames need a vision model, e.g. a medical one like Lingshu). They're labelled as drafts and editable. These are presentation aids, not diagnostic tools.
+- **Full analysis** (in an item's drill-down): reviews **every frame** of a loop, stack, video or image.
+  - **Pipeline dropdown:** General, Pediatric echo, Adult echo, Cath angiography, Cardiac MRI or CT. One is suggested from the DICOM modality and patient age, or from a first look at a frame when there's no metadata.
+  - **Frame review:** a vision model (Qwen3-VL 32B recommended; any installed vision model works) reviews windows of 8 consecutive frames and returns timed observations. Clicking one jumps the viewer to that frame. Videos are read frame by frame in the browser first (up to 1,500 frames).
+  - **Specialist models** run on the GPU box's [med-service](deploy/gpu-box/med-service/README.md) (PanEcho now; EchoAI-Peds, CineMA and TotalSegmentator listed but not ready). "Skip specialist models" runs only the frame review and report, and is the default when the service is offline.
+  - **Combined report:** merges everything, naming which model reported each finding and where the models disagree.
+  - **Timing:** each stage shows progress, elapsed time and an estimate (this run's pace, then earlier runs, then defaults). Runs can be canceled and resume after a restart. The model stays loaded during a run and is unloaded afterwards so ComfyUI gets the GPU back.
 
 ## Default Credentials
 

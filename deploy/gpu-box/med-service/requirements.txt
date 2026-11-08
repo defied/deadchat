@@ -1,0 +1,7 @@
+fastapi==0.115.12
+uvicorn==0.34.2
+python-multipart==0.0.20
+pillow>=11
+numpy>=2
+# torch / torchvision: use the CUDA build already in the ComfyUI Python env, or
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130

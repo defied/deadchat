@@ -350,3 +350,201 @@ test('AI notes send sampled cine frames to the vision model; the summary uses on
     globalThis.fetch = realFetch;
   }
 });
+
+// ── multi-model analysis ──
+
+test('pipelines: windows cover every frame; age parsing; suggestions from metadata and a glance', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const p = require('./pipelines') as typeof import('./pipelines');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  assert.deepEqual(p.frameWindows(5), [[0, 4]]);
+  assert.deepEqual(p.frameWindows(0), []);
+  const w = p.frameWindows(30, 8, 1);
+  assert.deepEqual(w[0], [0, 7]);
+  assert.deepEqual(w.at(-1)![1], 29);
+  const seen = new Set<number>();
+  for (const [s, e] of w) for (let i = s; i <= e; i++) seen.add(i);
+  assert.equal(seen.size, 30, 'every frame is in a window');
+
+  assert.equal(p.ageYears('006Y'), 6);
+  assert.equal(p.ageYears('018M'), 1.5);
+  assert.equal(p.ageYears(undefined, '3 months'), 0.25);
+  assert.equal(p.ageYears(undefined, '42 years'), 42);
+  assert.equal(p.ageYears(undefined, 'newborn'), 0);
+  assert.equal(p.frameTime(46, 50), '0:00.92');
+  assert.equal(p.frameTime(3, null), null);
+
+  const item = (modality?: string, age?: string) => ({ frames: 10, kind: 'dicom' as const, meta: modality ? { dicom: { modality, patientAge: age, frames: 10 } as never } : {} });
+  assert.equal(p.suggestPipeline(item('US', '006Y'), {}).pipeline, 'peds-echo');
+  assert.equal(p.suggestPipeline(item('US', '045Y'), {}).pipeline, 'adult-echo');
+  assert.equal(p.suggestPipeline(item('US'), { age: '2 months' }).pipeline, 'peds-echo');
+  assert.equal(p.suggestPipeline(item('XA'), {}).pipeline, 'angio');
+  assert.equal(p.suggestPipeline(item('MR'), {}).pipeline, 'cardiac-mri');
+  assert.equal(p.suggestPipeline(item('CT'), {}).pipeline, 'ct');
+  assert.equal(p.suggestPipeline({ frames: 1, kind: 'video', meta: {} }, { age: '8 years' }, { kind: 'echo' }).pipeline, 'peds-echo');
+  assert.equal(p.suggestPipeline({ frames: 1, kind: 'image', meta: {} }, {}).pipeline, 'general');
+  assert.match(p.suggestPipeline(item('US', '006Y'), {}).reasons.join(' '), /DICOM modality US.*patient age 6 years/);
+});
+
+test('estimates use this run’s pace, then history, then defaults', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const an = require('./analysis') as typeof import('./analysis');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const stages = an.planStages('peds-echo', 30, [{ id: 'echoai-peds', label: 'EchoAI-Peds', ready: true }]);
+  assert.deepEqual(stages.map((s) => [s.id, s.total]), [['frames', 5], ['spec:echoai-peds', 1], ['spec:panecho', 1], ['report', 1]]);
+  assert.deepEqual(an.planStages('peds-echo', 30, [], true).map((s) => s.status), ['pending', 'skipped', 'skipped', 'pending']);
+  const now = Date.parse('2026-11-08T12:00:00Z');
+  const a = {
+    id: 0, case_id: 0, item_id: 0, pipeline: 'peds-echo' as const, frame_model: 'never-used', status: 'running' as const, error: null,
+    created_at: '2026-11-08 11:59:00', started_at: '2026-11-08T11:59:00Z', finished_at: null, results: {},
+    stages: stages.map((s) => (s.id === 'frames' ? { ...s, status: 'running' as const, done: 2, secPerUnit: 20, startedAt: '2026-11-08T11:59:20Z' } : s)),
+  };
+  const e = an.withEstimates(a, now);
+  // frames: 3 windows left at 20 s, minus 0 s into the current one (40 s elapsed = 2 × 20)
+  assert.equal(e.stages[0].etaS, 60);
+  assert.equal(e.stages[0].elapsedS, 40);
+  // specialists and report fall back to defaults (no history in this DB)
+  assert.equal(e.stages[1].etaS, 90);
+  assert.equal(e.stages[3].etaS, 60);
+  assert.equal(e.etaS, 60 + 90 + 90 + 60);
+  assert.equal(e.elapsedS, 60);
+  assert.equal(an.withEstimates({ ...a, status: 'done' }, now).etaS, null);
+});
+
+test('analysis reviews every frame, runs the specialists, writes a combined report, and can be canceled', async () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const an = require('./analysis') as typeof import('./analysis');
+  const med = require('./medService') as typeof import('./medService');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  med.setMedServiceUrl('http://med.test:8790');
+  const chats: Array<{ model: string; system: string; user: string; images: number; format?: string; keep?: unknown }> = [];
+  const unloads: string[] = [];
+  const specCalls: Array<{ model: string; frames: number; meta: Record<string, unknown> }> = [];
+  let slow: (() => void) | null = null;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (u.endsWith('/api/tags')) return new Response(JSON.stringify({ models: [{ name: 'qwen3-vl:32b', digest: 'q', size: 21e9 }] }));
+    if (u.endsWith('/api/show')) return new Response(JSON.stringify({ capabilities: ['completion', 'vision'], model_info: {} }));
+    if (u.endsWith('/api/generate')) {
+      unloads.push(JSON.parse(String(init?.body)).model);
+      return new Response('{}');
+    }
+    if (u.endsWith('/api/chat')) {
+      const b = JSON.parse(String(init?.body));
+      chats.push({ model: b.model, system: b.messages[0].content, user: b.messages[1].content, images: b.messages[1].images?.length ?? 0, format: b.format, keep: b.keep_alive });
+      if (slow) {
+        await new Promise<void>((resolve, reject) => {
+          slow = resolve;
+          if (init?.signal?.aborted) reject(new DOMException('aborted', 'AbortError'));
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        });
+      }
+      const content = b.format === 'json'
+        ? JSON.stringify({ summary: 'Apical 4-chamber; RV dilated through the cycle.', observations: [{ frame: 3, finding: 'Septum flattens in systole' }, { frame: 99, finding: 'out of range frame number' }] })
+        : '**Study** Pediatric echo.';
+      return new Response(JSON.stringify({ message: { content } }));
+    }
+    if (u === 'http://med.test:8790/v1/health') {
+      return new Response(JSON.stringify({ gpu: 'RTX', models: [{ id: 'echoai-peds', label: 'EchoAI-Peds', ready: true }] }));
+    }
+    if (u.startsWith('http://med.test:8790/v1/analyze/')) {
+      const form = init?.body as FormData;
+      specCalls.push({ model: u.split('/').pop()!, frames: form.getAll('frames').length, meta: JSON.parse(String(form.get('meta'))) });
+      return new Response(JSON.stringify({ model: 'echoai-peds', version: '1.0', durationS: 2.5, findings: [{ label: 'RV dilation', probability: 0.91 }] }));
+    }
+    return new Response('{}', { status: 404 });
+  }) as typeof fetch;
+  const waitFor = async (id: number, ok: (s: string) => boolean) => {
+    for (let i = 0; i < 400; i++) {
+      const a = an.getAnalysis(id)!;
+      if (ok(a.status)) return a;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error('timed out');
+  };
+  try {
+    const c = store.updateCase(store.createCase(1, 'Analysis').id, { profile: { age: '6 years', question: 'RV size?' } });
+    const item = await upload(c.id, 'IM0003', echoCine());
+    await ingest.idle();
+    const it = store.getItem(item.id)!;
+
+    const s = await an.suggest(it, c);
+    assert.equal(s.pipeline, 'peds-echo', 'metadata decides without a model call');
+    assert.equal(chats.length, 0);
+
+    const a = await an.createAnalysis(it, 'peds-echo', 'qwen3-vl:32b');
+    await assert.rejects(an.createAnalysis(it, 'peds-echo', 'qwen3-vl:32b'), /already being analysed/);
+    const done = await waitFor(a.id, (st) => st !== 'queued' && st !== 'running');
+    assert.equal(done.status, 'done');
+
+    // Frames: all 5 frames in one window, JSON mode, model kept loaded during the run, unloaded after.
+    const frameCall = chats.find((x) => x.format === 'json')!;
+    assert.equal(frameCall.images, 5);
+    assert.equal(frameCall.keep, '10m');
+    assert.match(frameCall.user, /frame 1 \(t=0:00\.00\).*frame 5 \(t=0:00\.08\)/);
+    assert.match(frameCall.system, /pediatric echocardiogram/);
+    assert.deepEqual(unloads, ['qwen3-vl:32b']);
+    const win = done.results.windows![0];
+    assert.deepEqual([win.start, win.end], [0, 4]);
+    assert.deepEqual(win.observations.map((o) => o.frame), [2, 4], 'labelled 1-based by the model, stored 0-based and clamped');
+    assert.equal(win.observations[0].time, '0:00.04');
+
+    // Specialists: the installed one ran on every frame; the missing one failed without failing the run.
+    assert.deepEqual(specCalls.map((x) => [x.model, x.frames]), [['echoai-peds', 5]]);
+    assert.equal(specCalls[0].meta.age, '006Y');
+    const st = Object.fromEntries(done.stages.map((x) => [x.id, x]));
+    assert.equal(st['spec:echoai-peds'].status, 'done');
+    assert.equal(st['spec:panecho'].status, 'failed');
+    assert.match(st['spec:panecho'].error!, /panecho isn’t installed/);
+    assert.deepEqual(done.results.specialists!.panecho, { error: st['spec:panecho'].error });
+    for (const x of done.stages.filter((y) => y.status === 'done')) assert.ok((x.durationS ?? -1) >= 0 && x.finishedAt, `${x.id} has a duration`);
+
+    // Report: by the frame model, given both sources with attribution.
+    const rep = chats.find((x) => !x.format)!;
+    assert.equal(rep.model, 'qwen3-vl:32b');
+    assert.match(rep.user, /frame 3 @0:00\.04: Septum flattens in systole/);
+    assert.match(rep.user, /echoai-peds 1\.0:\n {2}- RV dilation \(p=0\.91\)/);
+    assert.match(rep.user, /panecho: did not run/);
+    assert.match(rep.system, /which model reported it/);
+    assert.equal(done.results.report, '**Study** Pediatric echo.');
+
+    // Skipping the specialists: no calls to the GPU service, still a report.
+    const calls = specCalls.length;
+    const sk = await an.createAnalysis(it, 'peds-echo', 'qwen3-vl:32b', { skipSpecialists: true });
+    const skDone = await waitFor(sk.id, (x) => x !== 'queued' && x !== 'running');
+    assert.equal(skDone.status, 'done');
+    assert.equal(specCalls.length, calls);
+    assert.deepEqual(skDone.stages.map((x) => x.status), ['done', 'skipped', 'skipped', 'done']);
+
+    // Cancel mid-run.
+    slow = () => undefined;
+    const before = chats.length;
+    const b = await an.createAnalysis(it, 'general', 'qwen3-vl:32b');
+    await waitFor(b.id, (x) => x === 'running');
+    for (let i = 0; i < 100 && chats.length === before; i++) await new Promise((r) => setTimeout(r, 10));
+    const canceled = an.cancelAnalysis(b.id)!;
+    assert.equal(canceled.status, 'canceled');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(an.getAnalysis(b.id)!.status, 'canceled');
+    assert.ok(an.getAnalysis(b.id)!.stages.every((x) => x.status !== 'running' && x.status !== 'pending'));
+    slow = null;
+
+    assert.equal(chats.length, before + 1, 'the frame call was in flight when canceled');
+
+    // A restart puts an interrupted run back in the queue; finished windows are kept, not redone.
+    const r = await an.createAnalysis(it, 'general', 'qwen3-vl:32b');
+    await waitFor(r.id, (x) => x === 'done');
+    const db = require('../../db/connection').default; // eslint-disable-line @typescript-eslint/no-require-imports
+    db.prepare("UPDATE case_analyses SET status = 'running', finished_at = NULL WHERE id = ?").run(r.id);
+    db.prepare("UPDATE case_analyses SET stages = json_replace(stages, '$[1].status', 'pending', '$[1].done', 0) WHERE id = ?").run(r.id);
+    const n = chats.length;
+    an.resumeAnalyses();
+    const resumed = await waitFor(r.id, (x) => x === 'done');
+    assert.equal(chats.length, n + 1, 'only the report is redone');
+    assert.equal(resumed.results.windows!.length, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    med.setMedServiceUrl(null);
+  }
+});

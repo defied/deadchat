@@ -150,7 +150,7 @@
 }
 .cs-detail-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--color-border); }
 .cs-detail-head strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-detail-body { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+.cs-detail-body { flex: 1; display: grid; grid-template-columns: 1fr 400px; min-height: 0; }
 .cs-detail-view { padding: 12px; overflow: auto; min-width: 0; }
 .cs-detail-side { border-left: 1px solid var(--color-border); padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
 .cs-detail-side h4 { display: flex; gap: 6px; align-items: center; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-dim); margin: 0 0 6px; }
@@ -250,3 +250,50 @@
   .cs-slide { padding: 16px 12px 64px; }
   .cs-drop { flex-direction: column; }
 }
+
+/* ── full analysis ─────────────────────────────────────────────────────────── */
+.cs-an { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--color-border); border-radius: var(--radius); padding: 10px; background: var(--color-surface); }
+.cs-an h4 { margin: 0; }
+.cs-an-form { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.cs-an-field { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 12px; }
+.cs-an-field select { min-width: 0; }
+.cs-an-desc p { font-size: 12px !important; color: var(--color-text-secondary); }
+.cs-an-specs { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.cs-an-specs li { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.cs-an-specs li.ok { color: var(--color-success); }
+.cs-an-specs li.off { color: var(--color-text-dim); }
+.cs-an-run { display: flex; flex-direction: column; gap: 8px; }
+.cs-an-head { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
+.cs-an-clock, .cs-an-status { font-size: 12px; color: var(--color-text-secondary); display: inline-flex; gap: 4px; align-items: center; font-variant-numeric: tabular-nums; }
+.cs-an-status.done { color: var(--color-success); }
+.cs-an-status.failed { color: var(--color-danger); }
+.cs-an-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cs-an-stages li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.cs-an-stages li.pending, .cs-an-stages li.canceled { color: var(--color-text-dim); }
+.cs-an-stages progress { flex: 1 0 100%; height: 4px; accent-color: var(--color-accent); }
+.cs-an-time { font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+.cs-an-err { flex: 1 0 100%; }
+.cs-ok { color: var(--color-success); }
+.cs-bad { color: var(--color-danger); }
+.cs-an-strip { position: relative; height: 18px; background: var(--color-bg); border-radius: 4px; overflow: hidden; }
+.cs-an-cover { position: absolute; top: 0; bottom: 0; background: var(--color-accent-dim); opacity: 0.5; }
+.cs-an-mark { position: absolute; top: 3px; bottom: 3px; width: 3px; margin-left: -1px; padding: 0; border: 0; border-radius: 2px; background: var(--color-accent-light); cursor: pointer; }
+.cs-an-mark:hover, .cs-an-mark:focus-visible { background: var(--color-warning); outline: none; }
+.cs-an-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--color-border); }
+.cs-an-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--color-text-secondary); padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.cs-an-tabs button.on { color: var(--color-text); border-bottom-color: var(--color-accent); }
+.cs-an-report { font-size: 13px; line-height: 1.5; display: flex; flex-direction: column; gap: 6px; }
+.cs-an-report p { white-space: normal !important; font-size: 13px !important; }
+.cs-an-timeline { display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow: auto; }
+.cs-an-window p { font-size: 12px !important; color: var(--color-text-secondary); margin: 2px 0 !important; }
+.cs-an-window ul { margin: 2px 0 0; padding-left: 14px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.cs-an-range, .cs-an-at { background: none; border: 0; padding: 0; color: var(--color-accent-light); cursor: pointer; font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cs-an-range { font-weight: 600; }
+.cs-an-range:hover, .cs-an-at:hover { text-decoration: underline; }
+.cs-an-specialists { display: flex; flex-direction: column; gap: 10px; }
+.cs-an-spec { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.cs-an-spec table { font-size: 12px; }
+.cs-an-badge { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--color-border-light); background: var(--color-surface); color: var(--color-text-secondary); cursor: pointer; font-variant-numeric: tabular-nums; }
+.cs-an-badge.done { color: var(--color-success); border-color: var(--color-success); }
+.cs-an-badge.failed { color: var(--color-danger); }
+.cs-an-check { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--color-text-secondary); }
