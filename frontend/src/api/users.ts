@@ -1,17 +1,20 @@
 import client from './client';
 import type { User } from './auth';
+import type { TabId } from '../tabs';
 
 export interface CreateUserPayload {
   username: string;
   email: string;
   password: string;
   role: 'user' | 'admin';
+  tabs?: TabId[] | 'all';
 }
 
 export interface UpdateUserPayload {
   username?: string;
   email?: string;
   role?: 'user' | 'admin';
+  tabs?: TabId[] | 'all';
 }
 
 export interface UserUsage {

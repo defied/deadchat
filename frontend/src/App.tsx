@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './components/AppShell';
+import { Home, TabRoute } from './components/TabRoute';
 import { Loading } from './components/ui';
 
 // Route-level code splitting: the admin dashboards, generator and their chart
@@ -65,22 +66,22 @@ export function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/chat" replace />} />
+            <Route index element={<Home />} />
             {/* One route for both so the page stays mounted when a new chat gets its id. */}
-            <Route path="/chat/:sessionId?" element={<Page><ChatPage /></Page>} />
-            <Route path="/agents" element={<Page><AgentsPage /></Page>} />
+            <Route path="/chat/:sessionId?" element={<TabRoute tab="chat"><Page><ChatPage /></Page></TabRoute>} />
+            <Route path="/agents" element={<TabRoute tab="agents"><Page><AgentsPage /></Page></TabRoute>} />
             <Route path="/generate" element={<Navigate to="/generate/create" replace />} />
-            <Route path="/generate/:tab" element={<Page><GeneratePage /></Page>} />
-            <Route path="/studio" element={<Page><StudioPage /></Page>} />
-            <Route path="/social" element={<Page><SocialPage /></Page>} />
-            <Route path="/social/:id/:step?" element={<Page><InfluencerPage /></Page>} />
-            <Route path="/screenplays" element={<Page><ScreenplaysPage /></Page>} />
+            <Route path="/generate/:tab" element={<TabRoute tab="generate"><Page><GeneratePage /></Page></TabRoute>} />
+            <Route path="/studio" element={<TabRoute tab="studio"><Page><StudioPage /></Page></TabRoute>} />
+            <Route path="/social" element={<TabRoute tab="social"><Page><SocialPage /></Page></TabRoute>} />
+            <Route path="/social/:id/:step?" element={<TabRoute tab="social"><Page><InfluencerPage /></Page></TabRoute>} />
+            <Route path="/screenplays" element={<TabRoute tab="screenplays"><Page><ScreenplaysPage /></Page></TabRoute>} />
             <Route path="/screenplays/:id" element={<Navigate to="script" replace />} />
-            <Route path="/screenplays/:id/:tab" element={<Page><ScreenplayPage /></Page>} />
-            <Route path="/cases" element={<Page><CasesPage /></Page>} />
+            <Route path="/screenplays/:id/:tab" element={<TabRoute tab="screenplays"><Page><ScreenplayPage /></Page></TabRoute>} />
+            <Route path="/cases" element={<TabRoute tab="cases"><Page><CasesPage /></Page></TabRoute>} />
             <Route path="/cases/:id" element={<Navigate to="overview" replace />} />
-            <Route path="/cases/:id/:tab" element={<Page><CasePage /></Page>} />
-            <Route path="/tokens" element={<Page><TokensPage /></Page>} />
+            <Route path="/cases/:id/:tab" element={<TabRoute tab="cases"><Page><CasePage /></Page></TabRoute>} />
+            <Route path="/tokens" element={<TabRoute tab="api"><Page><TokensPage /></Page></TabRoute>} />
             <Route
               path="/admin/:tab?"
               element={

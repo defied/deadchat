@@ -699,3 +699,12 @@ code.inline {
   font-size: 12px;
   color: var(--color-text);
 }
+
+/* Admin: section permissions */
+.tab-perms { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 10px 12px; margin: 0 0 20px; }
+.tab-perms legend { padding: 0 4px; margin: 0; }
+.tab-perms[disabled] { opacity: 0.7; }
+.tab-perm { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--color-text); cursor: pointer; }
+.tab-perm input { width: auto; }
+.tab-perm.all { margin-bottom: 8px; }
+.tab-perm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }

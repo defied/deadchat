@@ -15,6 +15,7 @@ import type { User } from '../api/auth';
 import type { UsageSummary } from '../api/users';
 import * as usersApi from '../api/users';
 import { Users, BarChart3, Plus, Cpu, Activity, DollarSign, Bot, Image, Shield, Wand2 } from 'lucide-react';
+import type { TabId } from '../tabs';
 
 const TABS = [
   { id: 'users', label: 'Users', icon: <Users size={14} /> },
@@ -96,6 +97,7 @@ export function AdminPage() {
     email: string;
     password?: string;
     role: 'user' | 'admin';
+    tabs: TabId[] | 'all';
   }) => {
     try {
       if (editingUser) {
@@ -103,6 +105,7 @@ export function AdminPage() {
           username: data.username,
           email: data.email,
           role: data.role,
+          tabs: data.tabs,
         });
       } else {
         await usersApi.createUser({
@@ -110,6 +113,7 @@ export function AdminPage() {
           email: data.email,
           password: data.password!,
           role: data.role,
+          tabs: data.tabs,
         });
       }
       setShowForm(false);

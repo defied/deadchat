@@ -11,8 +11,14 @@ import {
   deleteModelPricing,
 } from '../services/usage';
 import type { User } from '../types/models';
+import { TABS, cleanTabs, parseTabs, type TabId } from '../services/tabs';
 
 const router = Router();
+
+/** `tabs`: null means every tab; otherwise the assigned list. */
+function withTabs<T extends { tabs: string | null }>(u: T): Omit<T, 'tabs'> & { tabs: TabId[] | null } {
+  return { ...u, tabs: parseTabs(u.tabs) };
+}
 
 // All user management routes require admin
 router.use(authenticate, adminOnly);
@@ -54,15 +60,22 @@ router.delete('/usage/pricing/:model', (req: Request, res: Response): void => {
 // GET /api/users
 router.get('/', (req: Request, res: Response): void => {
   const users = db.prepare(
-    'SELECT id, username, email, role, created_at, updated_at FROM users ORDER BY created_at DESC'
-  ).all();
+    'SELECT id, username, email, role, tabs, created_at, updated_at FROM users ORDER BY created_at DESC'
+  ).all() as Array<{ tabs: string | null }>;
 
-  res.json({ users });
+  res.json({ users: users.map(withTabs), tabs: TABS });
 });
 
 // POST /api/users
 router.post('/', (req: Request, res: Response): void => {
   const { username, email, password, role } = req.body;
+  let tabs: string | null = null;
+  try {
+    tabs = req.body?.tabs === undefined ? null : cleanTabs(req.body.tabs);
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+    return;
+  }
 
   if (!username || !email || !password) {
     res.status(400).json({ error: 'Username, email, and password are required' });
@@ -80,14 +93,14 @@ router.post('/', (req: Request, res: Response): void => {
 
   const passwordHash = hashPassword(password);
   const result = db.prepare(
-    'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)'
-  ).run(username, email, passwordHash, role || 'user');
+    'INSERT INTO users (username, email, password_hash, role, tabs) VALUES (?, ?, ?, ?, ?)'
+  ).run(username, email, passwordHash, role || 'user', tabs);
 
   const user = db.prepare(
-    'SELECT id, username, email, role, created_at FROM users WHERE id = ?'
-  ).get(result.lastInsertRowid);
+    'SELECT id, username, email, role, tabs, created_at FROM users WHERE id = ?'
+  ).get(result.lastInsertRowid) as { tabs: string | null };
 
-  res.status(201).json({ user });
+  res.status(201).json({ user: withTabs(user) });
 });
 
 // PUT /api/users/:id
@@ -126,6 +139,15 @@ router.put('/:id', (req: Request, res: Response): void => {
   if (email) { updates.push('email = ?'); values.push(email); }
   if (password) { updates.push('password_hash = ?'); values.push(hashPassword(password)); }
   if (role) { updates.push('role = ?'); values.push(role); }
+  if (req.body?.tabs !== undefined) {
+    try {
+      updates.push('tabs = ?');
+      values.push(cleanTabs(req.body.tabs));
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+      return;
+    }
+  }
 
   if (updates.length === 0) {
     res.status(400).json({ error: 'No fields to update' });
@@ -140,10 +162,10 @@ router.put('/:id', (req: Request, res: Response): void => {
   ).run(...values);
 
   const user = db.prepare(
-    'SELECT id, username, email, role, created_at, updated_at FROM users WHERE id = ?'
-  ).get(userId);
+    'SELECT id, username, email, role, tabs, created_at, updated_at FROM users WHERE id = ?'
+  ).get(userId) as { tabs: string | null };
 
-  res.json({ user });
+  res.json({ user: withTabs(user) });
 });
 
 // DELETE /api/users/:id

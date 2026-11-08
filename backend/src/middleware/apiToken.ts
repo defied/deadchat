@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import db from '../db/connection';
 import { verifyToken } from '../services/apiTokens';
+import { hasTab } from '../services/tabs';
 
 export function authenticateApiToken(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
@@ -21,6 +22,11 @@ export function authenticateApiToken(req: Request, res: Response, next: NextFunc
   ).get(row.user_id) as { id: number; username: string; role: string } | undefined;
   if (!user) {
     res.status(401).json({ error: 'Token owner no longer exists' });
+    return;
+  }
+
+  if (!hasTab(user.id, 'api')) {
+    res.status(403).json({ error: 'API access isn’t enabled for this account' });
     return;
   }
 

@@ -1,5 +1,6 @@
 import type { User } from '../../api/auth';
 import { Edit2, Trash2, Key } from 'lucide-react';
+import { TABS } from '../../tabs';
 
 interface UserTableProps {
   users: User[];
@@ -21,7 +22,7 @@ export function UserTable({ users, onEdit, onDelete, onResetPassword }: UserTabl
       >
         <thead>
           <tr>
-            {['Username', 'Email', 'Role', 'Created', 'Actions'].map((h) => (
+            {['Username', 'Email', 'Role', 'Sections', 'Created', 'Actions'].map((h) => (
               <th
                 key={h}
                 style={{
@@ -97,11 +98,25 @@ export function UserTable({ users, onEdit, onDelete, onResetPassword }: UserTabl
                 style={{
                   padding: '12px 16px',
                   borderBottom: '1px solid var(--color-border)',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: 12,
+                }}
+              >
+                {user.role === 'admin' || !user.tabs
+                  ? 'All'
+                  : user.tabs.length
+                    ? TABS.filter((t) => user.tabs!.includes(t.id)).map((t) => t.label).join(', ')
+                    : 'None'}
+              </td>
+              <td
+                style={{
+                  padding: '12px 16px',
+                  borderBottom: '1px solid var(--color-border)',
                   color: 'var(--color-text-dim)',
                   fontSize: 12,
                 }}
               >
-                {new Date(user.createdAt).toLocaleDateString()}
+                {new Date(user.createdAt ?? user.created_at ?? '').toLocaleDateString()}
               </td>
               <td
                 style={{
