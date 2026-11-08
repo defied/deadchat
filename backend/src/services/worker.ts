@@ -45,7 +45,7 @@ async function processJob(job: Job): Promise<void> {
   const params = JSON.parse(job.params) as Record<string, unknown>;
 
   try {
-    if (job.type === 'image' || job.type === 'video') {
+    if (job.type === 'image' || job.type === 'video' || job.type === 'audio') {
       // All image/video generation goes through the media catalog (local
       // ComfyUI models and hosted API nodes alike).
       await processCatalogJob(job, params);

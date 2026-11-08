@@ -129,6 +129,18 @@ Meta tokens are renewed automatically about once a week (they expire after 60 da
 
 **Setup:** text personas need a web search provider. Set `SEARXNG_URL` (recommended: self-hosted SearXNG) or `BRAVE_SEARCH_API_KEY`, or enter one in the wizard as an admin. The automation runs in the worker process (`RUN_WORKER`) and checks every minute.
 
+## Screenplay
+
+**Create → Screenplay** is a script editor in industry format (Final Draft / Fountain conventions) with an AI storyboard beside it. The AI never writes or changes the script.
+
+- **Writing:** Scene Heading, Action, Character, Parenthetical, Dialogue, Transition, Shot, General and Centered elements. Enter moves to the usual next element, Tab / Shift-Tab change the element, Cmd/Ctrl+0–8 pick one directly, and scene headings, character names and transitions autocomplete. Undo/redo, scene numbers, page estimates and autosave are built in. Import and export Fountain and Final Draft (`.fdx`), and print or save a PDF with standard margins.
+- **Shots:** pin a shot to a scene heading or action line and pick a shot type. DeadChat renders an example frame from that part of the script, its characters, the set plan and any reference images. When you revise the section, the frame re-renders once your edit settles, with the same seed, so the picture changes where the words did. Add a music cue to a shot and a short ACE-Step sketch plays from the card.
+- **Characters:** build out each character (human or not), refine a visual description, and generate reference photos. Appearance and wardrobe go into every shot the character is in; voice-over and off-screen cues don't put them in frame.
+- **Set plan:** a top-down plan per scene with the cast, one camera per shot, lights and set pieces. Moving them changes the frame's staging (who's in frame and where, shot size, facing, camera height, light direction).
+- **References:** upload photos for the whole script, a scene or a shot. They're described by the vision model, and that look is folded into the matching frames.
+
+Music needs the ACE-Step checkpoint on the GPU box: `ace_step_v1_3.5b.safetensors` in `ComfyUI/models/checkpoints` (from Comfy-Org/ACE-Step_ComfyUI_repackaged).
+
 ## Default Credentials
 
 - **Username:** admin

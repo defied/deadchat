@@ -9,7 +9,7 @@
 import workflows from './workflows.json';
 import { CF_NEURONS, type CloudflareSpec } from './cloudflare';
 
-export type MediaKind = 'image' | 'video';
+export type MediaKind = 'image' | 'video' | 'audio';
 export type Ratio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9';
 export type Graph = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: unknown }>;
 
@@ -19,7 +19,7 @@ export interface MediaParams {
   seed: number;
   ratio: Ratio;
   resolution?: string;
-  /** seconds (video) */
+  /** seconds (video, audio) */
   duration?: number;
   /** draft quality: use the template's distilled / lightning path */
   fast?: boolean;
@@ -752,9 +752,52 @@ export const MEDIA_MODELS: MediaModel[] = [
       set(g, '12', 'seed', p.seed);
     },
   },
+
+  // ── Local audio ──
+  {
+    id: 'ace-step-v1',
+    label: 'ACE-Step 3.5B',
+    vendor: 'ACE Studio / StepFun',
+    kind: 'audio',
+    backend: 'local',
+    summary: 'Open music model: instrumental cues and songs from a style description.',
+    strengths: ['music', 'instrumental cues'],
+    ratios: ['1:1'],
+    durations: { min: 5, max: 120, default: 20 },
+    speed: '~20–60 s',
+    files: ['checkpoints/ace_step_v1_3.5b.safetensors'],
+    defaults: { ratio: '1:1' },
+    apply(g, p) {
+      // The prompt is the style ("tense low strings, slow pulse"); "[inst]" asks for no vocals.
+      set(g, '14', 'tags', p.prompt);
+      set(g, '17', 'seconds', p.duration ?? 20);
+      set(g, '52', 'seed', p.seed);
+    },
+  },
 ];
 
-const GRAPHS = workflows as unknown as Record<string, Graph>;
+/**
+ * ACE-Step text-to-music, as in ComfyUI's ace_step_1_t2a template: one
+ * all-in-one checkpoint, tags + lyrics encoder, audio latent, audio VAE decode.
+ */
+const ACE_STEP_GRAPH: Graph = {
+  '40': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'ace_step_v1_3.5b.safetensors' } },
+  '14': { class_type: 'TextEncodeAceStepAudio', inputs: { tags: '', lyrics: '[inst]', lyrics_strength: 0.99, clip: ['40', 1] } },
+  '44': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['14', 0] } },
+  '17': { class_type: 'EmptyAceStepLatentAudio', inputs: { seconds: 20, batch_size: 1 } },
+  '51': { class_type: 'ModelSamplingSD3', inputs: { shift: 5, model: ['40', 0] } },
+  '52': {
+    class_type: 'KSampler',
+    inputs: {
+      seed: 0, steps: 50, cfg: 5, sampler_name: 'euler', scheduler: 'simple', denoise: 1,
+      model: ['51', 0], positive: ['14', 0], negative: ['44', 0], latent_image: ['17', 0],
+    },
+  },
+  '18': { class_type: 'VAEDecodeAudio', inputs: { samples: ['52', 0], vae: ['40', 2] } },
+  '59': { class_type: 'SaveAudio', inputs: { filename_prefix: 'deadchat/ace-step', audio: ['18', 0] } },
+};
+
+const GRAPHS: Record<string, Graph> = { ...(workflows as unknown as Record<string, Graph>), 'ace-step-v1': ACE_STEP_GRAPH };
 
 export function getMediaModel(id: string): MediaModel | undefined {
   return MEDIA_MODELS.find((m) => m.id === id);

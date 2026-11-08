@@ -13,6 +13,8 @@ const GeneratePage = lazy(() => import('./pages/GeneratePage').then((m) => ({ de
 const StudioPage = lazy(() => import('./pages/StudioPage').then((m) => ({ default: m.StudioPage })));
 const SocialPage = lazy(() => import('./pages/SocialPage').then((m) => ({ default: m.SocialPage })));
 const InfluencerPage = lazy(() => import('./pages/InfluencerPage').then((m) => ({ default: m.InfluencerPage })));
+const ScreenplaysPage = lazy(() => import('./pages/ScreenplaysPage').then((m) => ({ default: m.ScreenplaysPage })));
+const ScreenplayPage = lazy(() => import('./pages/ScreenplayPage').then((m) => ({ default: m.ScreenplayPage })));
 const TokensPage = lazy(() => import('./pages/TokensPage').then((m) => ({ default: m.TokensPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
@@ -70,6 +72,9 @@ export function App() {
             <Route path="/studio" element={<Page><StudioPage /></Page>} />
             <Route path="/social" element={<Page><SocialPage /></Page>} />
             <Route path="/social/:id/:step?" element={<Page><InfluencerPage /></Page>} />
+            <Route path="/screenplays" element={<Page><ScreenplaysPage /></Page>} />
+            <Route path="/screenplays/:id" element={<Navigate to="script" replace />} />
+            <Route path="/screenplays/:id/:tab" element={<Page><ScreenplayPage /></Page>} />
             <Route path="/tokens" element={<Page><TokensPage /></Page>} />
             <Route
               path="/admin/:tab?"

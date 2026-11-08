@@ -67,6 +67,11 @@ function inferMime(filename: string): string {
     mp4: 'video/mp4',
     webm: 'video/webm',
     gif: 'image/gif',
+    flac: 'audio/flac',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    opus: 'audio/ogg',
   };
   return map[ext] ?? 'application/octet-stream';
 }

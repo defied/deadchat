@@ -87,7 +87,7 @@ export interface RefreshToken {
   created_at: string;
 }
 
-export type JobType = 'image' | 'video' | 'agent' | 'tts';
+export type JobType = 'image' | 'video' | 'agent' | 'tts' | 'audio';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface Job {

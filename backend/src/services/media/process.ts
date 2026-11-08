@@ -38,8 +38,9 @@ export interface CatalogJobParams {
 }
 
 /** Map legacy {model,width,height,steps,frames,fps} job params onto the catalog. */
-export function normalizeParams(kind: 'image' | 'video', raw: Record<string, unknown>): CatalogJobParams {
+export function normalizeParams(kind: 'image' | 'video' | 'audio', raw: Record<string, unknown>): CatalogJobParams {
   if (typeof raw.catalogId === 'string') return raw as unknown as CatalogJobParams;
+  if (kind === 'audio') throw new Error('Audio jobs need a catalogId');
   const settings = getMediaSettings();
   const requested = typeof raw.model === 'string' ? getMediaModel(raw.model) : undefined;
   const model = requested && requested.kind === kind
@@ -75,7 +76,7 @@ export async function processCatalogJob(job: Job, raw: Record<string, unknown>):
 }
 
 async function runCatalogJob(job: Job, raw: Record<string, unknown>): Promise<void> {
-  const kind = job.type as 'image' | 'video';
+  const kind = job.type as 'image' | 'video' | 'audio';
   const p = normalizeParams(kind, raw);
   const model = getMediaModel(p.catalogId);
   if (!model) throw new Error(`Unknown model "${p.catalogId}"`);
@@ -201,7 +202,7 @@ async function runCatalogJob(job: Job, raw: Record<string, unknown>): Promise<vo
     const media = saveMedia({
       userId: job.user_id ?? undefined,
       jobId: job.id,
-      type: file.mime.startsWith('video/') ? 'video' : 'image',
+      type: file.mime.startsWith('video/') ? 'video' : file.mime.startsWith('audio/') ? 'audio' : 'image',
       bytes: file.bytes,
       mime: file.mime,
       originalFilename: file.filename,
