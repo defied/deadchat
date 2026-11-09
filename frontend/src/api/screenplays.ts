@@ -25,7 +25,18 @@ export interface Shot {
   lens?: number;
   music?: string;
   notes?: string;
+  /** Fine-tuning notes the AI applies to the image prompt (the script is never changed). */
+  adjustments?: Adjustment[];
   take?: number;
+  /** Keep the current frame and music: nothing re-renders, whatever changes. */
+  locked?: boolean;
+}
+
+export interface Adjustment {
+  id: string;
+  text: string;
+  /** Kept but not applied. */
+  off?: boolean;
 }
 
 export type CharacterKind = 'human' | 'animal' | 'creature' | 'robot' | 'alien' | 'spirit' | 'other';
@@ -45,6 +56,8 @@ export interface Character {
   voice?: string;
   notes?: string;
   primaryRefId?: number;
+  /** Made automatically for a name that speaks in the script; cleared once edited. */
+  placeholder?: boolean;
 }
 
 export type PlanItemKind = 'character' | 'camera' | 'light' | 'prop';
@@ -136,6 +149,16 @@ export interface ShotPlanView {
   waiting?: string;
   blocked?: string;
   prompt?: string;
+  /** The prompt from the script alone, before adjustment notes. */
+  basePrompt?: string;
+  /** Adjustment notes are being applied by the AI. */
+  adjusting?: boolean;
+  /** The frame is out of date for a reason other than its script block; waits for refresh. */
+  stale?: boolean;
+  /** The music cue is out of date; waits for refresh. */
+  musicStale?: boolean;
+  /** Set when the AI couldn't apply the notes and they were added as written. */
+  adjustNote?: string;
   staging?: string;
   characters: string[];
   music?: string;
@@ -182,6 +205,12 @@ export async function deleteScreenplay(id: number): Promise<void> {
 
 export async function renderNow(id: number): Promise<Detail> {
   const { data } = await client.post<Detail>(`/api/screenplays/${id}/render-now`);
+  return data;
+}
+
+/** Apply a shot's changes and render it now. */
+export async function refreshShot(id: number, shotId: string): Promise<Detail> {
+  const { data } = await client.post<Detail>(`/api/screenplays/${id}/shots/${encodeURIComponent(shotId)}/refresh`);
   return data;
 }
 

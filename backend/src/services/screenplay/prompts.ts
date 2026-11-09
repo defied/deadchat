@@ -14,8 +14,22 @@ export interface ShotPlan {
   /** Rendering would be refused (shown to the writer). */
   blocked?: string;
   prompt?: string;
+  /** The prompt from the script alone, before adjustment notes. */
+  basePrompt?: string;
+  /** Adjustment notes that are on, in order. */
+  adjustments?: string[];
+  /** The notes are being applied; `prompt` is not final yet. */
+  adjusting?: boolean;
+  /** How the notes were applied when the AI couldn't ("added as written"). */
+  adjustNote?: string;
   staging?: string;
   hash?: string;
+  /** Hash of the shot's script block alone: only a change here re-renders by itself. */
+  blockHash?: string;
+  /** The frame is out of date for reasons other than the script; waits for a refresh. */
+  stale?: boolean;
+  /** The music cue is out of date; waits for a refresh. */
+  musicStale?: boolean;
   /** Names visible in the shot. */
   characters: string[];
 }
@@ -47,6 +61,25 @@ function describeCharacter(c: Character | undefined, name: string, manner: strin
   return bits.length ? `${name}: ${bits.join(', ')}` : name;
 }
 
+// Unnamed people in the shot: crowds, staff, passers-by.
+const EXTRAS_RE =
+  /\b(?:crowds?|extras?|people|passers?-?by|pedestrians?|onlookers?|bystanders?|strangers?|patrons?|customers?|diners?|guests?|shoppers?|commuters?|tourists?|travell?ers?|passengers?|spectators?|audience|fans|students|workers|staff|waiters?|waitress(?:es)?|bartenders?|guards?|soldiers?|officers?|nurses?|doctors?|men|women|kids|children|families|couples?|someone|somebody|others|figures?|townsfolk|villagers?|locals?|partygoers?|dancers?|mourners?|congregation|commuters)\b/i;
+
+/**
+ * Keeps background people from borrowing the named characters' looks. Image
+ * models tend to copy a described face or outfit onto everyone in frame, and
+ * ignore "not", so this describes the extras positively as different people.
+ */
+export function extrasLine(text: string, cast: string[]): string {
+  if (!cast.length || !EXTRAS_RE.test(text)) return '';
+  const names = cast.length === 1 ? cast[0] : `${cast.slice(0, -1).join(', ')} and ${cast[cast.length - 1]}`;
+  return (
+    `Background extras are unrelated strangers with their own distinct faces, hairstyles, ages, builds and skin tones, ` +
+    `in their own everyday clothing of different colours and styles; only ${names} ${cast.length === 1 ? 'has' : 'have'} the looks and outfits described above, ` +
+    `and each appears once`
+  );
+}
+
 // Sexual content involving a minor is never rendered, whatever the script says.
 const MINOR_RE = /\b(?:child|children|kid|kids|toddler|baby|infant|boy|girl|teen\w*|minor|schoolgirl|schoolboy|underage|(?:1[0-7]|[1-9])[\s-]*(?:years?[\s-]*old|yo))\b/i;
 const SEXUAL_RE = /\b(?:nude|naked|topless|sex\w*|erotic\w*|porn\w*|explicit|genital\w*|aroused|orgasm\w*|undress\w*|lingerie|seductive\w*)\b/i;
@@ -60,10 +93,11 @@ export function planShot(
 ): ShotPlan {
   const section = shotSection(doc, shot);
   if (!section) return { waiting: 'This shot’s script line was deleted', characters: [] };
-  if (!shot.type?.trim()) return { waiting: 'Pick a shot type to render', characters: [] };
+  const blockHash = hashOf(section.scene?.text ?? '', section.elements.map((e) => [e.type, e.text]));
+  if (!shot.type?.trim()) return { waiting: 'Pick a shot type to render', characters: [], blockHash };
   const action = visualText(section.elements);
   const h = section.heading;
-  if (!action && !h?.location) return { waiting: 'Describe the scene in the script to render', characters: [] };
+  if (!action && !h?.location) return { waiting: 'Describe the scene in the script to render', characters: [], blockHash };
 
   const present = presentCharacters(section.elements, doc.characters);
   const sceneId = section.scene?.id ?? '';
@@ -90,22 +124,43 @@ export function planShot(
     where,
     action.length > 900 ? `${action.slice(0, 900)}…` : action,
     cast.length ? `Characters: ${cast.map((p) => describeCharacter(p.character, p.name, p.manner)).join('; ')}` : '',
+    extrasLine(`${action} ${where}`, cast.map((c) => c.name)),
     staging.text,
     refs.length ? `Look and feel: ${refs.join('; ')}` : '',
     doc.settings.style?.trim() || 'Photorealistic, natural film lighting, shallow depth of field, film grain',
     'No text, captions, subtitles or watermarks',
   ].filter(Boolean);
   const prompt = parts.map((p) => p.replace(/\s+/g, ' ').trim().replace(/[.;,]$/, '')).join('. ') + '.';
+  const adjustments = activeAdjustments(shot);
 
-  if (MINOR_RE.test(prompt) && SEXUAL_RE.test(prompt)) {
-    return { blocked: 'Not rendered: sexual content in a shot that mentions a child or teenager.', characters: cast.map((c) => c.name) };
+  if (MINOR_RE.test(`${prompt} ${adjustments.join(' ')}`) && SEXUAL_RE.test(`${prompt} ${adjustments.join(' ')}`)) {
+    return { blocked: 'Not rendered: sexual content in a shot that mentions a child or teenager.', characters: cast.map((c) => c.name), blockHash };
   }
   return {
     prompt,
+    basePrompt: prompt,
+    adjustments,
     staging: staging.text,
-    hash: hashOf(prompt, imageModel, ratio, shot.take ?? 0),
+    blockHash,
+    // Adding, editing, removing or switching a note changes the hash, so the frame re-renders.
+    hash: adjustments.length ? hashOf(prompt, imageModel, ratio, shot.take ?? 0, adjustments) : hashOf(prompt, imageModel, ratio, shot.take ?? 0),
     characters: cast.map((c) => c.name),
   };
+}
+
+/** Notes that are on and not blank. */
+export function activeAdjustments(shot: Shot): string[] {
+  return (shot.adjustments ?? []).filter((a) => !a.off && a.text.trim()).map((a) => a.text.trim().replace(/\s+/g, ' '));
+}
+
+/** Cache key for a rewrite of `basePrompt` with `notes`. */
+export const adjustKey = (basePrompt: string, notes: string[]) => hashOf('adjust', basePrompt, notes);
+
+/** Used when the AI can't rewrite: the notes appended as instructions. */
+export function appendAdjustments(basePrompt: string, notes: string[]): string {
+  const tail = 'No text, captions, subtitles or watermarks.';
+  const body = basePrompt.endsWith(tail) ? basePrompt.slice(0, -tail.length).trim() : basePrompt;
+  return `${body} Adjustments: ${notes.map((n) => n.replace(/[.;]$/, '')).join('; ')}. ${tail}`.replace(/\s+/g, ' ');
 }
 
 export const MUSIC_MIN_S = 5;

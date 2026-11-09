@@ -1,7 +1,7 @@
 // Screenplay element rules (Final Draft conventions), Fountain and Final Draft
 // (.fdx) import/export, page estimates and print layout.
 
-import type { ElementType, ScreenplayDoc, ScriptElement, TitlePage } from '../../api/screenplays';
+import type { Character, ElementType, ScreenplayDoc, ScriptElement, TitlePage } from '../../api/screenplays';
 
 export const ELEMENTS: Array<{ type: ElementType; label: string; key: string }> = [
   { type: 'scene', label: 'Scene Heading', key: '1' },
@@ -428,4 +428,71 @@ export function timecode(seconds: number): string {
   const m = Math.floor((s % 3600) / 60);
   const r = s % 60;
   return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0')}:${String(r).padStart(2, '0')}`;
+}
+
+// ── characters from the script ───────────────────────────────────────────────
+
+export function titleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+}
+
+/** Does character `c` answer to the cue name `cue` (full name, or first name)? */
+export function answersTo(c: Pick<Character, 'name'>, cue: string): boolean {
+  const n = c.name.trim().toUpperCase();
+  return !!n && (n === cue || n.split(/\s+/)[0] === cue);
+}
+
+const USER_FIELDS: Array<keyof Character> = ['species', 'age', 'gender', 'role', 'appearance', 'wardrobe', 'personality', 'backstory', 'voice', 'notes', 'primaryRefId'];
+
+/**
+ * Keep placeholder profiles in step with the script: add one for each name
+ * that speaks but has no profile, and drop untouched placeholders whose name
+ * no longer speaks (a typo that was fixed). `editingId` is the cue being typed,
+ * which isn't finished yet. Returns null when nothing changes.
+ */
+export function syncPlaceholders(
+  doc: Pick<ScreenplayDoc, 'elements' | 'characters' | 'plans'>,
+  editingId: string | null,
+  hasPhotos: (characterId: string) => boolean = () => false,
+): Character[] | null {
+  const cues = (skip: string | null) =>
+    new Set(
+      doc.elements
+        .filter((e) => e.type === 'character' && e.id !== skip)
+        .map((e) => cueName(e.text).toUpperCase())
+        .filter((n) => n.length >= 2 && /\p{L}/u.test(n)),
+    );
+  const all = cues(null);
+  const settled = cues(editingId);
+  const planned = new Set(Object.values(doc.plans ?? {}).flatMap((p) => p.items.filter((i) => i.kind === 'character').map((i) => i.ref)));
+  const keep = doc.characters.filter(
+    (c) =>
+      !c.placeholder ||
+      [...all].some((n) => answersTo(c, n)) ||
+      USER_FIELDS.some((f) => c[f] !== undefined && c[f] !== '') ||
+      planned.has(c.id) ||
+      hasPhotos(c.id),
+  );
+  const fresh = [...settled]
+    .filter((n) => !keep.some((c) => answersTo(c, n)))
+    .map((n): Character => ({ id: newId('ch'), name: titleCase(n), kind: 'human', placeholder: true }));
+  if (!fresh.length && keep.length === doc.characters.length) return null;
+  return [...keep, ...fresh];
+}
+
+/**
+ * Which shot each script element belongs to: a shot covers its anchor up to
+ * the next shot's anchor or the next scene heading (same rule as the server).
+ */
+export function shotBlocks(doc: Pick<ScreenplayDoc, 'elements' | 'shots'>): Map<string, string> {
+  const byAnchor = new Map(doc.shots.map((s) => [s.anchorId, s.id]));
+  const out = new Map<string, string>();
+  let current: string | null = null;
+  for (const e of doc.elements) {
+    const starts = byAnchor.get(e.id);
+    if (starts) current = starts;
+    else if (e.type === 'scene') current = null;
+    if (current) out.set(e.id, current);
+  }
+  return out;
 }

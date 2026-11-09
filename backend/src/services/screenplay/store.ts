@@ -104,12 +104,12 @@ export function addMedia(
   screenplayId: number,
   role: MediaRole,
   target: string,
-  fields: Partial<Pick<ScreenplayMedia, 'status' | 'hash' | 'prompt' | 'caption' | 'label' | 'job_id' | 'media_id' | 'error'>>,
+  fields: Partial<Pick<ScreenplayMedia, 'status' | 'hash' | 'block_hash' | 'prompt' | 'caption' | 'label' | 'job_id' | 'media_id' | 'error'>>,
 ): ScreenplayMedia {
   const r = db
     .prepare(
-      `INSERT INTO screenplay_media (screenplay_id, role, target, status, hash, prompt, caption, label, job_id, media_id, error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO screenplay_media (screenplay_id, role, target, status, hash, block_hash, prompt, caption, label, job_id, media_id, error)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       screenplayId,
@@ -117,6 +117,7 @@ export function addMedia(
       target,
       fields.status ?? 'pending',
       fields.hash ?? null,
+      fields.block_hash ?? null,
       fields.prompt ?? null,
       fields.caption ?? null,
       fields.label ?? null,

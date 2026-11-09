@@ -36,8 +36,23 @@ export interface Shot {
   /** Music cue for this shot ("sparse piano, melancholy, slow"). */
   music?: string;
   notes?: string;
+  /**
+   * Adjustment notes for fine-tuning the frame ("warmer light", "lower the
+   * camera", "no car in the background"). The AI applies the ones that are on
+   * to the image prompt; the script itself is never changed.
+   */
+  adjustments?: Adjustment[];
   /** Bumped by "Re-roll" to get a different take of the same description. */
   take?: number;
+  /** Keep the current frame and music: nothing re-renders, whatever changes. */
+  locked?: boolean;
+}
+
+export interface Adjustment {
+  id: string;
+  text: string;
+  /** Kept but not applied. */
+  off?: boolean;
 }
 
 export type CharacterKind = 'human' | 'animal' | 'creature' | 'robot' | 'alien' | 'spirit' | 'other';
@@ -59,6 +74,8 @@ export interface Character {
   notes?: string;
   /** screenplay_media id of the chosen reference photo. */
   primaryRefId?: number;
+  /** Made automatically for a name that speaks in the script; cleared once edited. */
+  placeholder?: boolean;
 }
 
 export type PlanItemKind = 'character' | 'camera' | 'light' | 'prop';
@@ -133,6 +150,8 @@ export interface ScreenplayMedia {
   target: string;
   status: MediaStatus;
   hash: string | null;
+  /** Hash of the shot's script block when this frame was queued. */
+  block_hash?: string | null;
   prompt: string | null;
   caption: string | null;
   label: string | null;

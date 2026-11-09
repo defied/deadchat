@@ -95,18 +95,21 @@ export function useScreenplay(id: number) {
    * one undo step (typing in one element).
    */
   const update = useCallback(
-    (fn: (d: ScreenplayDoc) => ScreenplayDoc, group?: string) => {
+    (fn: (d: ScreenplayDoc) => ScreenplayDoc, group?: string, opts?: { history?: boolean }) => {
       const cur = docRef.current;
       if (!cur) return;
       const next = fn(cur);
       if (next === cur) return;
       const now = Date.now();
-      if (!group || !lastGroup.current || lastGroup.current.key !== group || now - lastGroup.current.at > 1000) {
-        past.current.push(cur);
-        if (past.current.length > HISTORY) past.current.shift();
+      // Bookkeeping changes (placeholder profiles) aren't undo steps of their own.
+      if (opts?.history !== false) {
+        if (!group || !lastGroup.current || lastGroup.current.key !== group || now - lastGroup.current.at > 1000) {
+          past.current.push(cur);
+          if (past.current.length > HISTORY) past.current.shift();
+        }
+        lastGroup.current = group ? { key: group, at: now } : null;
+        future.current = [];
       }
-      lastGroup.current = group ? { key: group, at: now } : null;
-      future.current = [];
       docRef.current = next;
       setDoc(next);
       dirty.current = true;
