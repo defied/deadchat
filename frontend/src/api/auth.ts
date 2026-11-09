@@ -1,4 +1,5 @@
 import client from './client';
+import type { TabId } from '../tabs';
 
 export interface User {
   id: string;
@@ -6,6 +7,9 @@ export interface User {
   email: string;
   role: 'user' | 'admin';
   createdAt: string;
+  created_at?: string;
+  /** Sections this user may use. From /me always a list; in the admin list, null means "all". */
+  tabs?: TabId[] | null;
 }
 
 export interface AuthResponse {

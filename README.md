@@ -161,6 +161,12 @@ Music needs the ACE-Step checkpoint on the GPU box: `ace_step_v1_3.5b.safetensor
   - **Combined report:** merges everything, naming which model reported each finding and where the models disagree.
   - **Timing:** each stage shows progress, elapsed time and an estimate (this run's pace, then earlier runs, then defaults). Runs can be canceled and resume after a restart. The model stays loaded during a run and is unloaded afterwards so ComfyUI gets the GPU back.
 
+## Section permissions
+
+Admins choose which sections each user can use under **Admin → Users → Edit**: Chat, Agents, Generate, Studio, Social Media, Screenplay, Medical cases and API access. "All sections" (the default, and what existing users have) includes sections added later. Admins always have everything.
+
+Hidden sections disappear from the menu, and the server refuses their API calls (`403`, `code: tab_forbidden`), including chat over the WebSocket. API tokens only work for users with **API access**. Shared plumbing (jobs, media, uploads) stays available to every signed-in user, and Screenplay and Studio can still use the generation endpoints they need. Changes apply on the user's next request; they don't need to sign out.
+
 ## Default Credentials
 
 - **Username:** admin

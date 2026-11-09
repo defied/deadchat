@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { User } from '../../api/auth';
+import { TABS, type TabId } from '../../tabs';
 
 interface UserFormProps {
   user: User | null;
@@ -9,6 +10,7 @@ interface UserFormProps {
     email: string;
     password?: string;
     role: 'user' | 'admin';
+    tabs: TabId[] | 'all';
   }) => void;
   onCancel: () => void;
 }
@@ -18,6 +20,8 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'user' | 'admin'>('user');
+  const [allTabs, setAllTabs] = useState(true);
+  const [tabs, setTabs] = useState<TabId[]>([]);
   const [error, setError] = useState('');
 
   const isEdit = !!user;
@@ -28,11 +32,15 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
       setEmail(user.email);
       setRole(user.role);
       setPassword('');
+      setAllTabs(!user.tabs);
+      setTabs(user.tabs ?? []);
     } else {
       setUsername('');
       setEmail('');
       setPassword('');
       setRole('user');
+      setAllTabs(true);
+      setTabs([]);
     }
   }, [user]);
 
@@ -46,8 +54,13 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
       setError('Password is required for new users');
       return;
     }
+    if (role !== 'admin' && !allTabs && tabs.length === 0) {
+      setError('Pick at least one section, or allow all sections');
+      return;
+    }
     setError('');
     onSave({
+      tabs: allTabs ? 'all' : tabs,
       username: username.trim(),
       email: email.trim(),
       password: password || undefined,
@@ -144,7 +157,7 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
             />
           </div>
 
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Role</label>
             <select
               value={role}
@@ -154,6 +167,34 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
               <option value="admin">Admin</option>
             </select>
           </div>
+
+          <fieldset className="tab-perms" disabled={role === 'admin'}>
+            <legend style={labelStyle}>Sections this user can use</legend>
+            {role === 'admin' ? (
+              <p className="field-hint">Admins can use every section.</p>
+            ) : (
+              <>
+                <label className="tab-perm all">
+                  <input type="checkbox" checked={allTabs} onChange={(e) => setAllTabs(e.target.checked)} />
+                  All sections, including new ones
+                </label>
+                {!allTabs && (
+                  <div className="tab-perm-grid">
+                    {TABS.map((t) => (
+                      <label key={t.id} className="tab-perm">
+                        <input
+                          type="checkbox"
+                          checked={tabs.includes(t.id)}
+                          onChange={(e) => setTabs(e.target.checked ? [...tabs, t.id] : tabs.filter((x) => x !== t.id))}
+                        />
+                        {t.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </fieldset>
 
           {error && (
             <div

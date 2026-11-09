@@ -1,3 +1,4 @@
+import { userTabs } from '../services/tabs';
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import db from '../db/connection';
@@ -49,6 +50,7 @@ router.post('/login', (req: Request, res: Response): void => {
       username: user.username,
       email: user.email,
       role: user.role,
+      tabs: userTabs(user.id),
     },
   });
 });
@@ -144,7 +146,7 @@ router.get('/me', authenticate, (req: Request, res: Response): void => {
     return;
   }
 
-  res.json({ user });
+  res.json({ user: { ...(user as object), tabs: userTabs(req.user!.id) } });
 });
 
 export default router;

@@ -15,10 +15,12 @@ import {
   Shield,
   Skull, ScrollText, Stethoscope } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { canUse, type TabId } from '../tabs';
 import wsManager from '../api/ws';
 import client from '../api/client';
 
 interface NavDef {
+  tab?: TabId;
   to: string;
   label: string;
   icon: ReactNode;
@@ -29,23 +31,23 @@ const GROUPS: Array<{ label: string; items: NavDef[]; admin?: boolean }> = [
   {
     label: 'Workspace',
     items: [
-      { to: '/chat', label: 'Chat', icon: <MessageSquare size={17} />, hint: 'Talk to local models and agents' },
-      { to: '/agents', label: 'Agents', icon: <Bot size={17} />, hint: 'Personas and tool-using assistants' },
+      { tab: 'chat', to: '/chat', label: 'Chat', icon: <MessageSquare size={17} />, hint: 'Talk to local models and agents' },
+      { tab: 'agents', to: '/agents', label: 'Agents', icon: <Bot size={17} />, hint: 'Personas and tool-using assistants' },
     ],
   },
   {
     label: 'Create',
     items: [
-      { to: '/generate', label: 'Generate', icon: <Image size={17} />, hint: 'Images and video with ComfyUI' },
-      { to: '/studio', label: 'Studio', icon: <Clapperboard size={17} />, hint: 'Characters: portraits and voices' },
-      { to: '/social', label: 'Social Media', icon: <Megaphone size={17} />, hint: 'AI influencers: personas, portfolios and posting' },
-      { to: '/screenplays', label: 'Screenplay', icon: <ScrollText size={17} />, hint: 'Write scripts; storyboard shots, characters, set plans' },
-      { to: '/cases', label: 'Medical cases', icon: <Stethoscope size={17} />, hint: 'Case evidence (DICOM, cine, labs, reports) and presenting' },
+      { tab: 'generate', to: '/generate', label: 'Generate', icon: <Image size={17} />, hint: 'Images and video with ComfyUI' },
+      { tab: 'studio', to: '/studio', label: 'Studio', icon: <Clapperboard size={17} />, hint: 'Characters: portraits and voices' },
+      { tab: 'social', to: '/social', label: 'Social Media', icon: <Megaphone size={17} />, hint: 'AI influencers: personas, portfolios and posting' },
+      { tab: 'screenplays', to: '/screenplays', label: 'Screenplay', icon: <ScrollText size={17} />, hint: 'Write scripts; storyboard shots, characters, set plans' },
+      { tab: 'cases', to: '/cases', label: 'Medical cases', icon: <Stethoscope size={17} />, hint: 'Case evidence (DICOM, cine, labs, reports) and presenting' },
     ],
   },
   {
     label: 'Developer',
-    items: [{ to: '/tokens', label: 'API access', icon: <Key size={17} />, hint: 'Tokens for Ollama/OpenAI/Anthropic clients' }],
+    items: [{ tab: 'api', to: '/tokens', label: 'API access', icon: <Key size={17} />, hint: 'Tokens for Ollama/OpenAI/Anthropic clients' }],
   },
   {
     label: 'Admin',
@@ -126,7 +128,10 @@ export function AppShell() {
         </div>
 
         <div className="nav-body">
-          {GROUPS.filter((g) => !g.admin || user?.role === 'admin').map((g) => (
+          {GROUPS.filter((g) => !g.admin || user?.role === 'admin')
+            .map((g) => ({ ...g, items: g.items.filter((i) => !i.tab || canUse(user, i.tab)) }))
+            .filter((g) => g.items.length > 0)
+            .map((g) => (
             <div key={g.label}>
               {g.label !== 'Admin' && <div className="nav-group-label">{g.label}</div>}
               {g.items.map((item) => (
