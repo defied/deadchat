@@ -80,6 +80,7 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
       .map((a) => ({ id: id(a?.id), text: str(a?.text, 600) ?? '', ...(a?.off === true ? { off: true } : {}) }))
       .filter((a) => a.id),
     take: num(s?.take, 0, 1e6),
+    ...(s?.locked === true ? { locked: true } : {}),
   })).filter((s) => s.id && s.anchorId);
   const characters: Character[] = (Array.isArray(d.characters) ? d.characters : []).slice(0, 500).map((c) => ({
     id: id(c?.id),
@@ -243,7 +244,9 @@ router.post('/:id/render-now', owned, (_req, res) =>
 router.post('/:id/shots/:shotId/refresh', owned, (req, res) =>
   wrap(res, () => {
     const s = sp(res);
-    if (!s.doc.shots.some((x) => x.id === req.params.shotId)) throw new Error('Shot not found');
+    const shot = s.doc.shots.find((x) => x.id === req.params.shotId);
+    if (!shot) throw new Error('Shot not found');
+    if (shot.locked) throw new Error('This shot is locked. Unlock it to re-render.');
     refreshShots(s.id, [String(req.params.shotId)]);
     return detail(store.getScreenplay(s.id)!);
   }),

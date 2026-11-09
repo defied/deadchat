@@ -61,6 +61,25 @@ function describeCharacter(c: Character | undefined, name: string, manner: strin
   return bits.length ? `${name}: ${bits.join(', ')}` : name;
 }
 
+// Unnamed people in the shot: crowds, staff, passers-by.
+const EXTRAS_RE =
+  /\b(?:crowds?|extras?|people|passers?-?by|pedestrians?|onlookers?|bystanders?|strangers?|patrons?|customers?|diners?|guests?|shoppers?|commuters?|tourists?|travell?ers?|passengers?|spectators?|audience|fans|students|workers|staff|waiters?|waitress(?:es)?|bartenders?|guards?|soldiers?|officers?|nurses?|doctors?|men|women|kids|children|families|couples?|someone|somebody|others|figures?|townsfolk|villagers?|locals?|partygoers?|dancers?|mourners?|congregation|commuters)\b/i;
+
+/**
+ * Keeps background people from borrowing the named characters' looks. Image
+ * models tend to copy a described face or outfit onto everyone in frame, and
+ * ignore "not", so this describes the extras positively as different people.
+ */
+export function extrasLine(text: string, cast: string[]): string {
+  if (!cast.length || !EXTRAS_RE.test(text)) return '';
+  const names = cast.length === 1 ? cast[0] : `${cast.slice(0, -1).join(', ')} and ${cast[cast.length - 1]}`;
+  return (
+    `Background extras are unrelated strangers with their own distinct faces, hairstyles, ages, builds and skin tones, ` +
+    `in their own everyday clothing of different colours and styles; only ${names} ${cast.length === 1 ? 'has' : 'have'} the looks and outfits described above, ` +
+    `and each appears once`
+  );
+}
+
 // Sexual content involving a minor is never rendered, whatever the script says.
 const MINOR_RE = /\b(?:child|children|kid|kids|toddler|baby|infant|boy|girl|teen\w*|minor|schoolgirl|schoolboy|underage|(?:1[0-7]|[1-9])[\s-]*(?:years?[\s-]*old|yo))\b/i;
 const SEXUAL_RE = /\b(?:nude|naked|topless|sex\w*|erotic\w*|porn\w*|explicit|genital\w*|aroused|orgasm\w*|undress\w*|lingerie|seductive\w*)\b/i;
@@ -105,6 +124,7 @@ export function planShot(
     where,
     action.length > 900 ? `${action.slice(0, 900)}…` : action,
     cast.length ? `Characters: ${cast.map((p) => describeCharacter(p.character, p.name, p.manner)).join('; ')}` : '',
+    extrasLine(`${action} ${where}`, cast.map((c) => c.name)),
     staging.text,
     refs.length ? `Look and feel: ${refs.join('; ')}` : '',
     doc.settings.style?.trim() || 'Photorealistic, natural film lighting, shallow depth of field, film grain',

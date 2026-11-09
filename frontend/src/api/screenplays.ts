@@ -28,6 +28,8 @@ export interface Shot {
   /** Fine-tuning notes the AI applies to the image prompt (the script is never changed). */
   adjustments?: Adjustment[];
   take?: number;
+  /** Keep the current frame and music: nothing re-renders, whatever changes. */
+  locked?: boolean;
 }
 
 export interface Adjustment {

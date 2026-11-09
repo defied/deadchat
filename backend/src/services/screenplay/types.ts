@@ -44,6 +44,8 @@ export interface Shot {
   adjustments?: Adjustment[];
   /** Bumped by "Re-roll" to get a different take of the same description. */
   take?: number;
+  /** Keep the current frame and music: nothing re-renders, whatever changes. */
+  locked?: boolean;
 }
 
 export interface Adjustment {

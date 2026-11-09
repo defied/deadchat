@@ -3,7 +3,7 @@
 // frame DeadChat keeps in step with that part of the script.
 
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertTriangle, Clapperboard, Dices, Loader2, LayoutGrid, Music, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
+import { AlertTriangle, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
 import { Modal } from '../ui';
 import { SHOT_TYPES, newId, timecode } from './format';
@@ -177,17 +177,18 @@ function ShotCard({
   const cue = detail?.media.latest[`music:${shot.id}`];
   const cueReady = detail?.media.lastReady[`music:${shot.id}`];
   const pending = latest?.status === 'pending';
-  const outOfDate = !!plan?.stale || !!plan?.musicStale;
+  const locked = !!shot.locked;
+  const outOfDate = !locked && (!!plan?.stale || !!plan?.musicStale);
   const staleWhat = plan?.stale && plan?.musicStale ? 'frame and music' : plan?.stale ? 'frame' : 'music';
   const failed = latest?.status === 'failed' ? latest.error : null;
 
   let note: string | null = null;
   if (plan?.blocked) note = plan.blocked;
   else if (plan?.waiting) note = plan.waiting;
-  else if (plan?.adjusting) note = 'Applying adjustment notes…';
+  else if (plan?.adjusting && !shot.locked) note = 'Applying adjustment notes…';
 
   return (
-    <div className={`sp-shot ${pending ? 'busy' : ''}`}>
+    <div className={`sp-shot ${pending ? 'busy' : ''} ${locked ? 'locked' : ''}`}>
       <div className="sp-shot-head">
         <button className="sp-shot-no" onClick={onFocus} title="Go to this part of the script">
           Shot {number}
@@ -201,6 +202,14 @@ function ShotCard({
         <button className="icon-btn" title="Set plan: camera, cast and lights" onClick={onPlan}>
           <LayoutGrid size={14} />
         </button>
+        <button
+          className={`icon-btn ${locked ? 'sp-lock on' : 'sp-lock'}`}
+          title={locked ? 'Locked: this frame and music stay as they are. Click to unlock.' : 'Lock this shot: keep the frame and music even if the script changes'}
+          aria-pressed={locked}
+          onClick={() => onPatch({ locked: locked ? undefined : true }, 'locked')}
+        >
+          {locked ? <Lock size={14} /> : <LockOpen size={14} />}
+        </button>
         {(outOfDate || refreshing) && (
           <button className="icon-btn sp-refresh" title={`Changed since the ${staleWhat} rendered. Refresh to update it.`} onClick={refresh} disabled={refreshing}>
             <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
@@ -213,7 +222,7 @@ function ShotCard({
             onPatch({ take: (shot.take ?? 0) + 1 }, 'take');
             void refresh();
           }}
-          disabled={!!plan?.waiting || !!plan?.blocked || refreshing}
+          disabled={!!plan?.waiting || !!plan?.blocked || refreshing || locked}
         >
           <Dices size={14} />
         </button>
@@ -224,12 +233,17 @@ function ShotCard({
 
       <button className="sp-frame" onClick={() => ready?.media_id && setOpen(true)} disabled={!ready?.media_id}>
         {ready?.media_id ? <SpImage mediaId={ready.media_id} alt={`Shot ${number}`} /> : <div className="sp-frame-empty">{note ?? (pending ? '' : 'No frame yet')}</div>}
-        {pending && (
+        {pending && !locked && (
           <span className="sp-frame-status">
             <Loader2 size={12} className="spin" /> {ready ? 'Updating to match the script…' : 'Rendering…'}
           </span>
         )}
-        {!pending && plan?.adjusting && ready && (
+        {locked && (
+          <span className="sp-frame-lock" title="Locked">
+            <Lock size={11} /> Locked
+          </span>
+        )}
+        {!pending && !locked && plan?.adjusting && ready && (
           <span className="sp-frame-status">
             <Loader2 size={12} className="spin" /> Applying adjustment notes…
           </span>

@@ -21,7 +21,7 @@ import type { Character, Screenplay, ScreenplayMedia, Shot } from './types';
 
 export const STABLE_MS = 6000;
 export const MUSIC_MODEL = 'ace-step-v1';
-const NEGATIVE = 'text, subtitles, captions, watermark, logo, signature, deformed hands, extra limbs';
+const NEGATIVE = 'text, subtitles, captions, watermark, logo, signature, deformed hands, extra limbs, duplicate person, clones, matching outfits, twins';
 
 // ── job → row sync ────────────────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ export function planAll(sp: Screenplay): Map<string, ShotPlan> {
   const plans = new Map(sp.doc.shots.map((s) => [s.id, withAdjustments(planShot(sp.doc, s, refs, modelId))]));
   for (const shot of sp.doc.shots) {
     const plan = plans.get(shot.id)!;
-    plan.stale = frameGate(sp.id, shot.id, plan) === 'stale';
+    plan.stale = frameGate(sp.id, shot.id, plan, shot.locked) === 'stale';
     plan.musicStale = musicGate(sp.id, shot) === 'stale';
   }
   return plans;
@@ -114,8 +114,8 @@ const approved = new Map<string, string>();
 
 type Gate = 'current' | 'auto' | 'approved' | 'stale' | 'none';
 
-function frameGate(spId: number, shotId: string, plan: ShotPlan): Gate {
-  if (!plan.hash) return 'none';
+function frameGate(spId: number, shotId: string, plan: ShotPlan, locked = false): Gate {
+  if (!plan.hash || locked) return 'none';
   const frame = store.latestMedia(spId, 'frame', shotId);
   if (frame?.hash === plan.hash) return 'current';
   if (approved.get(`${spId}:${shotId}:frame`) === plan.hash) return 'approved';
@@ -126,7 +126,7 @@ function frameGate(spId: number, shotId: string, plan: ShotPlan): Gate {
 
 function musicGate(spId: number, shot: Shot): Gate {
   const music = planMusic(shot);
-  if (!music.hash) return 'none';
+  if (!music.hash || shot.locked) return 'none';
   const cue = store.latestMedia(spId, 'music', shot.id);
   if (cue?.hash === music.hash) return 'current';
   if (approved.get(`${spId}:${shot.id}:music`) === music.hash) return 'approved';
@@ -139,7 +139,7 @@ export function refreshShots(spId: number, shotIds: string[] | 'all'): void {
   if (!sp) return;
   const plans = planAll(sp);
   for (const shot of sp.doc.shots) {
-    if (shotIds !== 'all' && !shotIds.includes(shot.id)) continue;
+    if ((shotIds !== 'all' && !shotIds.includes(shot.id)) || shot.locked) continue;
     const plan = plans.get(shot.id)!;
     if (plan.hash) approved.set(`${spId}:${shot.id}:frame`, plan.hash);
     const music = planMusic(shot);
@@ -179,7 +179,8 @@ const ADJUST_SYSTEM =
   'You revise image-generation prompts for storyboard frames. You get the prompt built from the screenplay and the ' +
   'director\'s adjustment notes. Rewrite the prompt so the image follows every note: change, add or remove details as ' +
   'the notes say, and where a note conflicts with the prompt, the note wins. Keep everything the notes do not touch: ' +
-  'the setting, action, characters and their descriptions, camera and lens, and style. Describe the result directly ' +
+  'the setting, action, characters and their descriptions, how background extras differ from the named characters, ' +
+  'camera and lens, and style. Never give extras a named character\'s face, hair or clothes. Describe the result directly ' +
   '(write "a low camera angle", not "make the camera lower"); image models ignore negation, so for "remove X" or "no X" ' +
   'leave X out and describe what is there instead. Start with "Cinematic film still" and the shot type, end with ' +
   '"No text, captions, subtitles or watermarks." Under 220 words. Return {"prompt": "..."}.';
@@ -279,6 +280,14 @@ export function reconcile(screenplayId: number, now = Date.now(), force = false)
   for (const shot of sp.doc.shots) {
     const plan = plans.get(shot.id)!;
     const frame = store.latestMedia(sp.id, 'frame', shot.id);
+    if (shot.locked) {
+      // Locked: keep the frame and cue that are there. Work still queued is
+      // dropped, unless there's nothing yet to keep (a first render finishes).
+      const has = (role: 'frame' | 'music') => store.listMedia(sp.id, role).some((r) => r.target === shot.id && r.status === 'ready');
+      if (has('frame')) supersede(frame);
+      if (has('music')) supersede(store.latestMedia(sp.id, 'music', shot.id));
+      continue;
+    }
     const gate = frameGate(sp.id, shot.id, plan);
     // A refresh renders straight away; script edits wait for typing to settle.
     const now_ = force || gate === 'approved';
