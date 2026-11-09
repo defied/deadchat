@@ -74,6 +74,10 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     lens: num(s?.lens, 8, 800),
     music: str(s?.music, 600),
     notes: str(s?.notes, 2000),
+    adjustments: (Array.isArray(s?.adjustments) ? s.adjustments : [])
+      .slice(0, 40)
+      .map((a) => ({ id: id(a?.id), text: str(a?.text, 600) ?? '', ...(a?.off === true ? { off: true } : {}) }))
+      .filter((a) => a.id),
     take: num(s?.take, 0, 1e6),
   })).filter((s) => s.id && s.anchorId);
   const characters: Character[] = (Array.isArray(d.characters) ? d.characters : []).slice(0, 500).map((c) => ({
@@ -162,7 +166,20 @@ function detail(s: Screenplay) {
     plans: Object.fromEntries(
       s.doc.shots.map((shot) => {
         const p = plans.get(shot.id)!;
-        return [shot.id, { waiting: p.waiting, blocked: p.blocked, prompt: p.prompt, staging: p.staging, characters: p.characters, music: planMusic(shot).prompt }];
+        return [
+          shot.id,
+          {
+            waiting: p.waiting,
+            blocked: p.blocked,
+            prompt: p.prompt,
+            basePrompt: p.basePrompt,
+            adjusting: p.adjusting,
+            adjustNote: p.adjustNote,
+            staging: p.staging,
+            characters: p.characters,
+            music: planMusic(shot).prompt,
+          },
+        ];
       }),
     ),
     media: mediaView(store.listMedia(s.id)),

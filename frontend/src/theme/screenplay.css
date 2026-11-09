@@ -246,3 +246,16 @@ kbd {
 .page.sp-page-shell { scrollbar-gutter: stable; }
 .sp-props .toggle, .sp-grid2 > .toggle { grid-column: 1 / -1; margin-bottom: 10px; }
 .sp-char-form > .field-hint { margin: 6px 0 14px; }
+
+/* Adjustment notes */
+.sp-adj { display: flex; flex-direction: column; gap: 3px; }
+.sp-adj-head { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-dim); }
+.sp-adj-count { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--color-accent-dim); color: var(--color-text); font-size: 10px; }
+.sp-adj-row { display: grid; grid-template-columns: auto 1fr auto; gap: 5px; align-items: start; }
+.sp-adj-row input[type='checkbox'] { width: auto; margin-top: 8px; }
+.sp-adj-row textarea { resize: none; min-height: 28px; field-sizing: content; font-size: 13px; padding: 4px 7px; }
+.sp-adj-row.off textarea { color: var(--color-text-dim); text-decoration: line-through; }
+.sp-adj-row .icon-btn { margin-top: 3px; }
+.sp-adj-row.add { grid-template-columns: auto 1fr; align-items: center; color: var(--color-text-dim); padding-left: 2px; }
+.sp-adj-row.add input { font-size: 13px; padding: 4px 7px; }
+.sp-prompt h4 { margin: 10px 0 4px; font-size: 12px; color: var(--color-text-dim); font-weight: 500; }

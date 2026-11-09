@@ -13,7 +13,9 @@ import { localModels } from '../influencers/media';
 import { getMediaSettings } from '../media/settings';
 import { describeImage } from '../media/enhance';
 import { asString, llmJson } from '../influencers/llm';
-import { characterPrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
+import { adjustKey, appendAdjustments, characterPrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
+import db from '../../db/connection';
+import { getActiveModel } from '../chatModels';
 import * as store from './store';
 import type { Character, Screenplay, ScreenplayMedia } from './types';
 
@@ -92,7 +94,75 @@ export function planAll(sp: Screenplay): Map<string, ShotPlan> {
   } catch {
     /* no model: plans still show prompts */
   }
-  return new Map(sp.doc.shots.map((s) => [s.id, planShot(sp.doc, s, refs, modelId)]));
+  return new Map(sp.doc.shots.map((s) => [s.id, withAdjustments(planShot(sp.doc, s, refs, modelId))]));
+}
+
+// ── adjustment notes ─────────────────────────────────────────────────────────
+// The AI rewrites the script-built prompt so the frame follows the notes
+// (notes win where they conflict). Rewrites are cached by base prompt + notes,
+// and only start once the notes have stopped changing, like renders do.
+
+interface CachedPrompt {
+  prompt: string;
+  source: 'llm' | 'fallback';
+  error: string | null;
+}
+
+function cachedPrompt(key: string): CachedPrompt | null {
+  return (db.prepare('SELECT prompt, source, error FROM screenplay_prompt_cache WHERE key = ?').get(key) as CachedPrompt | undefined) ?? null;
+}
+
+/** Fill in the final prompt from the cache, or mark the plan as waiting for the rewrite. */
+export function withAdjustments(plan: ShotPlan): ShotPlan {
+  if (!plan.basePrompt || !plan.adjustments?.length) return plan;
+  const hit = cachedPrompt(adjustKey(plan.basePrompt, plan.adjustments));
+  if (!hit) return { ...plan, prompt: undefined, adjusting: true };
+  return {
+    ...plan,
+    prompt: hit.prompt,
+    adjustNote: hit.source === 'fallback' ? `The AI couldn’t apply the notes (${hit.error ?? 'error'}), so they were added to the prompt as written.` : undefined,
+  };
+}
+
+const ADJUST_SYSTEM =
+  'You revise image-generation prompts for storyboard frames. You get the prompt built from the screenplay and the ' +
+  'director\'s adjustment notes. Rewrite the prompt so the image follows every note: change, add or remove details as ' +
+  'the notes say, and where a note conflicts with the prompt, the note wins. Keep everything the notes do not touch: ' +
+  'the setting, action, characters and their descriptions, camera and lens, and style. Describe the result directly ' +
+  '(write "a low camera angle", not "make the camera lower"); image models ignore negation, so for "remove X" or "no X" ' +
+  'leave X out and describe what is there instead. Start with "Cinematic film still" and the shot type, end with ' +
+  '"No text, captions, subtitles or watermarks." Under 220 words. Return {"prompt": "..."}.';
+
+const rewriting = new Map<string, Promise<void>>();
+
+/** Apply the notes with the AI and cache the result (the notes appended as written if it fails). */
+export function rewriteForAdjustments(basePrompt: string, notes: string[]): Promise<void> {
+  const key = adjustKey(basePrompt, notes);
+  const running = rewriting.get(key);
+  if (running) return running;
+  const job = (async () => {
+    let model = '';
+    try {
+      model = getActiveModel();
+      const out = await llmJson<{ prompt?: string }>(
+        ADJUST_SYSTEM,
+        `Prompt:\n${basePrompt}\n\nAdjustment notes:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}`,
+        { temperature: 0.2 },
+      );
+      const prompt = asString(out.prompt, 3000).replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
+      if (prompt.length < 40) throw new Error('the model returned no prompt');
+      db.prepare("INSERT OR REPLACE INTO screenplay_prompt_cache (key, prompt, source, model) VALUES (?, ?, 'llm', ?)").run(key, prompt, model);
+    } catch (e) {
+      db.prepare("INSERT OR REPLACE INTO screenplay_prompt_cache (key, prompt, source, model, error) VALUES (?, ?, 'fallback', ?, ?)").run(
+        key,
+        appendAdjustments(basePrompt, notes),
+        model || null,
+        (e as Error).message.slice(0, 300),
+      );
+    }
+  })().finally(() => rewriting.delete(key));
+  rewriting.set(key, job);
+  return job;
 }
 
 // ── reconcile ────────────────────────────────────────────────────────────────
@@ -157,7 +227,14 @@ export function reconcile(screenplayId: number, now = Date.now(), force = false)
   for (const shot of sp.doc.shots) {
     const plan = plans.get(shot.id)!;
     const frame = store.latestMedia(sp.id, 'frame', shot.id);
-    if (plan.hash && plan.prompt && frame?.hash !== plan.hash) {
+    if (plan.hash && plan.adjusting && frame?.hash !== plan.hash) {
+      // Notes changed: once they settle, apply them, then come back to render.
+      if (!force && !stable(`${sp.id}:${shot.id}:frame`, plan.hash, now)) again = true;
+      else {
+        supersede(frame);
+        void rewriteForAdjustments(plan.basePrompt!, plan.adjustments!).then(() => scheduleReconcile(sp.id, 0));
+      }
+    } else if (plan.hash && plan.prompt && frame?.hash !== plan.hash) {
       if (!force && !stable(`${sp.id}:${shot.id}:frame`, plan.hash, now)) again = true;
       else if (model) {
         supersede(frame);

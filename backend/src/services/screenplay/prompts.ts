@@ -14,6 +14,14 @@ export interface ShotPlan {
   /** Rendering would be refused (shown to the writer). */
   blocked?: string;
   prompt?: string;
+  /** The prompt from the script alone, before adjustment notes. */
+  basePrompt?: string;
+  /** Adjustment notes that are on, in order. */
+  adjustments?: string[];
+  /** The notes are being applied; `prompt` is not final yet. */
+  adjusting?: boolean;
+  /** How the notes were applied when the AI couldn't ("added as written"). */
+  adjustNote?: string;
   staging?: string;
   hash?: string;
   /** Names visible in the shot. */
@@ -96,16 +104,35 @@ export function planShot(
     'No text, captions, subtitles or watermarks',
   ].filter(Boolean);
   const prompt = parts.map((p) => p.replace(/\s+/g, ' ').trim().replace(/[.;,]$/, '')).join('. ') + '.';
+  const adjustments = activeAdjustments(shot);
 
-  if (MINOR_RE.test(prompt) && SEXUAL_RE.test(prompt)) {
+  if (MINOR_RE.test(`${prompt} ${adjustments.join(' ')}`) && SEXUAL_RE.test(`${prompt} ${adjustments.join(' ')}`)) {
     return { blocked: 'Not rendered: sexual content in a shot that mentions a child or teenager.', characters: cast.map((c) => c.name) };
   }
   return {
     prompt,
+    basePrompt: prompt,
+    adjustments,
     staging: staging.text,
-    hash: hashOf(prompt, imageModel, ratio, shot.take ?? 0),
+    // Adding, editing, removing or switching a note changes the hash, so the frame re-renders.
+    hash: adjustments.length ? hashOf(prompt, imageModel, ratio, shot.take ?? 0, adjustments) : hashOf(prompt, imageModel, ratio, shot.take ?? 0),
     characters: cast.map((c) => c.name),
   };
+}
+
+/** Notes that are on and not blank. */
+export function activeAdjustments(shot: Shot): string[] {
+  return (shot.adjustments ?? []).filter((a) => !a.off && a.text.trim()).map((a) => a.text.trim().replace(/\s+/g, ' '));
+}
+
+/** Cache key for a rewrite of `basePrompt` with `notes`. */
+export const adjustKey = (basePrompt: string, notes: string[]) => hashOf('adjust', basePrompt, notes);
+
+/** Used when the AI can't rewrite: the notes appended as instructions. */
+export function appendAdjustments(basePrompt: string, notes: string[]): string {
+  const tail = 'No text, captions, subtitles or watermarks.';
+  const body = basePrompt.endsWith(tail) ? basePrompt.slice(0, -tail.length).trim() : basePrompt;
+  return `${body} Adjustments: ${notes.map((n) => n.replace(/[.;]$/, '')).join('; ')}. ${tail}`.replace(/\s+/g, ' ');
 }
 
 export const MUSIC_MIN_S = 5;

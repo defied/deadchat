@@ -3,10 +3,10 @@
 // frame DeadChat keeps in step with that part of the script.
 
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertTriangle, Clapperboard, Dices, Loader2, LayoutGrid, Music, Trash2, Clock } from 'lucide-react';
-import type { Detail, ScreenplayDoc, Shot } from '../../api/screenplays';
+import { AlertTriangle, Clapperboard, Dices, Loader2, LayoutGrid, Music, Plus, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
+import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
 import { Modal } from '../ui';
-import { SHOT_TYPES, timecode } from './format';
+import { SHOT_TYPES, newId, timecode } from './format';
 import { MusicButton, SpImage } from './media';
 
 const LENSES = [14, 18, 24, 35, 50, 85, 100, 135];
@@ -161,6 +161,7 @@ function ShotCard({
   let note: string | null = null;
   if (plan?.blocked) note = plan.blocked;
   else if (plan?.waiting) note = plan.waiting;
+  else if (plan?.adjusting) note = 'Applying adjustment notes…';
 
   return (
     <div className={`sp-shot ${pending ? 'busy' : ''}`}>
@@ -190,6 +191,11 @@ function ShotCard({
         {pending && (
           <span className="sp-frame-status">
             <Loader2 size={12} className="spin" /> {ready ? 'Updating to match the script…' : 'Rendering…'}
+          </span>
+        )}
+        {!pending && plan?.adjusting && ready && (
+          <span className="sp-frame-status">
+            <Loader2 size={12} className="spin" /> Applying adjustment notes…
           </span>
         )}
       </button>
@@ -231,9 +237,10 @@ function ShotCard({
           <textarea rows={1} value={shot.music ?? ''} placeholder="e.g. sparse piano, melancholy, slow" onChange={(e) => onPatch({ music: e.target.value }, 'music')} />
         </label>
         {cue?.status === 'failed' && <div className="sp-shot-warn wide"><AlertTriangle size={12} /> {cue.error}</div>}
+        <AdjustmentNotes shot={shot} plan={plan} onChange={(adjustments) => onPatch({ adjustments }, 'adjustments')} />
         <label className="wide">
           <span>Notes</span>
-          <textarea rows={1} value={shot.notes ?? ''} placeholder="Blocking, movement, VFX…" onChange={(e) => onPatch({ notes: e.target.value }, 'notes')} />
+          <textarea rows={1} value={shot.notes ?? ''} placeholder="Blocking, movement, VFX… (for you; not used for the frame)" onChange={(e) => onPatch({ notes: e.target.value }, 'notes')} />
         </label>
       </div>
       {open && ready?.media_id && (
@@ -245,9 +252,72 @@ function ShotCard({
             <details className="sp-prompt">
               <summary>What the image model was asked for</summary>
               <p>{ready.prompt}</p>
+              {plan?.basePrompt && plan.basePrompt !== ready.prompt && (
+                <>
+                  <h4>From the script, before adjustment notes</h4>
+                  <p>{plan.basePrompt}</p>
+                </>
+              )}
             </details>
           )}
         </Modal>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Fine-tuning notes for a shot's frame ("warmer light", "lower the camera").
+ * The AI applies the ones that are on to the image prompt a few seconds after
+ * they stop changing; adding, editing, switching off or removing one re-renders.
+ */
+function AdjustmentNotes({ shot, plan, onChange }: { shot: Shot; plan?: ShotPlanView; onChange: (a: Adjustment[]) => void }) {
+  const notes = shot.adjustments ?? [];
+  const [draft, setDraft] = useState('');
+  const set = (id: string, patch: Partial<Adjustment>) => onChange(notes.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  const add = () => {
+    const text = draft.trim();
+    if (!text) return;
+    onChange([...notes, { id: newId('adj'), text }]);
+    setDraft('');
+  };
+  const on = notes.filter((n) => !n.off && n.text.trim()).length;
+  return (
+    <div className="sp-adj wide">
+      <span className="sp-adj-head">
+        <SlidersHorizontal size={11} /> Adjustment notes
+        {on > 0 && <span className="sp-adj-count">{on} applied</span>}
+        {plan?.adjusting && <Loader2 size={11} className="spin" aria-label="Applying notes" />}
+      </span>
+      {notes.map((n) => (
+        <div key={n.id} className={`sp-adj-row ${n.off ? 'off' : ''}`}>
+          <input type="checkbox" checked={!n.off} onChange={(e) => set(n.id, { off: e.target.checked ? undefined : true })} title={n.off ? 'Apply this note' : 'Stop applying this note (keeps it)'} />
+          <textarea rows={1} value={n.text} onChange={(e) => set(n.id, { text: e.target.value })} aria-label="Adjustment note" />
+          <button className="icon-btn" title="Remove note" onClick={() => onChange(notes.filter((x) => x.id !== n.id))}>
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+      <div className="sp-adj-row add">
+        <Plus size={12} />
+        <input
+          value={draft}
+          placeholder="e.g. warmer light, lower camera, no car in the background"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+          onBlur={add}
+          aria-label="New adjustment note"
+        />
+      </div>
+      {plan?.adjustNote && (
+        <div className="sp-shot-warn">
+          <AlertTriangle size={12} /> {plan.adjustNote}
+        </div>
       )}
     </div>
   );

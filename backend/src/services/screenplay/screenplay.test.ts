@@ -243,6 +243,94 @@ test('renders wait for the description to settle, then re-render only what chang
   assert.ok(store.listMedia(sp.id).filter((r) => r.target === 'sh2').every((r) => r.status === 'superseded'));
 });
 
+test('adjustment notes: on/off and edits change the hash, notes are checked for safety, fallback appends them', () => {
+  const d = doc();
+  const base = prompts.planShot(d, d.shots[0]);
+  const withNote = prompts.planShot(d, { ...d.shots[0], adjustments: [{ id: 'n1', text: 'warmer, golden light' }] });
+  assert.equal(withNote.basePrompt, base.prompt, 'the script prompt is unchanged');
+  assert.deepEqual(withNote.adjustments, ['warmer, golden light']);
+  assert.notEqual(withNote.hash, base.hash);
+  const off = prompts.planShot(d, { ...d.shots[0], adjustments: [{ id: 'n1', text: 'warmer, golden light', off: true }, { id: 'n2', text: '  ' }] });
+  assert.equal(off.hash, base.hash, 'notes that are off or blank don’t re-render');
+  const edited = prompts.planShot(d, { ...d.shots[0], adjustments: [{ id: 'n1', text: 'cold blue light' }] });
+  assert.notEqual(edited.hash, withNote.hash);
+  const unsafe = prompts.planShot(
+    { ...d, elements: d.elements.map((e) => (e.id === 'a1' ? { ...e, text: 'A teenage girl stands at the counter.' } : e)) },
+    { ...d.shots[0], adjustments: [{ id: 'n1', text: 'make her nude' }] },
+  );
+  assert.ok(unsafe.blocked);
+  const fb = prompts.appendAdjustments(base.prompt!, ['warmer light', 'lower camera.']);
+  assert.match(fb, /Adjustments: warmer light; lower camera\. No text, captions, subtitles or watermarks\.$/);
+});
+
+test('adjustment notes are applied by the AI before rendering, cached, and re-applied when they change', async () => {
+  const sp = store.createScreenplay(1, 'Adjust', doc());
+  const t0 = 50_000_000;
+  const asked: Array<{ system: string; user: string }> = [];
+  let fail = false;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const b = JSON.parse(String(init?.body));
+    asked.push({ system: b.messages[0].content, user: b.messages[1].content });
+    if (fail) return new Response('down', { status: 500 });
+    const notes = b.messages[1].content.split('Adjustment notes:\n')[1];
+    return new Response(JSON.stringify({ message: { content: JSON.stringify({ prompt: `Cinematic film still, wide establishing shot, rewritten for: ${notes.replace(/\n/g, ' ')}. No text, captions, subtitles or watermarks.` }) } }));
+  }) as typeof fetch;
+  const imageJobs = () => jobs().filter((j) => j.type === 'image').map((j) => JSON.parse(j.params).prompt as string);
+  const settle = async (t: number) => {
+    render.reconcile(sp.id, t);
+    render.reconcile(sp.id, t + render.STABLE_MS);
+    await new Promise((r) => setTimeout(r, 20));
+    render.reconcile(sp.id, t + render.STABLE_MS + 1);
+  };
+  try {
+    const before = imageJobs().length;
+    const d = store.getScreenplay(sp.id)!.doc;
+    d.shots[0].adjustments = [{ id: 'n1', text: 'warmer, golden light' }];
+    let v = store.saveScreenplay(sp.id, 1, { doc: d }).version;
+    const planned = render.planAll(store.getScreenplay(sp.id)!).get('sh1')!;
+    assert.equal(planned.adjusting, true);
+    assert.equal(planned.prompt, undefined, 'no render from the un-adjusted prompt');
+
+    await settle(t0);
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].user, /Prompt:\nCinematic film still[\s\S]*Adjustment notes:\n1\. warmer, golden light/);
+    assert.match(asked[0].system, /the note wins/);
+    const after1 = imageJobs().slice(before);
+    assert.ok(after1.some((p) => /rewritten for: 1\. warmer, golden light/.test(p)), 'shot 1 renders the rewritten prompt');
+    assert.equal(render.planAll(store.getScreenplay(sp.id)!).get('sh1')!.adjusting, undefined);
+
+    // Add a second note: re-applied and re-rendered.
+    const d2 = store.getScreenplay(sp.id)!.doc;
+    d2.shots[0].adjustments!.push({ id: 'n2', text: 'lower camera' });
+    v = store.saveScreenplay(sp.id, v, { doc: d2 }).version;
+    await settle(t0 + 10 * render.STABLE_MS);
+    assert.equal(asked.length, 2);
+    assert.match(imageJobs().at(-1)!, /1\. warmer, golden light 2\. lower camera/);
+
+    // Remove it again: the earlier rewrite is cached, so no new AI call, but it renders again.
+    const d3 = store.getScreenplay(sp.id)!.doc;
+    d3.shots[0].adjustments = d3.shots[0].adjustments!.filter((a) => a.id !== 'n2');
+    v = store.saveScreenplay(sp.id, v, { doc: d3 }).version;
+    const n = imageJobs().length;
+    await settle(t0 + 20 * render.STABLE_MS);
+    assert.equal(asked.length, 2);
+    assert.equal(imageJobs().length, n + 1);
+    assert.match(imageJobs().at(-1)!, /rewritten for: 1\. warmer, golden light\./);
+
+    // The AI is down: the notes are added as written, and the writer is told.
+    fail = true;
+    const d4 = store.getScreenplay(sp.id)!.doc;
+    d4.shots[0].adjustments = [{ id: 'n3', text: 'fog on the window' }];
+    store.saveScreenplay(sp.id, v, { doc: d4 });
+    await settle(t0 + 30 * render.STABLE_MS);
+    assert.match(imageJobs().at(-1)!, /Adjustments: fog on the window\. No text/);
+    assert.match(render.planAll(store.getScreenplay(sp.id)!).get('sh1')!.adjustNote!, /added to the prompt as written/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('saving with a stale version is refused', () => {
   const sp = store.createScreenplay(1, 'Conflict', doc());
   store.saveScreenplay(sp.id, 1, { title: 'A' });

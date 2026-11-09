@@ -25,7 +25,16 @@ export interface Shot {
   lens?: number;
   music?: string;
   notes?: string;
+  /** Fine-tuning notes the AI applies to the image prompt (the script is never changed). */
+  adjustments?: Adjustment[];
   take?: number;
+}
+
+export interface Adjustment {
+  id: string;
+  text: string;
+  /** Kept but not applied. */
+  off?: boolean;
 }
 
 export type CharacterKind = 'human' | 'animal' | 'creature' | 'robot' | 'alien' | 'spirit' | 'other';
@@ -136,6 +145,12 @@ export interface ShotPlanView {
   waiting?: string;
   blocked?: string;
   prompt?: string;
+  /** The prompt from the script alone, before adjustment notes. */
+  basePrompt?: string;
+  /** Adjustment notes are being applied by the AI. */
+  adjusting?: boolean;
+  /** Set when the AI couldn't apply the notes and they were added as written. */
+  adjustNote?: string;
   staging?: string;
   characters: string[];
   music?: string;

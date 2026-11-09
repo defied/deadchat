@@ -36,8 +36,21 @@ export interface Shot {
   /** Music cue for this shot ("sparse piano, melancholy, slow"). */
   music?: string;
   notes?: string;
+  /**
+   * Adjustment notes for fine-tuning the frame ("warmer light", "lower the
+   * camera", "no car in the background"). The AI applies the ones that are on
+   * to the image prompt; the script itself is never changed.
+   */
+  adjustments?: Adjustment[];
   /** Bumped by "Re-roll" to get a different take of the same description. */
   take?: number;
+}
+
+export interface Adjustment {
+  id: string;
+  text: string;
+  /** Kept but not applied. */
+  off?: boolean;
 }
 
 export type CharacterKind = 'human' | 'animal' | 'creature' | 'robot' | 'alien' | 'spirit' | 'other';
