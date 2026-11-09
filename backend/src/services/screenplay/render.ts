@@ -17,7 +17,7 @@ import { adjustKey, appendAdjustments, characterPrompt, hashOf, planMusic, planS
 import db from '../../db/connection';
 import { getActiveModel } from '../chatModels';
 import * as store from './store';
-import type { Character, Screenplay, ScreenplayMedia } from './types';
+import type { Character, Screenplay, ScreenplayMedia, Shot } from './types';
 
 export const STABLE_MS = 6000;
 export const MUSIC_MODEL = 'ace-step-v1';
@@ -94,7 +94,58 @@ export function planAll(sp: Screenplay): Map<string, ShotPlan> {
   } catch {
     /* no model: plans still show prompts */
   }
-  return new Map(sp.doc.shots.map((s) => [s.id, withAdjustments(planShot(sp.doc, s, refs, modelId))]));
+  const plans = new Map(sp.doc.shots.map((s) => [s.id, withAdjustments(planShot(sp.doc, s, refs, modelId))]));
+  for (const shot of sp.doc.shots) {
+    const plan = plans.get(shot.id)!;
+    plan.stale = frameGate(sp.id, shot.id, plan) === 'stale';
+    plan.musicStale = musicGate(sp.id, shot) === 'stale';
+  }
+  return plans;
+}
+
+// ── what re-renders by itself ────────────────────────────────────────────────
+// A frame re-renders by itself only when the text of its script block changes
+// (or it has never rendered). Anything else that changes the picture (shot
+// type, lens, adjustment notes, characters, set plan, references, style) and
+// any change to the music cue waits until the writer presses refresh.
+
+/** Hashes the writer approved with refresh, per screenplay:shot:role. */
+const approved = new Map<string, string>();
+
+type Gate = 'current' | 'auto' | 'approved' | 'stale' | 'none';
+
+function frameGate(spId: number, shotId: string, plan: ShotPlan): Gate {
+  if (!plan.hash) return 'none';
+  const frame = store.latestMedia(spId, 'frame', shotId);
+  if (frame?.hash === plan.hash) return 'current';
+  if (approved.get(`${spId}:${shotId}:frame`) === plan.hash) return 'approved';
+  if (!frame) return 'auto';
+  if (frame.block_hash != null && frame.block_hash !== plan.blockHash) return 'auto';
+  return 'stale';
+}
+
+function musicGate(spId: number, shot: Shot): Gate {
+  const music = planMusic(shot);
+  if (!music.hash) return 'none';
+  const cue = store.latestMedia(spId, 'music', shot.id);
+  if (cue?.hash === music.hash) return 'current';
+  if (approved.get(`${spId}:${shot.id}:music`) === music.hash) return 'approved';
+  return cue ? 'stale' : 'auto';
+}
+
+/** Approve the current version of `shotIds` (or every shot) and render it now. */
+export function refreshShots(spId: number, shotIds: string[] | 'all'): void {
+  const sp = store.getScreenplay(spId);
+  if (!sp) return;
+  const plans = planAll(sp);
+  for (const shot of sp.doc.shots) {
+    if (shotIds !== 'all' && !shotIds.includes(shot.id)) continue;
+    const plan = plans.get(shot.id)!;
+    if (plan.hash) approved.set(`${spId}:${shot.id}:frame`, plan.hash);
+    const music = planMusic(shot);
+    if (music.hash) approved.set(`${spId}:${shot.id}:music`, music.hash);
+  }
+  reconcile(spId, Date.now(), true);
 }
 
 // ── adjustment notes ─────────────────────────────────────────────────────────
@@ -204,6 +255,7 @@ function supersede(row: ScreenplayMedia | null): void {
 
 /** Queue whatever frames and music are out of date. Returns true if more checks are due. */
 export function reconcile(screenplayId: number, now = Date.now(), force = false): boolean {
+  // force: skip the settle delay for whatever may render (it never overrides a refresh wait).
   syncJobs(screenplayId);
   const sp = store.getScreenplay(screenplayId);
   if (!sp) return false;
@@ -227,15 +279,20 @@ export function reconcile(screenplayId: number, now = Date.now(), force = false)
   for (const shot of sp.doc.shots) {
     const plan = plans.get(shot.id)!;
     const frame = store.latestMedia(sp.id, 'frame', shot.id);
-    if (plan.hash && plan.adjusting && frame?.hash !== plan.hash) {
+    const gate = frameGate(sp.id, shot.id, plan);
+    // A refresh renders straight away; script edits wait for typing to settle.
+    const now_ = force || gate === 'approved';
+    if (gate === 'stale' || gate === 'current' || gate === 'none') {
+      // Up to date, or waiting for the writer's refresh: nothing to queue.
+    } else if (plan.adjusting) {
       // Notes changed: once they settle, apply them, then come back to render.
-      if (!force && !stable(`${sp.id}:${shot.id}:frame`, plan.hash, now)) again = true;
+      if (!now_ && !stable(`${sp.id}:${shot.id}:frame`, plan.hash!, now)) again = true;
       else {
         supersede(frame);
         void rewriteForAdjustments(plan.basePrompt!, plan.adjustments!).then(() => scheduleReconcile(sp.id, 0));
       }
-    } else if (plan.hash && plan.prompt && frame?.hash !== plan.hash) {
-      if (!force && !stable(`${sp.id}:${shot.id}:frame`, plan.hash, now)) again = true;
+    } else if (plan.prompt) {
+      if (!now_ && !stable(`${sp.id}:${shot.id}:frame`, plan.hash!, now)) again = true;
       else if (model) {
         supersede(frame);
         const jobId = enqueue(
@@ -251,16 +308,17 @@ export function reconcile(screenplayId: number, now = Date.now(), force = false)
           },
           { userId: sp.userId, heavy: true },
         );
-        store.addMedia(sp.id, 'frame', shot.id, { hash: plan.hash, prompt: plan.prompt, job_id: jobId });
+        store.addMedia(sp.id, 'frame', shot.id, { hash: plan.hash, block_hash: plan.blockHash, prompt: plan.prompt, job_id: jobId });
       } else {
-        store.addMedia(sp.id, 'frame', shot.id, { hash: plan.hash, prompt: plan.prompt, status: 'failed', error: 'No image model is available' });
+        store.addMedia(sp.id, 'frame', shot.id, { hash: plan.hash, block_hash: plan.blockHash, prompt: plan.prompt, status: 'failed', error: 'No image model is available' });
       }
     }
 
     const music = planMusic(shot);
     const cue = store.latestMedia(sp.id, 'music', shot.id);
-    if (music.hash && music.prompt && cue?.hash !== music.hash) {
-      if (!force && !stable(`${sp.id}:${shot.id}:music`, music.hash, now)) again = true;
+    const mGate = musicGate(sp.id, shot);
+    if (music.hash && music.prompt && (mGate === 'auto' || mGate === 'approved')) {
+      if (!force && mGate !== 'approved' && !stable(`${sp.id}:${shot.id}:music`, music.hash, now)) again = true;
       else {
         supersede(cue);
         const jobId = enqueue(

@@ -280,23 +280,33 @@ test('adjustment notes are applied by the AI before rendering, cached, and re-ap
   const settle = async (t: number) => {
     render.reconcile(sp.id, t);
     render.reconcile(sp.id, t + render.STABLE_MS);
-    await new Promise((r) => setTimeout(r, 20));
-    render.reconcile(sp.id, t + render.STABLE_MS + 1);
+    // Notes are shot-box changes: they wait for the writer's refresh.
+    render.refreshShots(sp.id, ['sh1']);
+    await new Promise((r) => setTimeout(r, 30));
   };
   try {
+    // First renders happen by themselves.
+    render.reconcile(sp.id, t0 - 2 * render.STABLE_MS);
+    render.reconcile(sp.id, t0 - render.STABLE_MS);
     const before = imageJobs().length;
     const d = store.getScreenplay(sp.id)!.doc;
     d.shots[0].adjustments = [{ id: 'n1', text: 'warmer, golden light' }];
     let v = store.saveScreenplay(sp.id, 1, { doc: d }).version;
     const planned = render.planAll(store.getScreenplay(sp.id)!).get('sh1')!;
     assert.equal(planned.adjusting, true);
+    assert.equal(planned.stale, true, 'waits for a refresh');
     assert.equal(planned.prompt, undefined, 'no render from the un-adjusted prompt');
+    render.reconcile(sp.id, t0);
+    render.reconcile(sp.id, t0 + 2 * render.STABLE_MS);
+    assert.equal(asked.length, 0, 'no AI call before the refresh');
+    assert.equal(imageJobs().length, before);
 
     await settle(t0);
     assert.equal(asked.length, 1);
     assert.match(asked[0].user, /Prompt:\nCinematic film still[\s\S]*Adjustment notes:\n1\. warmer, golden light/);
     assert.match(asked[0].system, /the note wins/);
     const after1 = imageJobs().slice(before);
+    assert.equal(after1.length, 1, 'only the refreshed shot rendered');
     assert.ok(after1.some((p) => /rewritten for: 1\. warmer, golden light/.test(p)), 'shot 1 renders the rewritten prompt');
     assert.equal(render.planAll(store.getScreenplay(sp.id)!).get('sh1')!.adjusting, undefined);
 
@@ -329,6 +339,86 @@ test('adjustment notes are applied by the AI before rendering, cached, and re-ap
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test('cleanDoc keeps adjustment notes and placeholder profiles, dropping junk', () => {
+  const d = cleanDoc({
+    elements: [{ id: 'a1', type: 'action', text: 'x' }],
+    shots: [{ id: 'sh1', anchorId: 'a1', adjustments: [{ id: 'n1', text: 'warmer', off: true }, { id: 'n2', text: 'lower', off: 'yes' }, { text: 'no id' }] }],
+    characters: [{ id: 'c1', name: 'Marcus', placeholder: true }, { id: 'c2', name: 'Jane', placeholder: 'x' }],
+  });
+  assert.deepEqual(d.shots[0].adjustments, [{ id: 'n1', text: 'warmer', off: true }, { id: 'n2', text: 'lower' }]);
+  assert.equal(d.characters[0].placeholder, true);
+  assert.equal(d.characters[1].placeholder, undefined);
+});
+
+test('only a change to a shot’s own script block re-renders by itself; the rest waits for refresh', () => {
+  const sp = store.createScreenplay(1, 'Gates', doc());
+  const t0 = 90_000_000;
+  const count = () => jobs().length;
+  const go = (t: number) => {
+    render.reconcile(sp.id, t);
+    render.reconcile(sp.id, t + render.STABLE_MS);
+  };
+  const plan = (id: string) => render.planAll(store.getScreenplay(sp.id)!).get(id)!;
+  let v = 1;
+  const edit = (fn: (d: ScreenplayDoc) => void) => {
+    const d = store.getScreenplay(sp.id)!.doc;
+    fn(d);
+    v = store.saveScreenplay(sp.id, v, { doc: d }).version;
+  };
+  const base = count();
+  go(t0);
+  const first = count();
+  assert.equal(first - base, 3, 'two frames and a music cue render the first time');
+  const frameRow = store.latestMedia(sp.id, 'frame', 'sh1')!;
+  assert.ok(frameRow.block_hash);
+
+  // Shot box: lens and type wait; the shot says it's out of date.
+  edit((d) => (d.shots[0].lens = 85));
+  go(t0 + 10 * render.STABLE_MS);
+  assert.equal(count(), first);
+  assert.equal(plan('sh1').stale, true);
+  assert.equal(plan('sh2').stale, false);
+
+  // A character's description changes shot 1 and 2's prompts; still no render.
+  edit((d) => (d.characters[0].appearance = 'woman in her fifties, long white hair'));
+  go(t0 + 20 * render.STABLE_MS);
+  assert.equal(count(), first);
+  assert.equal(plan('sh1').stale, true);
+
+  // Music description: waits too.
+  edit((d) => (d.shots[1].music = 'warm strings, hopeful'));
+  go(t0 + 30 * render.STABLE_MS);
+  assert.equal(count(), first);
+  assert.equal(plan('sh2').musicStale, true);
+
+  // Editing shot 2's script block re-renders shot 2 (with everything pending), not shot 1.
+  edit((d) => (d.elements[7].text = 'The door bursts open. TOM staggers in.'));
+  go(t0 + 40 * render.STABLE_MS);
+  const after = jobs().slice(first);
+  assert.deepEqual(after.map((j) => j.type), ['image']);
+  assert.match(JSON.parse(after[0].params).prompt, /staggers in/);
+  assert.equal(plan('sh1').stale, true);
+  assert.equal(plan('sh2').musicStale, true, 'music is a shot-box field: still waits');
+
+  // Refresh shot 1: renders now, with the new lens and description, without waiting to settle.
+  render.refreshShots(sp.id, ['sh1']);
+  const r1 = jobs().slice(first + 1);
+  assert.equal(r1.length, 1);
+  assert.match(JSON.parse(r1[0].params).prompt, /85mm|long white hair/);
+  assert.equal(plan('sh1').stale, false);
+
+  // Render now refreshes everything waiting (the music cue).
+  render.refreshShots(sp.id, 'all');
+  assert.deepEqual(jobs().slice(first + 2).map((j) => j.type), ['audio']);
+  assert.equal(plan('sh2').musicStale, false);
+
+  // Frames from before this change (no block hash) wait for a refresh instead of re-rendering.
+  db.prepare("UPDATE screenplay_media SET block_hash = NULL WHERE screenplay_id = ?").run(sp.id);
+  edit((d) => (d.shots[0].lens = 35));
+  go(t0 + 60 * render.STABLE_MS);
+  assert.equal(plan('sh1').stale, true);
 });
 
 test('saving with a stale version is refused', () => {

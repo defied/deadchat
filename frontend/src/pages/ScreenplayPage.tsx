@@ -217,7 +217,7 @@ export function ScreenplayPage() {
             <button
               className="btn btn-sm"
               disabled={!!doc.settings.paused}
-              title="Render out-of-date shots now instead of waiting for you to pause"
+              title="Render every out-of-date shot now, including ones waiting for a refresh"
               onClick={async () => {
                 try {
                   await s.flush();
@@ -240,6 +240,10 @@ export function ScreenplayPage() {
             onCurrentType={onCurrentType}
             apiRef={editor}
             onOpenPlan={openPlan}
+            onRefreshShot={async (shotId) => {
+              await s.flush();
+              s.setDetail(await api.refreshShot(id, shotId));
+            }}
           />
         </>
       )}

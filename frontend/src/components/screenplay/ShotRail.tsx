@@ -3,7 +3,7 @@
 // frame DeadChat keeps in step with that part of the script.
 
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertTriangle, Clapperboard, Dices, Loader2, LayoutGrid, Music, Plus, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
+import { AlertTriangle, Clapperboard, Dices, Loader2, LayoutGrid, Music, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
 import { Modal } from '../ui';
 import { SHOT_TYPES, newId, timecode } from './format';
@@ -21,9 +21,12 @@ interface RailProps {
   pageRef: RefObject<HTMLDivElement | null>;
   onOpenPlan: (sceneId: string, shotId: string) => void;
   onFocusAnchor: (elementId: string) => void;
+  onRefresh: (shotId: string) => Promise<void>;
+  hoverShot: string | null;
+  onHoverShot: (shotId: string | null) => void;
 }
 
-export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFocusAnchor }: RailProps) {
+export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFocusAnchor, onRefresh, hoverShot, onHoverShot }: RailProps) {
   const railRef = useRef<HTMLDivElement | null>(null);
   const cards = useRef(new Map<string, HTMLDivElement>());
   const [tops, setTops] = useState<Record<string, number>>({});
@@ -100,15 +103,17 @@ export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFo
           <Clapperboard size={18} />
           <p>
             Hover a scene heading or action line and click <strong>Shot</strong> to pin a storyboard shot to it. Pick a shot type
-            and DeadChat renders an example frame from what you wrote, and re-renders it when you revise that part.
+            and DeadChat renders an example frame from what you wrote. It re-renders when you revise that part of the script; changes to the shot itself wait for its refresh button.
           </p>
         </div>
       )}
       {shots.map((s, i) => (
         <div
           key={s.id}
-          className="sp-shot-wrap"
+          className={`sp-shot-wrap${hoverShot === s.id ? ' lit' : ''}`}
           style={{ top: tops[s.id] ?? 0 }}
+          onMouseEnter={() => onHoverShot(s.id)}
+          onMouseLeave={() => onHoverShot(null)}
           ref={(n) => {
             if (n) cards.current.set(s.id, n);
             else cards.current.delete(s.id);
@@ -123,6 +128,7 @@ export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFo
             onDelete={() => remove(s.id)}
             onPlan={() => onOpenPlan(sceneOf(s.anchorId), s.id)}
             onFocus={() => onFocusAnchor(s.anchorId)}
+            onRefresh={() => onRefresh(s.id)}
           />
         </div>
       ))}
@@ -139,6 +145,7 @@ function ShotCard({
   onDelete,
   onPlan,
   onFocus,
+  onRefresh,
 }: {
   shot: Shot;
   number: number;
@@ -148,14 +155,30 @@ function ShotCard({
   onDelete: () => void;
   onPlan: () => void;
   onFocus: () => void;
+  onRefresh: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const refresh = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      await onRefresh();
+    } catch (e) {
+      setRefreshError((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? (e as Error).message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const plan = detail?.plans[shot.id];
   const latest = detail?.media.latest[`frame:${shot.id}`];
   const ready = detail?.media.lastReady[`frame:${shot.id}`];
   const cue = detail?.media.latest[`music:${shot.id}`];
   const cueReady = detail?.media.lastReady[`music:${shot.id}`];
   const pending = latest?.status === 'pending';
+  const outOfDate = !!plan?.stale || !!plan?.musicStale;
+  const staleWhat = plan?.stale && plan?.musicStale ? 'frame and music' : plan?.stale ? 'frame' : 'music';
   const failed = latest?.status === 'failed' ? latest.error : null;
 
   let note: string | null = null;
@@ -178,7 +201,20 @@ function ShotCard({
         <button className="icon-btn" title="Set plan: camera, cast and lights" onClick={onPlan}>
           <LayoutGrid size={14} />
         </button>
-        <button className="icon-btn" title="Re-roll: render a different take" onClick={() => onPatch({ take: (shot.take ?? 0) + 1 }, 'take')} disabled={!!plan?.waiting || !!plan?.blocked}>
+        {(outOfDate || refreshing) && (
+          <button className="icon-btn sp-refresh" title={`Changed since the ${staleWhat} rendered. Refresh to update it.`} onClick={refresh} disabled={refreshing}>
+            <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
+          </button>
+        )}
+        <button
+          className="icon-btn"
+          title="Re-roll: render a different take"
+          onClick={() => {
+            onPatch({ take: (shot.take ?? 0) + 1 }, 'take');
+            void refresh();
+          }}
+          disabled={!!plan?.waiting || !!plan?.blocked || refreshing}
+        >
           <Dices size={14} />
         </button>
         <button className="icon-btn" title="Remove shot" onClick={onDelete}>
@@ -200,6 +236,12 @@ function ShotCard({
         )}
       </button>
       {plan?.blocked && <div className="sp-shot-warn"><AlertTriangle size={12} /> {plan.blocked}</div>}
+      {outOfDate && !pending && !refreshing && (
+        <button className="sp-stale" onClick={refresh}>
+          <RefreshCw size={11} /> Shot settings changed. Refresh to update the {staleWhat}.
+        </button>
+      )}
+      {refreshError && <div className="sp-shot-warn"><AlertTriangle size={12} /> {refreshError}</div>}
       {!plan?.blocked && ready && note && <div className="sp-shot-note">{note}</div>}
       {failed && !pending && <div className="sp-shot-warn"><AlertTriangle size={12} /> {failed}</div>}
 

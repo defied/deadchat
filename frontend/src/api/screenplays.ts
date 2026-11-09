@@ -54,6 +54,8 @@ export interface Character {
   voice?: string;
   notes?: string;
   primaryRefId?: number;
+  /** Made automatically for a name that speaks in the script; cleared once edited. */
+  placeholder?: boolean;
 }
 
 export type PlanItemKind = 'character' | 'camera' | 'light' | 'prop';
@@ -149,6 +151,10 @@ export interface ShotPlanView {
   basePrompt?: string;
   /** Adjustment notes are being applied by the AI. */
   adjusting?: boolean;
+  /** The frame is out of date for a reason other than its script block; waits for refresh. */
+  stale?: boolean;
+  /** The music cue is out of date; waits for refresh. */
+  musicStale?: boolean;
   /** Set when the AI couldn't apply the notes and they were added as written. */
   adjustNote?: string;
   staging?: string;
@@ -197,6 +203,12 @@ export async function deleteScreenplay(id: number): Promise<void> {
 
 export async function renderNow(id: number): Promise<Detail> {
   const { data } = await client.post<Detail>(`/api/screenplays/${id}/render-now`);
+  return data;
+}
+
+/** Apply a shot's changes and render it now. */
+export async function refreshShot(id: number, shotId: string): Promise<Detail> {
+  const { data } = await client.post<Detail>(`/api/screenplays/${id}/shots/${encodeURIComponent(shotId)}/refresh`);
   return data;
 }
 

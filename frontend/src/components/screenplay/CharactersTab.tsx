@@ -7,7 +7,7 @@ import { AlertTriangle, Check, ImagePlus, Loader2, Plus, Sparkles, Star, Trash2,
 import * as api from '../../api/screenplays';
 import type { Character, CharacterKind, Detail, ScreenplayDoc } from '../../api/screenplays';
 import { Alert, EmptyState, Field, errorMessage } from '../ui';
-import { cueName, newId } from './format';
+import { answersTo, cueName, newId, titleCase } from './format';
 import { SpImage } from './media';
 
 const KINDS: Array<{ value: CharacterKind; label: string }> = [
@@ -31,14 +31,11 @@ interface Props {
   screenplayId: number;
   doc: ScreenplayDoc;
   detail?: Detail;
-  update: (fn: (d: ScreenplayDoc) => ScreenplayDoc, group?: string) => void;
+  update: (fn: (d: ScreenplayDoc) => ScreenplayDoc, group?: string, opts?: { history?: boolean }) => void;
   flush: () => Promise<void>;
   setDetail: (d: Detail) => void;
 }
 
-function titleCase(s: string): string {
-  return s.toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
-}
 
 export function CharactersTab({ screenplayId, doc, detail, update, flush, setDetail }: Props) {
   const [selected, setSelected] = useState<string | null>(doc.characters[0]?.id ?? null);
@@ -50,8 +47,7 @@ export function CharactersTab({ screenplayId, doc, detail, update, flush, setDet
       const n = cueName(e.text);
       if (n) names.add(n.toUpperCase());
     }
-    const have = new Set(doc.characters.map((x) => x.name.toUpperCase()));
-    return [...names].filter((n) => !have.has(n));
+    return [...names].filter((n) => !doc.characters.some((x) => answersTo(x, n)));
   }, [doc.elements, doc.characters]);
 
   const add = (name = 'New character') => {
@@ -87,7 +83,13 @@ export function CharactersTab({ screenplayId, doc, detail, update, flush, setDet
               <span className="sp-char-thumb">{primary?.media_id ? <SpImage mediaId={primary.media_id} /> : <Users size={16} />}</span>
               <span>
                 <strong>{x.name || 'Unnamed'}</strong>
-                <small>{[KINDS.find((k) => k.value === x.kind)?.label, x.role].filter(Boolean).join(' · ')}</small>
+                <small>
+                  {x.placeholder ? (
+                    <span className="sp-placeholder" title="Added from the script. Fill in a description to use it in shots.">Placeholder · from the script</span>
+                  ) : (
+                    [KINDS.find((k) => k.value === x.kind)?.label, x.role].filter(Boolean).join(' · ')
+                  )}
+                </small>
               </span>
             </button>
           );
@@ -149,8 +151,9 @@ function CharacterForm({
   const [notes, setNotes] = useState('');
   const [proposal, setProposal] = useState<string | null>(null);
 
+  // Editing a placeholder makes it a real profile (it's no longer removed automatically).
   const set = (patch: Partial<Character>, field: string) =>
-    update((d) => ({ ...d, characters: d.characters.map((x) => (x.id === c.id ? { ...x, ...patch } : x)) }), `char:${c.id}:${field}`);
+    update((d) => ({ ...d, characters: d.characters.map((x) => (x.id === c.id ? { ...x, ...patch, placeholder: undefined } : x)) }), `char:${c.id}:${field}`);
 
   const scenes = useMemo(() => {
     const out: number[] = [];
@@ -194,6 +197,11 @@ function CharacterForm({
           <Trash2 size={14} /> Delete
         </button>
       </div>
+      {c.placeholder && (
+        <p className="sp-placeholder-note">
+          Placeholder: added because {c.name.toUpperCase()} speaks in the script. Fill in what they look like so shots can show them; it stays once you edit it.
+        </p>
+      )}
       <p className="field-hint">{scenes.length ? `Appears in scene ${scenes.join(', ')}.` : 'Not in the script yet: the name must match the character cue.'}</p>
 
       <div className="sp-grid3">

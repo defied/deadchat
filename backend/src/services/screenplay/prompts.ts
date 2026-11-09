@@ -24,6 +24,12 @@ export interface ShotPlan {
   adjustNote?: string;
   staging?: string;
   hash?: string;
+  /** Hash of the shot's script block alone: only a change here re-renders by itself. */
+  blockHash?: string;
+  /** The frame is out of date for reasons other than the script; waits for a refresh. */
+  stale?: boolean;
+  /** The music cue is out of date; waits for a refresh. */
+  musicStale?: boolean;
   /** Names visible in the shot. */
   characters: string[];
 }
@@ -68,10 +74,11 @@ export function planShot(
 ): ShotPlan {
   const section = shotSection(doc, shot);
   if (!section) return { waiting: 'This shot’s script line was deleted', characters: [] };
-  if (!shot.type?.trim()) return { waiting: 'Pick a shot type to render', characters: [] };
+  const blockHash = hashOf(section.scene?.text ?? '', section.elements.map((e) => [e.type, e.text]));
+  if (!shot.type?.trim()) return { waiting: 'Pick a shot type to render', characters: [], blockHash };
   const action = visualText(section.elements);
   const h = section.heading;
-  if (!action && !h?.location) return { waiting: 'Describe the scene in the script to render', characters: [] };
+  if (!action && !h?.location) return { waiting: 'Describe the scene in the script to render', characters: [], blockHash };
 
   const present = presentCharacters(section.elements, doc.characters);
   const sceneId = section.scene?.id ?? '';
@@ -107,13 +114,14 @@ export function planShot(
   const adjustments = activeAdjustments(shot);
 
   if (MINOR_RE.test(`${prompt} ${adjustments.join(' ')}`) && SEXUAL_RE.test(`${prompt} ${adjustments.join(' ')}`)) {
-    return { blocked: 'Not rendered: sexual content in a shot that mentions a child or teenager.', characters: cast.map((c) => c.name) };
+    return { blocked: 'Not rendered: sexual content in a shot that mentions a child or teenager.', characters: cast.map((c) => c.name), blockHash };
   }
   return {
     prompt,
     basePrompt: prompt,
     adjustments,
     staging: staging.text,
+    blockHash,
     // Adding, editing, removing or switching a note changes the hash, so the frame re-renders.
     hash: adjustments.length ? hashOf(prompt, imageModel, ratio, shot.take ?? 0, adjustments) : hashOf(prompt, imageModel, ratio, shot.take ?? 0),
     characters: cast.map((c) => c.name),

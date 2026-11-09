@@ -72,6 +72,8 @@ export interface Character {
   notes?: string;
   /** screenplay_media id of the chosen reference photo. */
   primaryRefId?: number;
+  /** Made automatically for a name that speaks in the script; cleared once edited. */
+  placeholder?: boolean;
 }
 
 export type PlanItemKind = 'character' | 'camera' | 'light' | 'prop';
@@ -146,6 +148,8 @@ export interface ScreenplayMedia {
   target: string;
   status: MediaStatus;
   hash: string | null;
+  /** Hash of the shot's script block when this frame was queued. */
+  block_hash?: string | null;
   prompt: string | null;
   caption: string | null;
   label: string | null;

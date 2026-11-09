@@ -10,6 +10,7 @@ import {
   REF_VIEWS,
   addReference,
   planAll,
+  refreshShots,
   queueCharacterRefs,
   reconcile,
   refineAppearance,
@@ -95,6 +96,7 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     voice: str(c?.voice, 1000),
     notes: str(c?.notes, 4000),
     primaryRefId: num(c?.primaryRefId, 1, Number.MAX_SAFE_INTEGER),
+    ...(c?.placeholder === true ? { placeholder: true } : {}),
   })).filter((c) => c.id);
   const plans: ScreenplayDoc['plans'] = {};
   for (const [k, p] of Object.entries(d.plans && typeof d.plans === 'object' ? d.plans : {}).slice(0, 2000)) {
@@ -174,6 +176,8 @@ function detail(s: Screenplay) {
             prompt: p.prompt,
             basePrompt: p.basePrompt,
             adjusting: p.adjusting,
+            stale: p.stale,
+            musicStale: p.musicStale,
             adjustNote: p.adjustNote,
             staging: p.staging,
             characters: p.characters,
@@ -227,10 +231,21 @@ router.delete('/:id', owned, (_req, res) =>
 );
 
 /** Render out-of-date shots now, without waiting for the description to settle. */
+// Render everything out of date now, including shots waiting for a refresh.
 router.post('/:id/render-now', owned, (_req, res) =>
   wrap(res, () => {
-    reconcile(sp(res).id, Date.now(), true);
+    refreshShots(sp(res).id, 'all');
     return detail(store.getScreenplay(sp(res).id)!);
+  }),
+);
+
+// Refresh one shot: apply its shot-box changes (and anything else waiting) and render now.
+router.post('/:id/shots/:shotId/refresh', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    if (!s.doc.shots.some((x) => x.id === req.params.shotId)) throw new Error('Shot not found');
+    refreshShots(s.id, [String(req.params.shotId)]);
+    return detail(store.getScreenplay(s.id)!);
   }),
 );
 

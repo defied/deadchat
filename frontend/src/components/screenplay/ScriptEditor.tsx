@@ -5,7 +5,7 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Clapperboard } from 'lucide-react';
-import type { Detail, ElementType, ScreenplayDoc, ScriptElement, Shot } from '../../api/screenplays';
+import type { Character, Detail, ElementType, ScreenplayDoc, ScriptElement, Shot } from '../../api/screenplays';
 import {
   ELEMENTS,
   ENTER_NEXT,
@@ -21,6 +21,9 @@ import {
   newId,
   pageStarts,
   sceneNumbers,
+  shotBlocks,
+  syncPlaceholders,
+  titleCase,
 } from './format';
 import { ShotRail } from './ShotRail';
 
@@ -28,13 +31,15 @@ interface Props {
   screenplayId: number;
   doc: ScreenplayDoc;
   detail?: Detail;
-  update: (fn: (d: ScreenplayDoc) => ScreenplayDoc, group?: string) => void;
+  update: (fn: (d: ScreenplayDoc) => ScreenplayDoc, group?: string, opts?: { history?: boolean }) => void;
   undo: () => void;
   redo: () => void;
   onCurrentType: (t: ElementType | null) => void;
   /** Imperative hooks for the toolbar. */
   apiRef: React.MutableRefObject<EditorApi | null>;
   onOpenPlan: (sceneId: string, shotId: string) => void;
+  /** Save, then apply this shot's changes and render it now. */
+  onRefreshShot: (shotId: string) => Promise<void>;
 }
 
 export interface EditorApi {
@@ -52,6 +57,8 @@ const Row = memo(function Row({
   newPage,
   sceneNo,
   hasShot,
+  lit,
+  onHover,
   onText,
   onKey,
   onFocus,
@@ -64,6 +71,9 @@ const Row = memo(function Row({
   newPage: boolean;
   sceneNo?: number;
   hasShot: boolean;
+  /** Part of the shot being hovered (here or in the rail). */
+  lit: boolean;
+  onHover: (elementId: string | null) => void;
   onText: (index: number, text: string, caret: number) => void;
   onKey: (e: KeyboardEvent<HTMLTextAreaElement>, index: number) => void;
   onFocus: (index: number) => void;
@@ -85,7 +95,7 @@ const Row = memo(function Row({
           <span>{page}.</span>
         </div>
       )}
-      <div className={`sp-row sp-r-${el.type}`} data-id={el.id}>
+      <div className={`sp-row sp-r-${el.type}${lit ? ' lit' : ''}`} data-id={el.id} onMouseEnter={() => onHover(el.id)} onMouseLeave={() => onHover(null)}>
         {sceneNo != null && <span className="sp-sceneno">{sceneNo}</span>}
         <textarea
           ref={(n) => {
@@ -114,10 +124,60 @@ const Row = memo(function Row({
 
 // ── completion ───────────────────────────────────────────────────────────────
 
-function suggestions(doc: ScriptElement[], index: number): string[] {
+interface Suggestion {
+  label: string;
+  /** The element's whole text once accepted. */
+  text: string;
+  /** Caret position after accepting. */
+  caret: number;
+}
+
+const whole = (items: string[]): Suggestion[] => items.map((t) => ({ label: t, text: t, caret: t.length }));
+
+/** Names to offer: the Characters tab first, then anyone else who speaks. */
+function knownNames(doc: ScriptElement[], index: number, characters: Character[]): string[] {
+  const out = new Map<string, string>();
+  for (const c of characters) if (c.name.trim()) out.set(c.name.trim().toUpperCase(), c.name.trim());
+  for (const e of doc) {
+    if (e === doc[index] || e.type !== 'character') continue;
+    const n = cueName(e.text);
+    if (n && !out.has(n.toUpperCase())) out.set(n.toUpperCase(), titleCase(n));
+  }
+  return [...out.values()];
+}
+
+/**
+ * Complete a character name being typed mid-line (action, dialogue,
+ * parenthetical): the longest stretch before the caret that starts a known
+ * name, at a word boundary, at least two letters, not already complete.
+ */
+function nameCompletions(text: string, caret: number, names: string[]): Suggestion[] {
+  const before = text.slice(0, caret);
+  const after = text.slice(caret);
+  if (/^\p{L}/u.test(after)) return [];
+  const out: Suggestion[] = [];
+  for (const name of names) {
+    for (let k = Math.min(name.length - 1, before.length); k >= 2; k--) {
+      const typed = before.slice(before.length - k);
+      const boundary = before.length === k || !/[\p{L}\p{N}'’]/u.test(before[before.length - k - 1]);
+      if (!boundary || typed.toUpperCase() !== name.slice(0, k).toUpperCase()) continue;
+      // Keep the writer's capitals: "JA" -> "JANE", "Ja" -> "Jane".
+      const full = typed === typed.toUpperCase() && /\p{Lu}/u.test(typed) && k > 1 ? name.toUpperCase() : name;
+      const head = before.slice(0, before.length - k);
+      out.push({ label: full, text: head + full + after, caret: head.length + full.length });
+      break;
+    }
+  }
+  return out.slice(0, 6);
+}
+
+function suggestions(doc: ScriptElement[], index: number, characters: Character[], caret: number): Suggestion[] {
   const el = doc[index];
   const text = el.text.toUpperCase();
-  if (!text.trim() && el.type !== 'transition') return [];
+  if (el.type === 'action' || el.type === 'dialogue' || el.type === 'parenthetical') {
+    return nameCompletions(el.text, caret, knownNames(doc, index, characters));
+  }
+  if (!text.trim() && el.type !== 'transition' && el.type !== 'character') return [];
   let pool: string[] = [];
   if (el.type === 'scene') {
     const dash = text.lastIndexOf(' - ');
@@ -129,32 +189,55 @@ function suggestions(doc: ScriptElement[], index: number): string[] {
       pool = [...SCENE_PREFIXES, ...new Set(used)];
     }
   } else if (el.type === 'character') {
-    const names = new Set(doc.filter((e, i) => i !== index && e.type === 'character').map((e) => cueName(e.text).toUpperCase()).filter(Boolean));
     if (/\($|\(\w*$/.test(text) || /\s\($/.test(text)) {
       const base = text.replace(/\s*\(\w*$/, '');
       pool = EXTENSIONS.map((x) => `${base} ${x}`);
-    } else pool = [...names];
+    } else pool = knownNames(doc, index, characters).map((n) => n.toUpperCase());
   } else if (el.type === 'transition') {
     pool = TRANSITIONS;
   } else return [];
-  return pool.filter((p) => p.startsWith(text) && p !== text).slice(0, 7);
+  return whole(pool.filter((p) => p.startsWith(text) && p !== text).slice(0, 7));
 }
 
 // ── editor ───────────────────────────────────────────────────────────────────
 
-export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, onCurrentType, apiRef, onOpenPlan }: Props) {
+export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, onCurrentType, apiRef, onOpenPlan, onRefreshShot }: Props) {
   const nodes = useRef(new Map<string, HTMLTextAreaElement>());
   const pendingFocus = useRef<{ id: string; pos: number | 'end' } | null>(null);
   const [current, setCurrent] = useState<number>(0);
-  const [suggest, setSuggest] = useState<{ index: number; items: string[]; active: number } | null>(null);
+  const [suggest, setSuggest] = useState<{ index: number; items: Suggestion[]; active: number } | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const els = doc.elements;
   const elsRef = useRef(els);
   elsRef.current = els;
+  const charsRef = useRef(doc.characters);
+  charsRef.current = doc.characters;
 
   const pages = useMemo(() => pageStarts(els), [els]);
   const scenes = useMemo(() => sceneNumbers(els), [els]);
   const anchored = useMemo(() => new Set(doc.shots.map((s) => s.anchorId)), [doc.shots]);
+  const blocks = useMemo(() => shotBlocks(doc), [doc]);
+  // The shot under the pointer, from either side: its script block and card light up together.
+  const [hoverShot, setHoverShot] = useState<string | null>(null);
+  const onHoverRow = useCallback((elementId: string | null) => setHoverShot(elementId ? blocks.get(elementId) ?? null : null), [blocks]);
+
+  // Names that speak in the script get a placeholder profile in the Characters
+  // tab once the cue is finished (or after a pause in typing it).
+  const editingCue = els[current]?.type === 'character' ? els[current].id : null;
+  useEffect(() => {
+    const photos = (id: string) => (detail?.media.other ?? []).some((m) => m.role === 'character' && m.target === id);
+    const t = window.setTimeout(() => {
+      update(
+        (d) => {
+          const chars = syncPlaceholders(d, editingCue, photos);
+          return chars ? { ...d, characters: chars } : d;
+        },
+        undefined,
+        { history: false },
+      );
+    }, editingCue ? 2500 : 600);
+    return () => window.clearTimeout(t);
+  }, [els, doc.characters, doc.plans, editingCue, detail?.media.other, update]);
 
   const register = useCallback((id: string, n: HTMLTextAreaElement | null) => {
     if (n) nodes.current.set(id, n);
@@ -249,7 +332,7 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
       const text = UPPER.has(el.type) ? raw.toUpperCase() : raw;
       update((d) => ({ ...d, elements: d.elements.map((e, i) => (i === index ? { ...e, text } : e)) }), `text:${el.id}`);
       if (text !== raw) pendingFocus.current = { id: el.id, pos: caret };
-      const items = suggestions(elsRef.current.map((e, i) => (i === index ? { ...e, text } : e)), index);
+      const items = suggestions(elsRef.current.map((e, i) => (i === index ? { ...e, text } : e)), index, charsRef.current, caret);
       setSuggest(items.length ? { index, items, active: 0 } : null);
     },
     [update],
@@ -302,12 +385,12 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
         setSuggest({ ...s, active: (s.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n });
         return;
       }
-      if (s && (e.key === 'Enter' || (e.key === 'ArrowRight' && t.selectionStart === t.value.length))) {
+      if (s && (e.key === 'Enter' || (e.key === 'ArrowRight' && t.selectionStart === t.value.length) || (e.key === 'Tab' && !e.shiftKey && el.type !== 'character' && el.type !== 'scene' && el.type !== 'transition'))) {
         e.preventDefault();
-        const text = s.items[s.active];
-        update((d) => ({ ...d, elements: d.elements.map((x, i) => (i === index ? { ...x, text } : x)) }), `text:${el.id}`);
+        const pick = s.items[s.active];
+        update((d) => ({ ...d, elements: d.elements.map((x, i) => (i === index ? { ...x, text: pick.text } : x)) }), `text:${el.id}`);
         setSuggest(null);
-        pendingFocus.current = { id: el.id, pos: 'end' };
+        pendingFocus.current = { id: el.id, pos: pick.caret };
         return;
       }
       if (e.key === 'Escape' && s) {
@@ -405,6 +488,8 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
             newPage={i > 0 && pages[i] !== pages[i - 1]}
             sceneNo={scenes.get(el.id)}
             hasShot={anchored.has(el.id)}
+            lit={!!hoverShot && blocks.get(el.id) === hoverShot}
+            onHover={onHoverRow}
             onText={onText}
             onKey={onKey}
             onFocus={onFocus}
@@ -416,19 +501,19 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
           <ul className="sp-suggest" style={suggestPos} role="listbox">
             {suggest.items.map((s, i) => (
               <li
-                key={s}
+                key={s.label}
                 role="option"
                 aria-selected={i === suggest.active}
                 className={i === suggest.active ? 'on' : ''}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   const el = els[suggest.index];
-                  update((d) => ({ ...d, elements: d.elements.map((x) => (x.id === el.id ? { ...x, text: s } : x)) }));
+                  update((d) => ({ ...d, elements: d.elements.map((x) => (x.id === el.id ? { ...x, text: s.text } : x)) }));
                   setSuggest(null);
-                  pendingFocus.current = { id: el.id, pos: 'end' };
+                  pendingFocus.current = { id: el.id, pos: s.caret };
                 }}
               >
-                {s}
+                {s.label}
               </li>
             ))}
           </ul>
@@ -443,6 +528,9 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
         pageRef={pageRef}
         onOpenPlan={onOpenPlan}
         onFocusAnchor={(id) => focusEl(id, 'end')}
+        onRefresh={onRefreshShot}
+        hoverShot={hoverShot}
+        onHoverShot={setHoverShot}
       />
     </div>
   );

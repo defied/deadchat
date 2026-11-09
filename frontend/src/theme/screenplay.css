@@ -259,3 +259,13 @@ kbd {
 .sp-adj-row.add { grid-template-columns: auto 1fr; align-items: center; color: var(--color-text-dim); padding-left: 2px; }
 .sp-adj-row.add input { font-size: 13px; padding: 4px 7px; }
 .sp-prompt h4 { margin: 10px 0 4px; font-size: 12px; color: var(--color-text-dim); font-weight: 500; }
+.sp-placeholder { color: var(--color-warning); }
+.sp-placeholder-note { font-size: 12px !important; color: var(--color-warning); background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius); padding: 6px 10px; margin: 0; }
+
+/* Shot ↔ script linking and refresh */
+.sp-row.lit { background: var(--color-accent-dim); box-shadow: -6px 0 0 var(--color-accent-dim), 6px 0 0 var(--color-accent-dim); border-radius: 2px; }
+.sp-row.lit .sp-el { background: transparent; }
+.sp-shot-wrap.lit .sp-shot { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.sp-refresh { color: var(--color-warning); }
+.sp-stale { display: flex; gap: 5px; align-items: center; width: 100%; padding: 4px 8px; font-size: 12px; color: var(--color-warning); background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius); cursor: pointer; text-align: left; }
+.sp-stale:hover { background: rgba(245, 158, 11, 0.14); }
