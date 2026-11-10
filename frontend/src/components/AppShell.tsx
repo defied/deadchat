@@ -9,6 +9,7 @@ import {
   Image,
   Key,
   Megaphone,
+  KeyRound,
   LogOut,
   Menu,
   MessageSquare,
@@ -157,6 +158,9 @@ export function AppShell() {
               <div className="nav-user-name">{user?.username}</div>
               {user?.role === 'admin' && <span className="badge badge-accent">admin</span>}
             </div>
+            <button className="icon-btn nav-label" onClick={() => navigate('/account/password')} title="Change password" aria-label="Change password">
+              <KeyRound size={16} />
+            </button>
             <button className="icon-btn nav-label" onClick={handleLogout} title="Sign out" aria-label="Sign out">
               <LogOut size={16} />
             </button>

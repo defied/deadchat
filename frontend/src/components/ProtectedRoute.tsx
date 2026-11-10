@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Loading } from './ui';
+import { ForcedPasswordChange } from './ChangePassword';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -22,6 +23,8 @@ export function ProtectedRoute({ children, adminOnly }: ProtectedRouteProps) {
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+
+  if (user.mustChangePassword) return <ForcedPasswordChange />;
 
   if (adminOnly && user.role !== 'admin') {
     return <Navigate to="/" replace />;

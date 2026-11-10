@@ -60,7 +60,7 @@ router.delete('/usage/pricing/:model', (req: Request, res: Response): void => {
 // GET /api/users
 router.get('/', (req: Request, res: Response): void => {
   const users = db.prepare(
-    'SELECT id, username, email, role, tabs, created_at, updated_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, email, role, tabs, must_change_password, created_at, updated_at FROM users ORDER BY created_at DESC'
   ).all() as Array<{ tabs: string | null }>;
 
   res.json({ users: users.map(withTabs), tabs: TABS });
@@ -93,8 +93,8 @@ router.post('/', (req: Request, res: Response): void => {
 
   const passwordHash = hashPassword(password);
   const result = db.prepare(
-    'INSERT INTO users (username, email, password_hash, role, tabs) VALUES (?, ?, ?, ?, ?)'
-  ).run(username, email, passwordHash, role || 'user', tabs);
+    'INSERT INTO users (username, email, password_hash, role, tabs, must_change_password) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(username, email, passwordHash, role || 'user', tabs, req.body?.mustChangePassword === false ? 0 : 1);
 
   const user = db.prepare(
     'SELECT id, username, email, role, tabs, created_at FROM users WHERE id = ?'
@@ -205,9 +205,13 @@ router.post('/:id/reset-password', (req: Request, res: Response): void => {
     return;
   }
 
+  // The person picks their own password at next sign-in unless the admin says otherwise.
+  const must = req.body?.mustChangePassword === false || userId === req.user!.id ? 0 : 1;
   db.prepare(
-    "UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(hashPassword(password), userId);
+    "UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(hashPassword(password), must, userId);
+  // Their existing sessions end.
+  if (userId !== req.user!.id) db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(userId);
 
   res.json({ message: 'Password reset' });
 });

@@ -11,6 +11,7 @@ interface UserFormProps {
     password?: string;
     role: 'user' | 'admin';
     tabs: TabId[] | 'all';
+    mustChangePassword: boolean;
   }) => void;
   onCancel: () => void;
 }
@@ -21,6 +22,7 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'user' | 'admin'>('user');
   const [allTabs, setAllTabs] = useState(true);
+  const [mustChange, setMustChange] = useState(true);
   const [tabs, setTabs] = useState<TabId[]>([]);
   const [error, setError] = useState('');
 
@@ -61,6 +63,7 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
     setError('');
     onSave({
       tabs: allTabs ? 'all' : tabs,
+      mustChangePassword: mustChange,
       username: username.trim(),
       email: email.trim(),
       password: password || undefined,
@@ -167,6 +170,13 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
               <option value="admin">Admin</option>
             </select>
           </div>
+
+          {!isEdit && (
+            <label className="tab-perm" style={{ marginBottom: 14 }}>
+              <input type="checkbox" checked={mustChange} onChange={(e) => setMustChange(e.target.checked)} />
+              Ask them to choose their own password at first sign-in
+            </label>
+          )}
 
           <fieldset className="tab-perms" disabled={role === 'admin'}>
             <legend style={labelStyle}>Sections this user can use</legend>

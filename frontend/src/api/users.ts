@@ -8,6 +8,8 @@ export interface CreateUserPayload {
   password: string;
   role: 'user' | 'admin';
   tabs?: TabId[] | 'all';
+  /** Ask them to choose their own password at first sign-in (default yes). */
+  mustChangePassword?: boolean;
 }
 
 export interface UpdateUserPayload {
@@ -125,6 +127,6 @@ export async function deleteModelPricing(model: string): Promise<void> {
   await client.delete(`/api/users/usage/pricing/${encodeURIComponent(model)}`);
 }
 
-export async function resetPassword(id: string, newPassword: string): Promise<void> {
-  await client.post(`/api/users/${id}/reset-password`, { password: newPassword });
+export async function resetPassword(id: string, newPassword: string, mustChangePassword = true): Promise<void> {
+  await client.post(`/api/users/${id}/reset-password`, { password: newPassword, mustChangePassword });
 }

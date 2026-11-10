@@ -98,6 +98,7 @@ export function AdminPage() {
     password?: string;
     role: 'user' | 'admin';
     tabs: TabId[] | 'all';
+    mustChangePassword: boolean;
   }) => {
     try {
       if (editingUser) {
@@ -114,6 +115,7 @@ export function AdminPage() {
           password: data.password!,
           role: data.role,
           tabs: data.tabs,
+          mustChangePassword: data.mustChangePassword,
         });
       }
       setShowForm(false);
@@ -134,9 +136,9 @@ export function AdminPage() {
     }
   };
 
-  const handlePasswordReset = async (userId: string, newPassword: string) => {
+  const handlePasswordReset = async (userId: string, newPassword: string, mustChangePassword: boolean) => {
     try {
-      await usersApi.resetPassword(userId, newPassword);
+      await usersApi.resetPassword(userId, newPassword, mustChangePassword);
       setPasswordResetUser(null);
     } catch (err) {
       setError(errorMessage(err));

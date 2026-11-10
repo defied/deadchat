@@ -708,3 +708,19 @@ code.inline {
 .tab-perm input { width: auto; }
 .tab-perm.all { margin-bottom: 8px; }
 .tab-perm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+
+/* Change password */
+.pw-form { display: flex; flex-direction: column; gap: 14px; max-width: 380px; }
+.pw-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--color-text-secondary); }
+.pw-form input.invalid { border-color: var(--color-danger); }
+.pw-form .btn { align-self: flex-start; display: inline-flex; gap: 6px; align-items: center; }
+.pw-error { color: var(--color-danger); font-size: 13px; margin: 0; }
+.pw-ok { color: var(--color-success); font-size: 13px; margin: 0; }
+.pw-page { max-width: 480px; display: flex; flex-direction: column; gap: 12px; }
+.pw-page h1 { margin: 0; font-size: 22px; }
+.pw-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: var(--color-bg); }
+.pw-card { width: 100%; max-width: 420px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 14px; }
+.pw-card h1 { margin: 0; font-size: 22px; }
+.pw-card p { margin: 0; color: var(--color-text-secondary); font-size: 14px; }
+.pw-card .pw-form { max-width: none; }
+.pw-signout { align-self: flex-start; display: inline-flex; gap: 6px; align-items: center; }
