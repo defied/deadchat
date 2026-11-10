@@ -8,6 +8,7 @@ import { CATEGORIES, type CaseDetail, type CaseItem, type Category } from '../..
 import { Alert, EmptyState, errorMessage } from '../ui';
 import { DownloadButton, Thumb, kindLabel } from './Viewer';
 import { forget } from './blobs';
+import { useReadOnly } from './access';
 import { fmtDuration } from './sampleVideo';
 
 interface Props {
@@ -80,6 +81,7 @@ async function posterOf(file: File): Promise<{ blob: Blob; duration: number } | 
 }
 
 export function Evidence({ detail, setDetail, refetch, onOpen }: Props) {
+  const readOnly = useReadOnly();
   const caseId = detail.case.id;
   const [queue, setQueue] = useState<Queued[]>([]);
   const [category, setCategory] = useState<'' | Category>('');
@@ -151,6 +153,7 @@ export function Evidence({ detail, setDetail, refetch, onOpen }: Props) {
 
   return (
     <div className="cs-evidence">
+      {!readOnly && (
       <div
         className={`cs-drop ${over ? 'over' : ''}`}
         onDragOver={(e) => {
@@ -197,6 +200,7 @@ export function Evidence({ detail, setDetail, refetch, onOpen }: Props) {
           onChange={(e) => e.target.files && uploadAll([...e.target.files])}
         />
       </div>
+      )}
 
       {queue.length > 0 && (
         <div className="cs-queue">
@@ -216,7 +220,7 @@ export function Evidence({ detail, setDetail, refetch, onOpen }: Props) {
       {error && <Alert>{error}</Alert>}
 
       {items.length === 0 ? (
-        <EmptyState title="No evidence yet">Add imaging, cine loops, ECGs, labs, reports and photos. Everything stays on your server.</EmptyState>
+        <EmptyState title="No evidence yet">{readOnly ? 'Nothing has been added to this case yet.' : 'Add imaging, cine loops, ECGs, labs, reports and photos. Everything stays on your server.'}</EmptyState>
       ) : (
         <div className="cs-items">
           {items.map((it, i) => (
@@ -275,6 +279,7 @@ function ItemRow({
   const [notes, setNotes] = useState(item.notes ?? '');
   const [ai, setAi] = useState(item.aiNotes ?? '');
   const [mask, setMask] = useState(item.maskTop);
+  const readOnly = useReadOnly();
   const [seen, setSeen] = useState({ title: item.title, notes: item.notes, ai: item.aiNotes });
   if (seen.title !== item.title || seen.notes !== item.notes || seen.ai !== item.aiNotes) {
     setSeen({ title: item.title, notes: item.notes, ai: item.aiNotes });
@@ -301,11 +306,11 @@ function ItemRow({
       </button>
       <div className="cs-item-body">
         <div className="cs-item-row1">
-          <input className="cs-item-title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== item.title && onSave({ title })} aria-label="Title" />
+          <input className="cs-item-title" readOnly={readOnly} value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== item.title && onSave({ title })} aria-label="Title" />
           <select value={item.category} onChange={(e) => onSave({ category: e.target.value as Category })} aria-label="Category">
             {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
-          <input type="date" value={item.takenAt ?? ''} onChange={(e) => onSave({ takenAt: e.target.value })} aria-label="Date" />
+          <input type="date" disabled={readOnly} value={item.takenAt ?? ''} onChange={(e) => onSave({ takenAt: e.target.value })} aria-label="Date" />
         </div>
         <div className="cs-item-facts">
           {facts.join(' · ')}
@@ -327,18 +332,24 @@ function ItemRow({
           )}
         </div>
         {item.error && <div className="cs-warn"><AlertTriangle size={11} /> {item.error}</div>}
-        <textarea rows={2} value={notes} placeholder="Your notes: what this shows, why it matters" onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== (item.notes ?? '') && onSave({ notes })} />
+        <textarea rows={2} readOnly={readOnly} value={notes} placeholder="Your notes: what this shows, why it matters" onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== (item.notes ?? '') && onSave({ notes })} />
         {(item.aiNotes || item.aiStatus) && (
           <div className="cs-ai">
             <span className="cs-ai-label"><Bot size={12} /> AI notes (draft; check before presenting)</span>
             {item.aiStatus === 'running' ? (
               <span className="cs-proc"><Loader2 size={12} className="spin" /> Writing…</span>
             ) : (
-              <textarea rows={3} value={ai} onChange={(e) => setAi(e.target.value)} onBlur={() => ai !== (item.aiNotes ?? '') && onSave({ aiNotes: ai })} />
+              <textarea rows={3} readOnly={readOnly} value={ai} onChange={(e) => setAi(e.target.value)} onBlur={() => ai !== (item.aiNotes ?? '') && onSave({ aiNotes: ai })} />
             )}
             {item.aiStatus === 'failed' && <span className="cs-warn"><AlertTriangle size={11} /> {item.aiError}</span>}
           </div>
         )}
+        {readOnly ? (
+          <div className="cs-item-actions">
+            <span className="sp-grow" />
+            {item.originals > 0 && <DownloadButton caseId={caseId} item={item} label="Original" />}
+          </div>
+        ) : (
         <div className="cs-item-actions">
           <button className="btn btn-sm" onClick={onDescribe} disabled={item.aiStatus === 'running' || item.status !== 'ready'} title="Describe this with the local vision model">
             <Bot size={13} /> {item.aiNotes ? 'Redo AI notes' : 'AI notes'}
@@ -368,6 +379,7 @@ function ItemRow({
           <button className="icon-btn" onClick={() => onMove(1)} disabled={last} title="Move down"><ArrowDown size={14} /></button>
           <button className="icon-btn" onClick={onDelete} title="Remove"><Trash2 size={14} /></button>
         </div>
+        )}
       </div>
     </div>
   );

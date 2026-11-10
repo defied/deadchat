@@ -38,7 +38,7 @@ export function CasesPage() {
       <PageHeader
         title="Medical cases"
         icon={<Stethoscope size={20} />}
-        subtitle="Bring a case’s imaging, cine loops, ECGs, labs, reports and history together, then present it with drill-down to every study. Files stay on your server."
+        subtitle="Bring a case’s imaging, cine loops, ECGs, labs, reports and history together, then present it with drill-down to every study. Files stay on your server; share a case with other members when you want a second look."
         actions={
           <button className="btn btn-primary" onClick={() => setCreating(true)}>
             <Plus size={15} /> New case
@@ -68,6 +68,13 @@ export function CasesPage() {
                 <strong>{c.title}</strong>
                 <span className="field-hint">{[c.age, c.sex, c.specialty].filter(Boolean).join(' · ')}</span>
                 {c.chiefComplaint && <span className="field-hint">{c.chiefComplaint}</span>}
+                {c.sharedBy ? (
+                  <span className="cs-shared-chip">
+                    {c.role === 'viewer' ? 'View only' : 'Can edit'} · shared by {c.sharedBy}
+                  </span>
+                ) : c.sharedWith > 0 ? (
+                  <span className="cs-shared-chip">Shared with {c.sharedWith}</span>
+                ) : null}
                 <span className="field-hint">{c.items} item{c.items === 1 ? '' : 's'} · edited {new Date(`${c.updatedAt.replace(' ', 'T')}Z`).toLocaleDateString()}</span>
               </div>
             </button>

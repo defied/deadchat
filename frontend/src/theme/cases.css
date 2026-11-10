@@ -297,3 +297,16 @@
 .cs-an-badge.done { color: var(--color-success); border-color: var(--color-success); }
 .cs-an-badge.failed { color: var(--color-danger); }
 .cs-an-check { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--color-text-secondary); }
+
+/* Sharing */
+.cs-shared-chip { display: inline-flex; gap: 5px; align-items: center; align-self: flex-start; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--color-accent-dim); color: var(--color-text); white-space: nowrap; }
+.cs-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.cs-fieldset[disabled] input, .cs-fieldset[disabled] textarea { opacity: 0.85; }
+.cs-share-hint { margin: 0 0 12px; line-height: 1.5; }
+.cs-share-add { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.cs-share-add .btn { display: inline-flex; gap: 6px; align-items: center; }
+.cs-share-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cs-share-list li { display: flex; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--color-border); font-size: 14px; }
+.cs-share-list li span:not(.avatar):not(.sp-grow) { display: flex; flex-direction: column; gap: 2px; }
+.cs-share-list select { width: auto; }
+@media (max-width: 560px) { .cs-share-add { grid-template-columns: 1fr; } }

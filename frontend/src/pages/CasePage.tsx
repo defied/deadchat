@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronLeft, ClipboardList, FolderOpen, LayoutDashboard, Loader2, MonitorPlay, Trash2 } from 'lucide-react';
+import { Check, ChevronLeft, ClipboardList, Eye, FolderOpen, LayoutDashboard, Loader2, LogOut, MonitorPlay, Pencil, Share2, Trash2, Users } from 'lucide-react';
 import * as api from '../api/cases';
+import { useAuth } from '../hooks/useAuth';
 import type { CaseDetail, CaseProfile } from '../api/cases';
 import { Alert, Loading, RouteTabs, errorMessage } from '../components/ui';
 import { Overview } from '../components/cases/Overview';
@@ -12,12 +13,15 @@ import { Evidence } from '../components/cases/Evidence';
 import { Profile } from '../components/cases/Profile';
 import { ItemDetail } from '../components/cases/ItemDetail';
 import { Present } from '../components/cases/Present';
+import { ShareDialog } from '../components/cases/ShareDialog';
+import { CaseAccessContext } from '../components/cases/access';
 
 export function CasePage() {
   const id = Number(useParams().id);
   const tab = useParams().tab ?? 'overview';
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useAuth();
   const q = useQuery({
     queryKey: ['case', id],
     queryFn: () => api.getCase(id),
@@ -68,13 +72,18 @@ export function CasePage() {
   const [presenting, setPresenting] = useState<{ start?: number } | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   if (q.isLoading || !q.data || !profile) return q.error ? <div className="page"><Alert>{errorMessage(q.error)}</Alert></div> : <Loading />;
   const detail: CaseDetail = { ...q.data, case: { ...q.data.case, profile, title } };
   const shown = detail.items.filter((i) => i.include);
+  const access = q.data.access;
+  const readOnly = access === 'viewer';
+  const isOwner = access === 'owner';
 
   return (
-    <div className="page cs-page">
+    <CaseAccessContext.Provider value={access}>
+    <div className={`page cs-page ${readOnly ? 'cs-readonly' : ''}`}>
       <div className="sp-header">
         <Link to="/cases" className="icon-btn" title="All cases"><ChevronLeft size={18} /></Link>
         <input
@@ -85,10 +94,22 @@ export function CasePage() {
             queue({ title: e.target.value });
           }}
           aria-label="Case title"
+          readOnly={readOnly}
         />
-        <span className={`sp-save ${saving}`}>
-          {saving === 'saving' ? <Loader2 size={12} className="spin" /> : saving === 'saved' ? <Check size={12} /> : null} {saving === 'saving' ? 'Saving…' : saving === 'saved' ? 'Saved' : 'Unsaved'}
-        </span>
+        {readOnly ? (
+          <span className="cs-shared-chip" title={`Shared with you by ${detail.owner}. You can look at everything but not change it.`}>
+            <Eye size={12} /> View only · shared by {detail.owner}
+          </span>
+        ) : (
+          <span className={`sp-save ${saving}`}>
+            {saving === 'saving' ? <Loader2 size={12} className="spin" /> : saving === 'saved' ? <Check size={12} /> : null} {saving === 'saving' ? 'Saving…' : saving === 'saved' ? 'Saved' : 'Unsaved'}
+          </span>
+        )}
+        {access === 'editor' && (
+          <span className="cs-shared-chip" title={`Shared with you by ${detail.owner}. You can edit it.`}>
+            <Pencil size={12} /> Shared by {detail.owner}
+          </span>
+        )}
         <span className="sp-grow" />
         <button
           className="btn btn-primary"
@@ -100,17 +121,37 @@ export function CasePage() {
         >
           <MonitorPlay size={15} /> Present
         </button>
-        <button
-          className="icon-btn"
-          title="Delete case"
-          onClick={async () => {
-            if (!window.confirm(`Delete “${title}” and all its files?`)) return;
-            await api.deleteCase(id);
-            navigate('/cases');
-          }}
-        >
-          <Trash2 size={15} />
-        </button>
+        {isOwner ? (
+          <>
+            <button className="btn" onClick={() => setSharing(true)} title="Share this case with other members">
+              {detail.shares.length ? <Users size={15} /> : <Share2 size={15} />} {detail.shares.length ? `Shared (${detail.shares.length})` : 'Share'}
+            </button>
+            <button
+              className="icon-btn"
+              title="Delete case"
+              onClick={async () => {
+                if (!window.confirm(`Delete “${title}” and all its files?${detail.shares.length ? ` It’s shared with ${detail.shares.length} member${detail.shares.length === 1 ? '' : 's'}; they’ll lose it too.` : ''}`)) return;
+                await api.deleteCase(id);
+                navigate('/cases');
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
+          </>
+        ) : (
+          <button
+            className="icon-btn"
+            title="Remove this shared case from your list"
+            onClick={async () => {
+              if (!window.confirm(`Remove “${title}” from your cases? ${detail.owner} can share it again.`)) return;
+              const me = detail.shares.find((s) => s.role === access && s.username === user?.username);
+              if (me) await api.unshareCase(id, me.userId);
+              navigate('/cases');
+            }}
+          >
+            <LogOut size={15} />
+          </button>
+        )}
       </div>
       {error && <Alert>{error}</Alert>}
 
@@ -149,13 +190,15 @@ export function CasePage() {
       )}
       {tab === 'evidence' && <Evidence detail={detail} setDetail={setDetail} refetch={() => void q.refetch()} onOpen={setOpen} />}
       {tab === 'profile' && (
-        <Profile
-          profile={profile}
-          onChange={(p) => {
-            setProfile(p);
-            queue({ profile: p });
-          }}
-        />
+        <fieldset className="cs-fieldset" disabled={readOnly}>
+          <Profile
+            profile={profile}
+            onChange={(p) => {
+              setProfile(p);
+              queue({ profile: p });
+            }}
+          />
+        </fieldset>
       )}
 
       {open != null && (
@@ -169,6 +212,8 @@ export function CasePage() {
         />
       )}
       {presenting && <Present detail={detail} startItem={presenting.start} onClose={() => setPresenting(null)} />}
+      {sharing && <ShareDialog detail={detail} onChange={(d) => setDetail((cur) => ({ ...cur, shares: d.shares }))} onClose={() => setSharing(false)} />}
     </div>
+    </CaseAccessContext.Provider>
   );
 }

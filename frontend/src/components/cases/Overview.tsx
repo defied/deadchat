@@ -10,6 +10,7 @@ import { Alert, EmptyState } from '../ui';
 import { LabTrends } from './LabTrends';
 import { bsa } from './Profile';
 import { Thumb, kindLabel } from './Viewer';
+import { useReadOnly } from './access';
 
 export function facts(p: CaseProfile): string[] {
   const area = bsa(p);
@@ -70,6 +71,7 @@ export function Overview({
   draftError: string | null;
   onSaveSummary: (s: string) => void;
 }) {
+  const readOnly = useReadOnly();
   const { case: c, items } = detail;
   const p = c.profile;
   const [editing, setEditing] = useState(false);
@@ -110,6 +112,8 @@ export function Overview({
           <h3>Summary</h3>
           {c.summary && <span className={`cs-badge ${c.summarySource === 'ai' ? 'ai' : ''}`}>{c.summarySource === 'ai' ? 'AI draft: check before presenting' : 'Written by you'}</span>}
           <span className="sp-grow" />
+          {!readOnly && (
+          <>
           <button className="btn btn-sm" onClick={onDraft} disabled={drafting} title="Draft a summary from the profile and evidence with the local model">
             {drafting ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} {c.summary ? 'Redraft with AI' : 'Draft with AI'}
           </button>
@@ -122,6 +126,8 @@ export function Overview({
           >
             <Edit3 size={13} /> {editing ? 'Cancel' : 'Edit'}
           </button>
+          </>
+          )}
         </div>
         {draftError && <Alert>{draftError}</Alert>}
         {editing ? (
@@ -132,7 +138,7 @@ export function Overview({
         ) : c.summary ? (
           <div className="cs-summary"><Markdown text={c.summary} /></div>
         ) : (
-          <p className="field-hint">No summary yet. Write one, or let the local model draft one from everything in the case.</p>
+          <p className="field-hint">{readOnly ? 'No summary yet.' : 'No summary yet. Write one, or let the local model draft one from everything in the case.'}</p>
         )}
       </section>
 

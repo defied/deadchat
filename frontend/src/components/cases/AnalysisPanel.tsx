@@ -24,6 +24,7 @@ import {
 import { Markdown } from '../chat/Markdown';
 import { blobUrl } from './blobs';
 import { fmtDuration, sampleVideo } from './sampleVideo';
+import { useReadOnly } from './access';
 
 const LIVE = new Set(['queued', 'running']);
 const errMsg = (e: unknown) => (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? (e as Error)?.message ?? 'Failed';
@@ -49,7 +50,8 @@ export function AnalysisPanel({ caseId, item, onSeek, onChanged }: { caseId: num
   }, [live, onChanged]);
 
   const [showForm, setShowForm] = useState(false);
-  const form = !current || showForm;
+  const readOnly = useReadOnly();
+  const form = !readOnly && (!current || showForm);
 
   return (
     <section className="cs-an">
@@ -60,6 +62,8 @@ export function AnalysisPanel({ caseId, item, onSeek, onChanged }: { caseId: num
         <Loader2 size={14} className="spin" />
       ) : form && !live ? (
         <StartForm caseId={caseId} item={item} onStarted={() => { setShowForm(false); void qc.invalidateQueries({ queryKey: key }); onChanged(); }} onCancel={current ? () => setShowForm(false) : undefined} />
+      ) : !current ? (
+        <p className="field-hint">Not analysed yet.</p>
       ) : current ? (
         <RunView caseId={caseId} item={item} a={current} onSeek={onSeek} onRerun={() => setShowForm(true)} onCanceled={() => void qc.invalidateQueries({ queryKey: key })} />
       ) : null}
@@ -196,6 +200,7 @@ function StageIcon({ s }: { s: AnalysisStage }) {
 
 function RunView({ caseId, item, a, onSeek, onRerun, onCanceled }: { caseId: number; item: CaseItem; a: Analysis; onSeek: (f: number) => void; onRerun: () => void; onCanceled: () => void }) {
   const live = LIVE.has(a.status);
+  const readOnly = useReadOnly();
   const [tab, setTab] = useState<'report' | 'timeline' | 'specialists'>('report');
   const r = a.results;
   const unit = r.frameUnit ?? 'frame';
@@ -318,6 +323,7 @@ function RunView({ caseId, item, a, onSeek, onRerun, onCanceled }: { caseId: num
         </div>
       )}
 
+      {!readOnly && (
       <div className="cs-item-actions">
         {live ? (
           <button
@@ -335,6 +341,7 @@ function RunView({ caseId, item, a, onSeek, onRerun, onCanceled }: { caseId: num
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }
