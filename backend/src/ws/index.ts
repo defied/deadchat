@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { authenticateWs, WsUser } from './auth';
 import { handleChatMessage, cancelGeneration } from './chatHandler';
 import { hasTab } from '../services/tabs';
+import { mustChangePassword } from '../middleware/auth';
 
 export function createWebSocketServer(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -28,7 +29,7 @@ export function createWebSocketServer(server: HttpServer): WebSocketServer {
 
       switch (data.type) {
         case 'chat':
-          if (!hasTab(user.id, 'chat')) {
+          if (mustChangePassword(user.id) || !hasTab(user.id, 'chat')) {
             ws.send(JSON.stringify({ type: 'error', sessionId: data.sessionId, message: 'You don’t have access to Chat' }));
             break;
           }

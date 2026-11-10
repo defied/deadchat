@@ -8,6 +8,7 @@ export interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -16,6 +17,7 @@ export const AuthContext = createContext<AuthContextValue>({
   login: async () => {},
   logout: async () => {},
   refreshUser: async () => {},
+  changePassword: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -50,8 +52,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    setUser(await authApi.changePassword(currentPassword, newPassword));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, changePassword }}>
       {children}
     </AuthContext.Provider>
   );

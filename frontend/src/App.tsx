@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './components/AppShell';
 import { Home, TabRoute } from './components/TabRoute';
+import { ChangePasswordPage } from './components/ChangePassword';
 import { Loading } from './components/ui';
 
 // Route-level code splitting: the admin dashboards, generator and their chart
@@ -67,6 +68,9 @@ export function App() {
             }
           >
             <Route index element={<Home />} />
+            <Route path="/account/password" element={<ChangePasswordPage />} />
+            {/* Where browsers' password managers send people to change their password. */}
+            <Route path="/.well-known/change-password" element={<Navigate to="/account/password" replace />} />
             {/* One route for both so the page stays mounted when a new chat gets its id. */}
             <Route path="/chat/:sessionId?" element={<TabRoute tab="chat"><Page><ChatPage /></Page></TabRoute>} />
             <Route path="/agents" element={<TabRoute tab="agents"><Page><AgentsPage /></Page></TabRoute>} />

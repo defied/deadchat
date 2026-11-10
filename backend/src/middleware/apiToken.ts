@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import db from '../db/connection';
 import { verifyToken } from '../services/apiTokens';
 import { hasTab } from '../services/tabs';
+import { mustChangePassword } from './auth';
 
 export function authenticateApiToken(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
@@ -25,6 +26,10 @@ export function authenticateApiToken(req: Request, res: Response, next: NextFunc
     return;
   }
 
+  if (mustChangePassword(user.id)) {
+    res.status(403).json({ error: 'Sign in to DeadChat and choose a new password first' });
+    return;
+  }
   if (!hasTab(user.id, 'api')) {
     res.status(403).json({ error: 'API access isn’t enabled for this account' });
     return;

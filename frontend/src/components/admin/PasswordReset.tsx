@@ -4,7 +4,7 @@ import type { User } from '../../api/auth';
 
 interface PasswordResetProps {
   user: User;
-  onSave: (userId: string, newPassword: string) => void;
+  onSave: (userId: string, newPassword: string, mustChangePassword: boolean) => void;
   onCancel: () => void;
 }
 
@@ -12,6 +12,7 @@ export function PasswordReset({ user, onSave, onCancel }: PasswordResetProps) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
+  const [mustChange, setMustChange] = useState(true);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +29,7 @@ export function PasswordReset({ user, onSave, onCancel }: PasswordResetProps) {
       return;
     }
     setError('');
-    onSave(user.id, password);
+    onSave(user.id, password, mustChange);
   };
 
   const labelStyle: React.CSSProperties = {
@@ -113,6 +114,11 @@ export function PasswordReset({ user, onSave, onCancel }: PasswordResetProps) {
               onChange={(e) => setConfirm(e.target.value)}
             />
           </div>
+
+          <label className="tab-perm" style={{ marginBottom: 16 }}>
+            <input type="checkbox" checked={mustChange} onChange={(e) => setMustChange(e.target.checked)} />
+            Ask them to choose their own password at next sign-in
+          </label>
 
           {error && (
             <div

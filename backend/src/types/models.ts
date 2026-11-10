@@ -4,6 +4,7 @@ export interface User {
   email: string;
   password_hash: string;
   role: 'user' | 'admin';
+  must_change_password?: number;
   created_at: string;
   updated_at: string;
 }

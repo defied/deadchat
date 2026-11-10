@@ -167,6 +167,12 @@ Music needs the ACE-Step checkpoint on the GPU box: `ace_step_v1_3.5b.safetensor
   - **Combined report:** merges everything, naming which model reported each finding and where the models disagree.
   - **Timing:** each stage shows progress, elapsed time and an estimate (this run's pace, then earlier runs, then defaults). Runs can be canceled and resume after a restart. The model stays loaded during a run and is unloaded afterwards so ComfyUI gets the GPU back.
 
+## Passwords
+
+Anyone can change their own password with the key icon by their name in the sidebar (`/account/password`). Browsers' password managers find it through `/.well-known/change-password`. Changing it signs that account out everywhere else. New passwords need at least 8 characters and can't be the username.
+
+When an admin creates a user or resets a password, the person is asked to choose their own password at their next sign-in. Until they do, they see only that screen and the API refuses everything else. The admin can untick this option in either form.
+
 ## Section permissions
 
 Admins choose which sections each user can use under **Admin → Users → Edit**: Chat, Agents, Generate, Studio, Social Media, Screenplay, Medical cases and API access. "All sections" (the default, and what existing users have) includes sections added later. Admins always have everything.
