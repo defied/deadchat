@@ -13,6 +13,8 @@ import { CATEGORIES, type CaseItem, type CaseProfile, type Category, type Medica
 import { ingest, setThumb } from '../services/cases/ingest';
 import { describeItem, summarizeCase } from '../services/cases/ai';
 import { stacksBySeries } from '../services/cases/dicom';
+import { accessTo, atLeast, listShares, removeShare, setShare, shareableMembers, sharedWith, type Access } from '../services/cases/shares';
+import db from '../db/connection';
 import * as analysis from '../services/cases/analysis';
 import { PIPELINES, pipelineById, type PipelineId } from '../services/cases/pipelines';
 import * as med from '../services/cases/medService';
@@ -31,17 +33,24 @@ async function wrap(res: Response, fn: () => Promise<unknown> | unknown): Promis
     const out = await fn();
     if (!res.headersSent) res.json(out);
   } catch (e) {
-    if (!res.headersSent) res.status(400).json({ error: (e as Error).message });
+    if (!res.headersSent) res.status((e as { status?: number }).status ?? 400).json({ error: (e as Error).message });
   }
 }
 
-function owned(req: Request, res: Response, next: NextFunction): void {
+/** The case (and item) in the URL, if the user has at least `need` access. */
+const access = (need: Access) => (req: Request, res: Response, next: NextFunction): void => {
   const c = store.getCase(Number(req.params.id));
-  if (!c || (c.userId !== req.user!.id && req.user!.role !== 'admin')) {
+  const have = c ? accessTo(c.id, c.userId, req.user!) : null;
+  if (!c || !have) {
     res.status(404).json({ error: 'Case not found' });
     return;
   }
+  if (!atLeast(have, need)) {
+    res.status(403).json({ error: need === 'owner' ? 'Only the case owner can do that' : 'This case is shared with you to view only' });
+    return;
+  }
   res.locals.case = c;
+  res.locals.access = have;
   if (req.params.itemId) {
     const item = store.getItem(Number(req.params.itemId));
     if (!item || item.case_id !== c.id) {
@@ -51,7 +60,10 @@ function owned(req: Request, res: Response, next: NextFunction): void {
     res.locals.item = item;
   }
   next();
-}
+};
+const viewer = access('viewer');
+const editor = access('editor');
+const owner = access('owner');
 
 const theCase = (res: Response): MedicalCase => res.locals.case as MedicalCase;
 const theItem = (res: Response): CaseItem => res.locals.item as CaseItem;
@@ -172,15 +184,41 @@ function analysisView(a: analysis.Analysis) {
   };
 }
 
-function detail(c: MedicalCase) {
-  return { case: c, items: store.listItems(c.id).map(itemView) };
+function detail(c: MedicalCase, res: Response) {
+  const mine = res.locals.access as Access;
+  const ownerName = (db.prepare('SELECT username FROM users WHERE id = ?').get(c.userId) as { username: string } | undefined)?.username ?? null;
+  return {
+    case: c,
+    items: store.listItems(c.id).map(itemView),
+    access: mine,
+    owner: ownerName,
+    // Members it's shared with: everyone with access sees who else can see it.
+    shares: listShares(c.id).map(({ userId, username, role, canOpen }) => ({ userId, username, role, canOpen })),
+  };
 }
 
 // ── cases ────────────────────────────────────────────────────────────────────
 
 router.get('/', (req, res) =>
-  wrap(res, () => ({
-    cases: store.listCases(req.user!.id).map((c) => ({
+  wrap(res, () => {
+    const shared = sharedWith(req.user!.id);
+    const sharedCases = shared
+      .map((s) => {
+        const c = store.getCase(s.caseId);
+        if (!c) return null;
+        const n = store.listItems(c.id);
+        return { ...c, items: n.length, thumbItem: n.find((i) => i.meta.hasThumb)?.id ?? null, sharedBy: s.owner, role: s.role as Access };
+      })
+      .filter((c): c is NonNullable<typeof c> => !!c);
+    const shareCounts = new Map(
+      (db.prepare('SELECT case_id, COUNT(*) n FROM case_shares GROUP BY case_id').all() as Array<{ case_id: number; n: number }>).map((r) => [r.case_id, r.n]),
+    );
+    const all = [
+      ...store.listCases(req.user!.id).map((c) => ({ ...c, sharedBy: null as string | null, role: 'owner' as Access })),
+      ...sharedCases,
+    ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return {
+      cases: all.map((c) => ({
       id: c.id,
       title: c.title,
       updatedAt: c.updatedAt,
@@ -190,14 +228,24 @@ router.get('/', (req, res) =>
       sex: c.profile.sex,
       specialty: c.profile.specialty,
       chiefComplaint: c.profile.chiefComplaint,
+      sharedBy: c.sharedBy,
+      role: c.role,
+      sharedWith: shareCounts.get(c.id) ?? 0,
     })),
-  })),
+    };
+  }),
+);
+
+// Members a case can be shared with (before /:id).
+router.get('/members', (req, res) =>
+  wrap(res, () => ({ members: shareableMembers(req.user!.id, String(req.query.q ?? '').slice(0, 50)) })),
 );
 
 router.post('/', (req, res) =>
   wrap(res, () => {
     const title = (str(req.body?.title, 200) ?? '').trim() || 'Untitled case';
-    return detail(store.createCase(req.user!.id, title));
+    res.locals.access = 'owner';
+    return detail(store.createCase(req.user!.id, title), res);
   }),
 );
 
@@ -234,9 +282,9 @@ router.put('/analysis/settings', (req, res) =>
   }),
 );
 
-router.get('/:id', owned, (_req, res) => wrap(res, () => detail(theCase(res))));
+router.get('/:id', viewer, (_req, res) => wrap(res, () => detail(theCase(res), res)));
 
-router.put('/:id', owned, (req, res) =>
+router.put('/:id', editor, (req, res) =>
   wrap(res, () => {
     const b = req.body ?? {};
     const c = store.updateCase(theCase(res).id, {
@@ -244,36 +292,57 @@ router.put('/:id', owned, (req, res) =>
       profile: b.profile !== undefined ? cleanProfile(b.profile) : undefined,
       ...(b.summary !== undefined ? { summary: str(b.summary, 20000) || null, summarySource: b.summary ? 'user' : null } : {}),
     });
-    return detail(c);
+    return detail(c, res);
   }),
 );
 
-router.delete('/:id', owned, (_req, res) =>
+router.delete('/:id', owner, (_req, res) =>
   wrap(res, () => {
     store.deleteCase(theCase(res).id);
     return { ok: true };
   }),
 );
 
-router.post('/:id/summary', owned, (_req, res) =>
-  wrap(res, async () => {
+// ── sharing ──────────────────────────────────────────────────────────────────
+
+router.put('/:id/shares/:userId', owner, (req, res) =>
+  wrap(res, () => {
     const c = theCase(res);
-    const text = await summarizeCase(c, store.listItems(c.id));
-    return detail(store.updateCase(c.id, { summary: text, summarySource: 'ai' }));
+    setShare(c.id, c.userId, Number(req.params.userId), req.body?.role === 'editor' ? 'editor' : 'viewer', req.user!.id);
+    return detail(c, res);
   }),
 );
 
-router.post('/:id/reorder', owned, (req, res) =>
+// The owner removes someone, or a member leaves a case shared with them.
+router.delete('/:id/shares/:userId', viewer, (req, res) =>
+  wrap(res, () => {
+    const c = theCase(res);
+    const target = Number(req.params.userId);
+    if (target !== req.user!.id && res.locals.access !== 'owner') throw Object.assign(new Error('Only the case owner can do that'), { status: 403 });
+    removeShare(c.id, target);
+    return target === req.user!.id && res.locals.access !== 'owner' ? { left: true } : detail(c, res);
+  }),
+);
+
+router.post('/:id/summary', editor, (_req, res) =>
+  wrap(res, async () => {
+    const c = theCase(res);
+    const text = await summarizeCase(c, store.listItems(c.id));
+    return detail(store.updateCase(c.id, { summary: text, summarySource: 'ai' }), res);
+  }),
+);
+
+router.post('/:id/reorder', editor, (req, res) =>
   wrap(res, () => {
     const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger);
     store.reorder(theCase(res).id, ids);
-    return detail(theCase(res));
+    return detail(theCase(res), res);
   }),
 );
 
 // ── items ────────────────────────────────────────────────────────────────────
 
-router.post('/:id/items', owned, upload.single('file'), (req, res) =>
+router.post('/:id/items', editor, upload.single('file'), (req, res) =>
   wrap(res, () => {
     const f = req.file;
     if (!f) throw new Error('No file');
@@ -288,7 +357,7 @@ router.post('/:id/items', owned, upload.single('file'), (req, res) =>
   }),
 );
 
-router.patch('/:id/items/:itemId', owned, (req, res) =>
+router.patch('/:id/items/:itemId', editor, (req, res) =>
   wrap(res, () => {
     const b = req.body ?? {};
     store.updateItem(theItem(res).id, {
@@ -305,14 +374,14 @@ router.patch('/:id/items/:itemId', owned, (req, res) =>
   }),
 );
 
-router.delete('/:id/items/:itemId', owned, (_req, res) =>
+router.delete('/:id/items/:itemId', editor, (_req, res) =>
   wrap(res, () => {
     store.deleteItem(theItem(res));
     return { ok: true };
   }),
 );
 
-router.post('/:id/items/:itemId/describe', owned, (_req, res) =>
+router.post('/:id/items/:itemId/describe', editor, (_req, res) =>
   wrap(res, () => {
     const item = theItem(res);
     if (item.ai_status === 'running') throw new Error('Already writing notes for this item');
@@ -322,7 +391,7 @@ router.post('/:id/items/:itemId/describe', owned, (_req, res) =>
 );
 
 /** Poster frame captured in the browser (videos). */
-router.post('/:id/items/:itemId/thumb', owned, thumbUpload.single('thumb'), (req, res) =>
+router.post('/:id/items/:itemId/thumb', editor, thumbUpload.single('thumb'), (req, res) =>
   wrap(res, async () => {
     if (!req.file) throw new Error('No image');
     await setThumb(theItem(res), req.file.buffer);
@@ -333,7 +402,7 @@ router.post('/:id/items/:itemId/thumb', owned, thumbUpload.single('thumb'), (req
 );
 
 /** Frames of a video, sampled in the browser at `fps`, so the analysis can look at every one. */
-router.post('/:id/items/:itemId/sampled-frames', owned, framesUpload.array('frames', 1500), (req, res) =>
+router.post('/:id/items/:itemId/sampled-frames', editor, framesUpload.array('frames', 1500), (req, res) =>
   wrap(res, async () => {
     const item = theItem(res);
     if (item.kind !== 'video') throw new Error('Only videos need sampled frames');
@@ -356,7 +425,7 @@ router.post('/:id/items/:itemId/sampled-frames', owned, framesUpload.array('fram
   }),
 );
 
-router.get('/:id/items/:itemId/sampled-frames/:n', owned, (req, res) => {
+router.get('/:id/items/:itemId/sampled-frames/:n', viewer, (req, res) => {
   const item = theItem(res);
   const f = item.meta.sampledFrames?.files[Number(req.params.n)];
   if (!f) {
@@ -368,21 +437,21 @@ router.get('/:id/items/:itemId/sampled-frames/:n', owned, (req, res) => {
 
 // ── analysis ─────────────────────────────────────────────────────────────────
 
-router.post('/:id/items/:itemId/analysis/suggest', owned, (_req, res) =>
+router.post('/:id/items/:itemId/analysis/suggest', editor, (_req, res) =>
   wrap(res, async () => {
     const s = await analysis.suggest(theItem(res), theCase(res));
     return { pipeline: s.pipeline, reasons: s.reasons, glance: s.glance ?? null, model: s.model ?? null };
   }),
 );
 
-router.get('/:id/items/:itemId/analysis', owned, (_req, res) =>
+router.get('/:id/items/:itemId/analysis', viewer, (_req, res) =>
   wrap(res, () => {
     const list = analysis.listAnalyses(theItem(res).id, 10);
     return { current: list[0] ? analysisView(list[0]) : null, history: list.slice(1).map((a) => analysisBrief(a)) };
   }),
 );
 
-router.get('/:id/items/:itemId/analysis/:aid', owned, (req, res) =>
+router.get('/:id/items/:itemId/analysis/:aid', viewer, (req, res) =>
   wrap(res, () => {
     const a = analysis.getAnalysis(Number(req.params.aid));
     if (!a || a.item_id !== theItem(res).id) throw new Error('Analysis not found');
@@ -390,7 +459,7 @@ router.get('/:id/items/:itemId/analysis/:aid', owned, (req, res) =>
   }),
 );
 
-router.post('/:id/items/:itemId/analysis', owned, (req, res) =>
+router.post('/:id/items/:itemId/analysis', editor, (req, res) =>
   wrap(res, async () => {
     const pipeline = String(req.body?.pipeline ?? '') as PipelineId;
     if (!pipelineById(pipeline)) throw new Error('Pick a pipeline');
@@ -401,7 +470,7 @@ router.post('/:id/items/:itemId/analysis', owned, (req, res) =>
   }),
 );
 
-router.post('/:id/items/:itemId/analysis/:aid/cancel', owned, (req, res) =>
+router.post('/:id/items/:itemId/analysis/:aid/cancel', editor, (req, res) =>
   wrap(res, () => {
     const a = analysis.getAnalysis(Number(req.params.aid));
     if (!a || a.item_id !== theItem(res).id) throw new Error('Analysis not found');
@@ -422,9 +491,9 @@ function send(res: Response, file: string, mime: string, download?: string): voi
   res.type(mime).sendFile(file);
 }
 
-router.get('/:id/items/:itemId/thumb', owned, (_req, res) => send(res, store.itemPath(theItem(res), 'thumb.jpg'), 'image/jpeg'));
+router.get('/:id/items/:itemId/thumb', viewer, (_req, res) => send(res, store.itemPath(theItem(res), 'thumb.jpg'), 'image/jpeg'));
 
-router.get('/:id/items/:itemId/frames/:n', owned, (req, res) => {
+router.get('/:id/items/:itemId/frames/:n', viewer, (req, res) => {
   const item = theItem(res);
   const f = item.meta.frameFiles?.[Number(req.params.n)];
   if (!f) {
@@ -434,7 +503,7 @@ router.get('/:id/items/:itemId/frames/:n', owned, (req, res) => {
   send(res, store.itemPath(item, f.file), 'image/jpeg');
 });
 
-router.get('/:id/items/:itemId/display', owned, (_req, res) => {
+router.get('/:id/items/:itemId/display', viewer, (_req, res) => {
   const item = theItem(res);
   if (!item.meta.display) {
     res.status(404).json({ error: 'Nothing to show for this item' });
@@ -443,7 +512,7 @@ router.get('/:id/items/:itemId/display', owned, (_req, res) => {
   send(res, store.itemPath(item, item.meta.display), item.meta.displayMime ?? 'application/octet-stream');
 });
 
-router.get('/:id/items/:itemId/original/:n', owned, (req, res) => {
+router.get('/:id/items/:itemId/original/:n', viewer, (req, res) => {
   const item = theItem(res);
   const rel = item.meta.originals?.[Number(req.params.n)];
   if (!rel) {

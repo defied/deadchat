@@ -259,9 +259,23 @@ export async function uploadSampledFrames(id: number, itemId: number, frames: Bl
   return data.item;
 }
 
+export type CaseAccess = 'owner' | 'editor' | 'viewer';
+
+export interface CaseShare {
+  userId: number;
+  username: string;
+  role: 'viewer' | 'editor';
+  /** False when that member can't open Medical cases (section not assigned). */
+  canOpen: boolean;
+}
+
 export interface CaseDetail {
   case: MedicalCase;
   items: CaseItem[];
+  /** What you can do: owner (or admin), editor or viewer. */
+  access: CaseAccess;
+  owner: string | null;
+  shares: CaseShare[];
 }
 
 export interface CaseSummary {
@@ -274,6 +288,11 @@ export interface CaseSummary {
   sex?: string;
   specialty?: string;
   chiefComplaint?: string;
+  /** Set when someone else shared this case with you. */
+  sharedBy: string | null;
+  role: CaseAccess;
+  /** How many members it's shared with. */
+  sharedWith: number;
 }
 
 export async function listCases(): Promise<CaseSummary[]> {
@@ -351,3 +370,20 @@ export async function uploadThumb(id: number, itemId: number, blob: Blob, durati
 }
 
 export const itemUrl = (caseId: number, itemId: number, part: string) => `/api/cases/${caseId}/items/${itemId}/${part}`;
+
+// ── sharing ──
+
+export async function listMembers(q = ''): Promise<Array<{ id: number; username: string }>> {
+  const { data } = await client.get<{ members: Array<{ id: number; username: string }> }>('/api/cases/members', { params: { q } });
+  return data.members;
+}
+
+export async function shareCase(id: number, userId: number, role: 'viewer' | 'editor'): Promise<CaseDetail> {
+  const { data } = await client.put<CaseDetail>(`/api/cases/${id}/shares/${userId}`, { role });
+  return data;
+}
+
+export async function unshareCase(id: number, userId: number): Promise<CaseDetail | { left: true }> {
+  const { data } = await client.delete<CaseDetail | { left: true }>(`/api/cases/${id}/shares/${userId}`);
+  return data;
+}
