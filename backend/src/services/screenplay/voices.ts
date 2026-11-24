@@ -11,15 +11,15 @@ import * as studio from '../characters';
 import { getAsset } from '../assetPipeline';
 import * as store from './store';
 import { hashOf } from './prompts';
-import { shotSection } from './script';
+import { cueName as baseCueName, shotSection } from './script';
 import type { Character, Screenplay, ScreenplayMedia } from './types';
 
 export const voiceTarget = (characterId: string) => `voice:${characterId}`;
 export const lineTarget = (elementId: string) => `line:${elementId}`;
 
-/** The cue's name without extensions: "JANE (V.O.)" → "JANE". */
+/** The cue's name without extensions: "JANE (V.O.)" or "JANE:" → "JANE". */
 export function cueName(text: string): string {
-  return text.replace(/\(.*?\)/g, '').replace(/\^/g, '').trim().toUpperCase();
+  return baseCueName(text).toUpperCase();
 }
 
 /** The character a cue belongs to: by full name, or first name. */

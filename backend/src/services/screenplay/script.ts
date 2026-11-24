@@ -40,9 +40,9 @@ function sentenceCase(s: string): string {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-/** The character name in a cue, without extensions: "JANE (V.O.)" → "JANE". */
+/** The character name in a cue, without extensions: "JANE (V.O.)", "JANE:" or "JANE ^" → "JANE". */
 export function cueName(text: string): string {
-  return text.replace(/\(.*?\)/g, '').replace(/\^$/, '').trim();
+  return text.replace(/\(.*?\)/g, '').replace(/\^\s*$/, '').trim().replace(/[:\s]+$/, '').trim();
 }
 
 /** Voice-over and off-screen cues are heard, not seen. */

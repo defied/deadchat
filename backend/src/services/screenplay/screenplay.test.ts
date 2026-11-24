@@ -514,6 +514,7 @@ test('dialogue lines are spoken in each character’s voice, re-made only when t
   const sp = store.createScreenplay(1, 'Voices', doc());
   assert.deepEqual(voices.dialogueLines(sp).map((l) => [l.shotId, l.cue, l.text]), [['sh1', 'JANE', 'Who is there?'], ['sh1', 'TOM', 'It is me.']]);
   assert.equal(voices.characterFor(sp.doc.characters, 'JANE')!.id, 'jane');
+  assert.deepEqual(['JANE:', 'JANE (V.O.)', 'Jane ^', 'JANE (CONT\'D):'].map((c) => script.cueName(c)), ['JANE', 'JANE', 'Jane', 'JANE']);
   assert.equal(voices.characterFor([{ id: 'x', name: 'Jane Doe', kind: 'human' }], 'JANE')!.id, 'x', 'first name answers');
 
   // No voices yet: nothing queued, and the writer is told who's missing one.
