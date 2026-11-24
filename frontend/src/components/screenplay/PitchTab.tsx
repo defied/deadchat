@@ -25,9 +25,10 @@ import {
 } from 'lucide-react';
 import * as api from '../../api/screenplays';
 import type { Detail, Pitch, Reel, ReelItem, ScreenplayDoc, ScreenplayMedia } from '../../api/screenplays';
+import { soundCredit, soundMeta } from '../../api/screenplays';
 import { Markdown } from '../chat/Markdown';
 import { Alert, EmptyState, errorMessage } from '../ui';
-import { cueName, newId, sceneNumbers } from './format';
+import { cueName, newId, sceneNumbers, shotBlocks } from './format';
 import { SpImage, useBlobUrl } from './media';
 
 type Update = (fn: (d: ScreenplayDoc) => ScreenplayDoc, group?: string) => void;
@@ -135,7 +136,7 @@ function ReelEditor({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState<false | 'reel' | 'animatic'>(false);
   const [durations, setDurations] = useState<Record<string, number>>({});
   const input = useRef<HTMLInputElement | null>(null);
   const files = (detail?.media.other ?? []).filter((m) => m.role === 'reel');
@@ -236,8 +237,11 @@ function ReelEditor({
       {error && <Alert>{error}</Alert>}
 
       <div className="sp-reel-bar">
-        <button className="btn btn-primary" disabled={!reel.items.length} onClick={() => setPlaying(true)}>
+        <button className="btn btn-primary" disabled={!reel.items.length} onClick={() => setPlaying('reel')}>
           <Play size={14} /> Play reel
+        </button>
+        <button className="btn" disabled={!doc.shots.length} onClick={() => setPlaying('animatic')} title="Every shot in script order, for its length, with dialogue subtitles, its sounds and music cue">
+          <Clapperboard size={14} /> Play animatic
         </button>
         <span className="field-hint">
           {reel.items.length} item{reel.items.length === 1 ? '' : 's'} · about {fmt(total)}
@@ -395,7 +399,21 @@ function ReelEditor({
         </details>
       )}
 
-      {playing && <ReelPlayer title={title} doc={doc} detail={detail} onClose={() => setPlaying(false)} />}
+      {playing && (
+        <ReelPlayer
+          beats={playing === 'animatic' ? animaticBeats(title, doc, detail) : reelBeats(title, doc, detail)}
+          soundtrackMediaId={
+            playing === 'animatic'
+              ? null
+              : reel.soundtrack?.kind === 'upload'
+                ? detail?.media.other.find((m) => m.id === (reel.soundtrack as { mediaRowId: number }).mediaRowId)?.media_id
+                : reel.soundtrack?.kind === 'cue'
+                  ? detail?.media.lastReady[`music:${reel.soundtrack.shotId}`]?.media_id
+                  : null
+          }
+          onClose={() => setPlaying(false)}
+        />
+      )}
     </div>
   );
 }
@@ -417,32 +435,75 @@ function ReelVideoThumb({ mediaId, at, onDuration }: { mediaId: number; at: numb
 
 // ── player ───────────────────────────────────────────────────────────────────
 
-type Beat =
-  | { kind: 'card'; title: string; sub?: string; seconds: number }
-  | { kind: 'image'; mediaId: number; seconds: number; caption?: string }
-  | { kind: 'video'; mediaId: number; from: number; to?: number; caption?: string };
+/** Sounds that play under one beat (a shot's kept sounds, or its music cue). */
+interface Layer {
+  mediaId: number;
+  volume: number;
+}
 
-function ReelPlayer({ title, doc, detail, onClose }: { title: string; doc: ScreenplayDoc; detail?: Detail; onClose: () => void }) {
+type Beat = { layers?: Layer[] } & (
+  | { kind: 'card'; title: string; sub?: string; seconds: number; shot?: boolean }
+  | { kind: 'image'; mediaId: number; seconds: number; caption?: string }
+  | { kind: 'video'; mediaId: number; from: number; to?: number; caption?: string }
+);
+
+/** A shot's kept sounds (and, for the animatic, its music cue) as layers. */
+function shotLayers(shotId: string, detail: Detail | undefined, withCue: boolean): Layer[] {
+  const out: Layer[] = (detail?.media.other ?? [])
+    .filter((m) => m.role === 'sound' && m.target === shotId && m.media_id)
+    .map((m) => ({ mediaId: m.media_id!, volume: soundMeta(m)?.volume ?? 0.8 }));
+  const cue = withCue ? detail?.media.lastReady[`music:${shotId}`]?.media_id : undefined;
+  if (cue) out.push({ mediaId: cue, volume: 0.7 });
+  return out;
+}
+
+function reelBeats(title: string, doc: ScreenplayDoc, detail?: Detail): Beat[] {
   const reel = doc.pitch?.reel ?? { items: [] };
-  const beats = useMemo<Beat[]>(() => {
-    const out: Beat[] = [];
-    if (reel.openCard !== false) out.push({ kind: 'card', title: doc.titlePage?.title || title, sub: doc.pitch?.logline, seconds: CARD_SECONDS });
-    for (const it of reel.items) {
-      const src = sourceOf(it, detail);
-      if (!src.mediaId) continue;
-      if (src.kind === 'video') out.push({ kind: 'video', mediaId: src.mediaId, from: it.in ?? 0, to: it.out, caption: it.caption });
-      else out.push({ kind: 'image', mediaId: src.mediaId, seconds: it.hold ?? DEFAULT_HOLD, caption: it.caption });
+  const out: Beat[] = [];
+  if (reel.openCard !== false) out.push({ kind: 'card', title: doc.titlePage?.title || title, sub: doc.pitch?.logline, seconds: CARD_SECONDS });
+  for (const it of reel.items) {
+    const src = sourceOf(it, detail);
+    if (!src.mediaId) continue;
+    // A storyboard frame brings its shot's sounds along (the soundtrack covers music).
+    const layers = it.source.kind === 'frame' ? shotLayers(it.source.shotId, detail, false) : undefined;
+    if (src.kind === 'video') out.push({ kind: 'video', mediaId: src.mediaId, from: it.in ?? 0, to: it.out, caption: it.caption, layers });
+    else out.push({ kind: 'image', mediaId: src.mediaId, seconds: it.hold ?? DEFAULT_HOLD, caption: it.caption, layers });
+  }
+  if (reel.endCard) out.push({ kind: 'card', title: reel.endCard, seconds: CARD_SECONDS });
+  return out;
+}
+
+/**
+ * The animatic: every shot in script order for its length, its dialogue as
+ * subtitles, with its kept sounds and music cue. Shots without a frame show
+ * their action line on a card.
+ */
+export function animaticBeats(title: string, doc: ScreenplayDoc, detail?: Detail): Beat[] {
+  const blocks = shotBlocks(doc);
+  const order = new Map(doc.elements.map((e, i) => [e.id, i]));
+  const shots = [...doc.shots].sort((a, b) => (order.get(a.anchorId) ?? 0) - (order.get(b.anchorId) ?? 0));
+  const out: Beat[] = [{ kind: 'card', title: doc.titlePage?.title || title, sub: doc.pitch?.logline, seconds: CARD_SECONDS }];
+  for (const s of shots) {
+    const els = doc.elements.filter((e) => blocks.get(e.id) === s.id);
+    const lines: string[] = [];
+    for (let i = 0; i < els.length; i++) {
+      if (els[i].type !== 'character') continue;
+      const who = cueName(els[i].text);
+      const said = els.slice(i + 1).find((e) => e.type === 'dialogue')?.text;
+      if (said) lines.push(`${who}: ${said}`);
     }
-    if (reel.endCard) out.push({ kind: 'card', title: reel.endCard, seconds: CARD_SECONDS });
-    return out;
-  }, [reel, doc.titlePage?.title, doc.pitch?.logline, title, detail]);
-  const soundId =
-    reel.soundtrack?.kind === 'upload'
-      ? detail?.media.other.find((m) => m.id === (reel.soundtrack as { mediaRowId: number }).mediaRowId)?.media_id
-      : reel.soundtrack?.kind === 'cue'
-        ? detail?.media.lastReady[`music:${reel.soundtrack.shotId}`]?.media_id
-        : undefined;
-  const { url: soundUrl } = useBlobUrl(soundId ?? null);
+    const seconds = s.seconds ?? DEFAULT_HOLD;
+    const frame = detail?.media.lastReady[`frame:${s.id}`]?.media_id;
+    const layers = shotLayers(s.id, detail, true);
+    if (frame) out.push({ kind: 'image', mediaId: frame, seconds, caption: lines.join('\n') || undefined, layers });
+    else out.push({ kind: 'card', shot: true, title: els.find((e) => e.type === 'action')?.text ?? s.type ?? 'Shot', sub: lines.join('\n') || undefined, seconds, layers });
+  }
+  out.push({ kind: 'card', title: 'End', seconds: 2 });
+  return out;
+}
+
+function ReelPlayer({ beats, soundtrackMediaId, onClose }: { beats: Beat[]; soundtrackMediaId?: number | null; onClose: () => void }) {
+  const { url: soundUrl } = useBlobUrl(soundtrackMediaId ?? null);
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -490,7 +551,7 @@ function ReelPlayer({ title, doc, detail, onClose }: { title: string; doc: Scree
           </div>
         </div>
       ) : beat.kind === 'card' ? (
-        <div className="sp-reel-card">
+        <div className={`sp-reel-card ${beat.shot ? 'shot' : ''}`}>
           <h2>{beat.title}</h2>
           {beat.sub && <p>{beat.sub}</p>}
         </div>
@@ -500,6 +561,7 @@ function ReelPlayer({ title, doc, detail, onClose }: { title: string; doc: Scree
         <ReelVideo key={i} beat={beat} paused={paused} onEnd={next} />
       )}
       {!done && beat.kind !== 'card' && beat.caption && <div className="sp-reel-caption">{beat.caption}</div>}
+      {!done && !paused && beat.layers?.map((l, n) => <LayerAudio key={`${i}-${n}`} layer={l} />)}
       <div className="sp-reel-hud" onClick={(e) => e.stopPropagation()}>
         <span>{Math.min(i + 1, beats.length)} / {beats.length}{paused ? ' · paused' : ''}</span>
         <span className="field-hint">Space pauses · ← → skip · Esc closes</span>
@@ -507,6 +569,17 @@ function ReelPlayer({ title, doc, detail, onClose }: { title: string; doc: Scree
       </div>
     </div>
   );
+}
+
+function LayerAudio({ layer }: { layer: Layer }) {
+  const { url } = useBlobUrl(layer.mediaId);
+  const a = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (!a.current || !url) return;
+    a.current.volume = Math.max(0, Math.min(1, layer.volume));
+    void a.current.play().catch(() => undefined);
+  }, [url, layer.volume]);
+  return url ? <audio ref={a} src={url} /> : null;
 }
 
 function ReelVideo({ beat, paused, onEnd }: { beat: Extract<Beat, { kind: 'video' }>; paused: boolean; onEnd: () => void }) {
@@ -730,6 +803,11 @@ function PrintPitch({ title, doc, detail, onDone }: { title: string; doc: Screen
   const p = doc.pitch ?? {};
   const v = p.vision ?? {};
   const tp = doc.titlePage ?? {};
+  const credits = (detail?.media.other ?? [])
+    .filter((m) => m.role === 'sound')
+    .map((m) => ({ m, meta: soundMeta(m) }))
+    .filter((x) => x.meta?.license.attribution)
+    .map((x) => soundCredit(x.m.label ?? 'Untitled', x.meta!));
   return (
     <div className="sp-print-pitch-wait">
       {error ? (
@@ -776,6 +854,12 @@ function PrintPitch({ title, doc, detail, onDone }: { title: string; doc: Screen
             <div className="treatment"><Markdown text={p.treatment} /></div>
           </section>
         )}
+        {credits.length > 0 && (
+          <section className="credits">
+            <h2>Sound credits</h2>
+            <ul>{credits.map((c) => <li key={c}>{c}</li>)}</ul>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -802,4 +886,5 @@ section.cover { page-break-before: auto; text-align: center; min-height: 9in; }
 .board img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
 .treatment p { margin: 0 0 0.12in; }
 .treatment h2, .treatment h3 { border: 0; page-break-after: avoid; }
+.credits li { font-size: 10pt; margin-bottom: 3pt; }
 `;

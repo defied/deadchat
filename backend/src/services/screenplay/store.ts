@@ -151,7 +151,7 @@ export function latestMedia(screenplayId: number, role: MediaRole, target: strin
 
 export function updateMedia(
   id: number,
-  patch: Partial<Pick<ScreenplayMedia, 'status' | 'caption' | 'label' | 'media_id' | 'error' | 'target'>>,
+  patch: Partial<Pick<ScreenplayMedia, 'status' | 'caption' | 'label' | 'media_id' | 'error' | 'target' | 'meta'>>,
 ): void {
   const keys = Object.keys(patch) as Array<keyof typeof patch>;
   if (!keys.length) return;

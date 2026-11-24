@@ -163,7 +163,7 @@ export interface ReelItem {
   caption?: string;
 }
 
-export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel';
+export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel' | 'sound';
 
 export interface ScreenplayMedia {
   id: number;
@@ -179,6 +179,8 @@ export interface ScreenplayMedia {
   media_id: number | null;
   error: string | null;
   created_at: string;
+  /** JSON for gathered sounds: see SoundMeta. */
+  meta?: string | null;
 }
 
 export interface ShotPlanView {
@@ -299,5 +301,101 @@ export async function uploadReelFile(id: number, file: File, onProgress?: (f: nu
 
 export async function deleteMediaRow(id: number, mediaRowId: number): Promise<Detail> {
   const { data } = await client.delete<Detail>(`/api/screenplays/${id}/media/${mediaRowId}`);
+  return data;
+}
+
+// ── sounds gathered from free libraries ──
+
+export interface SoundLicense {
+  code: 'cc0' | 'pdm' | 'by' | 'by-sa' | 'by-nc' | 'by-nc-sa' | 'by-nd' | 'by-nc-nd' | 'unknown';
+  name: string;
+  url: string | null;
+  commercial: boolean;
+  derivatives: boolean;
+  attribution: boolean;
+}
+
+export interface SoundCandidate {
+  key: string;
+  source: 'archive' | 'openverse';
+  sourceName: string;
+  title: string;
+  creator: string | null;
+  license: SoundLicense;
+  landingUrl: string;
+  audioUrl: string;
+  durationS: number | null;
+  tags: string[];
+  category: string | null;
+}
+
+export interface SoundWant {
+  id: string;
+  want: string;
+  kind: 'ambience' | 'effect' | 'foley' | 'music';
+  queries: string[];
+  candidates: SoundCandidate[];
+  errors: string[];
+}
+
+export interface SoundHunt {
+  id: number;
+  scope: string;
+  request: string;
+  options: { allowNonCommercial?: boolean };
+  status: 'queued' | 'planning' | 'searching' | 'done' | 'failed';
+  progress: string;
+  wants: SoundWant[];
+  error: string | null;
+  created_at: string;
+}
+
+export interface SoundMeta {
+  key: string;
+  want: string;
+  kind: SoundWant['kind'];
+  sourceName: string;
+  creator: string | null;
+  landingUrl: string;
+  durationS: number | null;
+  license: SoundLicense;
+  volume?: number;
+}
+
+export function soundMeta(m: ScreenplayMedia): SoundMeta | null {
+  try {
+    return m.meta ? (JSON.parse(m.meta) as SoundMeta) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** "“Rain” by Ann (Freesound), CC BY 4.0". */
+export function soundCredit(title: string, m: Pick<SoundMeta, 'creator' | 'sourceName' | 'license'>): string {
+  return `“${title}”${m.creator ? ` by ${m.creator}` : ''} (${m.sourceName}), ${m.license.name}`;
+}
+
+export async function startSoundHunt(id: number, body: { scope: string; request: string; allowNonCommercial: boolean }): Promise<SoundHunt> {
+  const { data } = await client.post<{ hunt: SoundHunt }>(`/api/screenplays/${id}/sounds/hunts`, body);
+  return data.hunt;
+}
+
+export async function listSoundHunts(id: number): Promise<SoundHunt[]> {
+  const { data } = await client.get<{ hunts: SoundHunt[] }>(`/api/screenplays/${id}/sounds/hunts`);
+  return data.hunts;
+}
+
+export async function getSoundHunt(id: number, huntId: number): Promise<SoundHunt> {
+  const { data } = await client.get<{ hunt: SoundHunt }>(`/api/screenplays/${id}/sounds/hunts/${huntId}`);
+  return data.hunt;
+}
+
+export async function keepSound(id: number, huntId: number, key: string, target: string): Promise<Detail & { added: number }> {
+  const { data } = await client.post<Detail & { added: number }>(`/api/screenplays/${id}/sounds`, { huntId, key, target }, { timeout: 180_000 });
+  return data;
+}
+
+export async function updateSound(id: number, rowId: number, patch: { target?: string; volume?: number }): Promise<Detail> {
+  const { data } = await client.patch<Detail>(`/api/screenplays/${id}/media/${rowId}`, patch);
   return data;
 }

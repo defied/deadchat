@@ -140,6 +140,14 @@ Meta tokens are renewed automatically about once a week (they expire after 60 da
   - **Hover:** hovering a shot highlights its script block, and hovering a script line highlights its shot.
   - **Lock:** the padlock on a shot keeps its frame and music exactly as they are. Nothing re-renders, not even when its script changes, on Render now, or on Re-roll, until you unlock it.
   - **Extras:** when the action mentions unnamed people (a crowd, waiters, passers-by), the prompt describes them as unrelated strangers with their own faces and clothes, so they don't copy a named character's look or outfit.
+- **Sound tab:** describe what you want ("a storm hitting an old lighthouse, a distant foghorn, something mournful on cello"), or point it at a shot, a scene or the whole script.
+  - The local model splits the request into separate sounds (ambience, effects, foley, music) with search terms.
+  - The gatherer searches free libraries only: the Internet Archive, and Freesound, Wikimedia Commons, Jamendo and ccMixter through Openverse. No API keys needed.
+  - Each sound gets a collection of up to 10 candidates, ranked by match, licence freedom and length. Listen in place, then **Keep** one for a shot or the library.
+  - By default you only see sounds you can change and use commercially (CC0, public domain, CC BY, CC BY-SA). "Include non-commercial" adds NC sounds for private pitches. "No derivatives" sounds are never offered, since we trim and mix.
+  - Credits for sounds that need them are kept, can be copied, and are printed in the pitch document.
+  - A shot's box shows its sounds and has a **Find sounds** button.
+- **Animatic** (Pitch → Rip reel → Play animatic): every shot in script order for its length, with dialogue as subtitles, its kept sounds and its music cue underneath. Storyboard frames in the rip reel also bring their shot's sounds along.
 - **Pitch tab:** a logline plus three parts, all written by you (no AI).
   - **Rip reel:** upload clips (MP4, WebM, MOV), stills and a soundtrack, or add storyboard frames.
     - Set in and out points, hold times and on-screen captions, and reorder.

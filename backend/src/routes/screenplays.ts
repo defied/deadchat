@@ -8,7 +8,8 @@ import { ELEMENT_TYPES, emptyDoc, type Character, type Pitch, type PlanItem, typ
 import fs from 'fs';
 import os from 'os';
 import multer from 'multer';
-import { saveMediaFile } from '../services/mediaStore';
+import { saveMedia, saveMediaFile } from '../services/mediaStore';
+import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
 import * as store from '../services/screenplay/store';
 import {
   REF_VIEWS,
@@ -364,6 +365,46 @@ router.post('/:id/reel', owned, reelUpload.single('file'), (req, res) =>
   }),
 );
 
+// ── sounds: gathered from free libraries ─────────────────────────────────────
+
+router.post('/:id/sounds/hunts', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const scope = req.body?.scope === 'script' ? 'script' : req.body?.scope ? id(req.body.scope) : '';
+    const request = (str(req.body?.request, 2000) ?? '').trim();
+    if (!request && !scope) throw new Error('Describe the sounds you want, or pick a shot or scene');
+    if (scope && scope !== 'script' && !s.doc.shots.some((x) => x.id === scope) && !s.doc.elements.some((e) => e.id === scope && e.type === 'scene')) {
+      throw new Error('That shot or scene no longer exists');
+    }
+    return { hunt: createHunt(s, scope, request, { allowNonCommercial: req.body?.allowNonCommercial === true }) };
+  }),
+);
+
+router.get('/:id/sounds/hunts', owned, (_req, res) => wrap(res, () => ({ hunts: listHunts(sp(res).id) })));
+
+router.get('/:id/sounds/hunts/:hid', owned, (req, res) =>
+  wrap(res, () => {
+    const h = getHunt(Number(req.params.hid));
+    if (!h || h.screenplay_id !== sp(res).id) throw new Error('Not found');
+    return { hunt: h };
+  }),
+);
+
+// Keep a sound the gatherer found (by its key in that search), for a shot or the library.
+router.post('/:id/sounds', owned, (req, res) =>
+  wrap(res, async () => {
+    const s = sp(res);
+    const h = getHunt(Number(req.body?.huntId));
+    if (!h || h.screenplay_id !== s.id) throw new Error('Search not found');
+    const target = req.body?.target ? id(req.body.target) : '';
+    if (target && !s.doc.shots.some((x) => x.id === target)) throw new Error('That shot no longer exists');
+    const rowId = await keepCandidate(s, h, String(req.body?.key ?? ''), target, (bytes, mime, filename) =>
+      saveMedia({ userId: s.userId, type: 'audio', bytes, mime, originalFilename: filename, prompt: 'Screenplay sound' }).id,
+    );
+    return { ...detail(store.getScreenplay(s.id)!), added: rowId };
+  }),
+);
+
 router.patch('/:id/media/:mid', owned, (req, res) =>
   wrap(res, () => {
     const row = store.getMedia(Number(req.params.mid));
@@ -376,6 +417,15 @@ router.patch('/:id/media/:mid', owned, (req, res) =>
       scheduleReconcile(sp(res).id, 0);
     } else if (row.role === 'reel' && req.body?.label !== undefined) {
       store.updateMedia(row.id, { label: (str(req.body.label, 200) ?? '').trim() || null });
+    } else if (row.role === 'sound') {
+      const target = req.body?.target !== undefined ? (req.body.target ? id(req.body.target) : '') : undefined;
+      if (target && !sp(res).doc.shots.some((x) => x.id === target)) throw new Error('That shot no longer exists');
+      const meta = (() => { try { return JSON.parse(row.meta ?? '{}'); } catch { return {}; } })();
+      const volume = num(req.body?.volume, 0, 1);
+      store.updateMedia(row.id, {
+        ...(target !== undefined ? { target } : {}),
+        ...(volume !== undefined ? { meta: JSON.stringify({ ...meta, volume }) } : {}),
+      });
     }
     return detail(sp(res));
   }),
@@ -385,7 +435,7 @@ router.delete('/:id/media/:mid', owned, (req, res) =>
   wrap(res, () => {
     const row = store.getMedia(Number(req.params.mid));
     if (!row || row.screenplay_id !== sp(res).id) throw new Error('Not found');
-    if (row.role !== 'reference' && row.role !== 'character' && row.role !== 'reel') throw new Error('Only reference, character and reel files can be removed');
+    if (!['reference', 'character', 'reel', 'sound'].includes(row.role)) throw new Error('Only reference, character, reel and sound files can be removed');
     store.deleteMedia(row.id);
     if (row.role === 'reference') scheduleReconcile(sp(res).id, 0);
     return detail(sp(res));
