@@ -147,6 +147,10 @@ Meta tokens are renewed automatically about once a week (they expire after 60 da
   - By default you only see sounds you can change and use commercially (CC0, public domain, CC BY, CC BY-SA). "Include non-commercial" adds NC sounds for private pitches. "No derivatives" sounds are never offered, since we trim and mix.
   - Credits for sounds that need them are kept, can be copied, and are printed in the pitch document.
   - A shot's box shows its sounds and has a **Find sounds** button.
+- **Generate shots / Clear shots** (Script toolbar):
+  - **Generate shots:** the local model breaks each scene that has no shots into a shot list (where shots start, type, length, lens, a short note), scene by scene with progress. If the model is down, it uses a simple rule-based breakdown. It can pause frame renders so you can review first.
+  - **Clear shots:** removes all shots except locked ones.
+  - Each is one Undo step. The script itself is never changed.
 - **Shot box:**
   - **Images:** add an image to the shot, or pick one from References. Its look steers the frame, or **Use as frame** shows it instead of rendering one.
   - **Sounds:** add kept sounds from the library with a volume each, take them off, or **Find sounds**.

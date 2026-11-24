@@ -438,3 +438,9 @@ kbd {
 .sp-voice p { margin: 0; }
 .sp-voice-lines { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .sp-voice-lines .btn { display: inline-flex; gap: 6px; align-items: center; }
+.sp-gen { display: flex; flex-direction: column; gap: 12px; font-size: 14px; }
+.sp-gen p { margin: 0; line-height: 1.5; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sp-gen progress { width: 100%; height: 6px; accent-color: var(--color-accent); }
+.sp-gen-density { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.sp-gen-density legend { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
+.sp-gen-density .tab-perm { align-items: flex-start; }

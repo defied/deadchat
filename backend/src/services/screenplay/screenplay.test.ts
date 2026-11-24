@@ -21,6 +21,7 @@ const store = require('./store') as typeof import('./store');
 const render = require('./render') as typeof import('./render');
 const { cleanDoc } = require('../../routes/screenplays') as typeof import('../../routes/screenplays');
 const voices = require('./voices') as typeof import('./voices');
+const suggest = require('./suggestShots') as typeof import('./suggestShots');
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 import type { ScreenplayDoc, PlanItem } from './types';
@@ -572,6 +573,46 @@ test('a shot using a chosen image as its frame never renders one', () => {
   assert.equal(made.length, 1, 'only shot 2 renders');
   assert.doesNotMatch(made[0], /gripping a knife/);
   assert.equal(cleanDoc({ elements: [{ id: 'a1', type: 'action', text: 'x' }], shots: [{ id: 's', anchorId: 'a1', frameImage: 7 }] }).shots[0].frameImage, 7);
+});
+
+test('suggested shots: the model’s breakdown is checked against the scene; rules when it can’t help', async () => {
+  const sp = store.createScreenplay(1, 'Suggest', doc());
+  assert.deepEqual(suggest.sceneElements(sp, 's1').map((e) => e.id), ['s1', 'a1', 'c1', 'p1', 'd1', 'c2', 'd2', 'a2']);
+  const real = globalThis.fetch;
+  let asked = '';
+  globalThis.fetch = (async (_u: string | URL, init?: RequestInit) => {
+    const b = JSON.parse(String(init?.body));
+    asked = b.messages[1].content;
+    const shots = [
+      { line: 2, type: 'wide', seconds: 5.2, lens: 26, note: 'Kitchen in the storm' },
+      { line: 5, type: 'Close-up shot', seconds: 2, lens: 90 },
+      { line: 5, type: 'Medium', seconds: 3 }, // duplicate line: dropped
+      { line: 99, type: 'Wide' }, // no such line: dropped
+      { line: 8, type: 'Something odd', seconds: 400 },
+    ];
+    return new Response(JSON.stringify({ message: { content: JSON.stringify({ shots }) } }));
+  }) as typeof fetch;
+  try {
+    const r = await suggest.suggestShots(sp, 's1', 'more');
+    assert.equal(r.source, 'ai');
+    assert.match(asked, /Give full coverage/);
+    assert.match(asked, /1\. SCENE: INT\. JANE'S KITCHEN - NIGHT\n2\. ACTION: Rain hammers/);
+    assert.deepEqual(r.shots, [
+      { anchorId: 'a1', type: 'Wide', seconds: 5, lens: 24, notes: 'Kitchen in the storm' },
+      { anchorId: 'd1', type: 'Close-up', seconds: 2, lens: 85 },
+      { anchorId: 'a2', type: 'Something odd', seconds: 30 },
+    ]);
+
+    globalThis.fetch = (async () => new Response('down', { status: 500 })) as typeof fetch;
+    const rules = await suggest.suggestShots(sp, 's1', 'normal');
+    assert.equal(rules.source, 'rules');
+    assert.deepEqual(rules.shots.map((x) => [x.anchorId, x.type]), [['a1', 'Wide'], ['c1', 'Medium close-up'], ['c2', 'Over-the-shoulder'], ['a2', 'Medium']]);
+    assert.deepEqual((await suggest.suggestShots(sp, 's1', 'fewer')).shots.map((x) => x.anchorId), ['a1', 'c1']);
+    assert.deepEqual((await suggest.suggestShots(sp, 's2', 'normal')).shots.map((x) => x.anchorId), ['a3'], 'a scene with only action gets its opening shot');
+    await assert.rejects(suggest.suggestShots(sp, 'nope', 'normal'), /no longer exists/);
+  } finally {
+    globalThis.fetch = real;
+  }
 });
 
 test('saving with a stale version is refused', () => {
