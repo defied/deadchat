@@ -168,6 +168,9 @@
 .sp-photo img, .sp-photo .sp-img-loading, .sp-photo .sp-img-missing { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; display: flex; }
 .sp-photo figcaption { display: flex; align-items: center; gap: 4px; padding: 4px 6px; font-size: 12px; color: var(--color-text-secondary); }
 .sp-photo figcaption span { flex: 1; }
+.sp-casting { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-bottom: 14px; }
+.sp-cast-desc { margin: 0; padding: 0 6px 6px; font-size: 11px; line-height: 1.35; color: var(--color-text-secondary); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.sp-cast-badge { flex: 0 0 auto !important; display: inline-flex; align-items: center; gap: 2px; color: var(--color-accent); font-weight: 600; }
 
 /* ── set plan ── */
 

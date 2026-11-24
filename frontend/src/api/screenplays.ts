@@ -277,6 +277,21 @@ export async function characterRefs(id: number, characterId: string, views: stri
   return data;
 }
 
+/** Four different looks for a character, rendered as headshots (character media labelled 'casting'). */
+export async function castCharacter(id: number, characterId: string): Promise<Detail> {
+  const { data } = await client.post<Detail>(`/api/screenplays/${id}/characters/${characterId}/casting`, {});
+  return data;
+}
+
+export function castingLook(m: ScreenplayMedia): string | null {
+  try {
+    const v = m.meta ? (JSON.parse(m.meta) as { look?: unknown }).look : null;
+    return typeof v === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function refineCharacter(id: number, characterId: string, notes: string): Promise<string> {
   const { data } = await client.post<{ appearance: string }>(`/api/screenplays/${id}/characters/${characterId}/refine`, { notes });
   return data.appearance;

@@ -669,3 +669,30 @@ test('flares come only from a light in the scene', () => {
   assert.match(prompts.flareLine('vintage-anamorphic', 'A car pulls up, headlights blazing. Neon hums.'), /the headlights or the neon signs are visible.*amber/);
   assert.deepEqual(prompts.lightSources('Golden hour. Sunlight floods the field.'), ['the low sun']);
 });
+
+test('casting proposes four looks from the brief, or reuses the description without a model', async () => {
+  const c = { id: 'ch1', name: 'Ferk', age: '20s', gender: 'male', personality: 'cocky influencer', appearance: 'red hair' };
+  assert.match(render.castingBrief(c), /Name: Ferk\nAge: 20s\nGender: male\nAppearance so far: red hair\nPersonality: cocky influencer/);
+  const real = render.castingDeps.llmJson;
+  try {
+    let asked = '';
+    render.castingDeps.llmJson = (async (_sys: string, user: string) => {
+      asked = user;
+      return { looks: [{ label: 'wiry freckled redhead', appearance: 'Wiry, freckled, copper curls.' }, { appearance: 'Stocky, buzz-cut ginger.' }, { label: 'x', appearance: '' }] };
+    }) as typeof real;
+    const looks = await render.castingLooks(c);
+    assert.match(asked, /Name: Ferk/);
+    assert.deepEqual(looks, [
+      { label: 'wiry freckled redhead', appearance: 'Wiry, freckled, copper curls.' },
+      { label: 'Look 2', appearance: 'Stocky, buzz-cut ginger.' },
+    ]);
+    render.castingDeps.llmJson = (async () => {
+      throw new Error('offline');
+    }) as typeof real;
+    const fallback = await render.castingLooks(c);
+    assert.equal(fallback.length, 4);
+    assert.deepEqual(fallback[0], { label: 'Take 1', appearance: 'red hair' });
+  } finally {
+    render.castingDeps.llmJson = real;
+  }
+});

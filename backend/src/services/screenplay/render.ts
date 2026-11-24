@@ -383,6 +383,88 @@ export function queueCharacterRefs(sp: Screenplay, c: Character, views: RefView[
   });
 }
 
+// ── casting ──────────────────────────────────────────────────────────────────
+
+export interface CastingLook {
+  /** Two to five words: "wiry, freckled redhead". */
+  label: string;
+  /** A full appearance paragraph; casting this look copies it into the character. */
+  appearance: string;
+}
+
+/** What the writer has told us about the character, for the casting call. */
+export function castingBrief(c: Character): string {
+  return [
+    `Name: ${c.name}`,
+    c.kind && c.kind !== 'human' ? `Kind: ${c.kind}${c.species ? ` (${c.species})` : ''}` : '',
+    c.age ? `Age: ${c.age}` : '',
+    c.gender ? `Gender: ${c.gender}` : '',
+    c.role ? `Role: ${c.role}` : '',
+    c.appearance?.trim() ? `Appearance so far: ${c.appearance.trim()}` : '',
+    c.personality?.trim() ? `Personality: ${c.personality.trim()}` : '',
+    c.backstory?.trim() ? `Backstory: ${c.backstory.trim().slice(0, 800)}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export const castingDeps = { llmJson };
+
+/**
+ * Four distinctly different looks that all fit the writer's brief, like a
+ * casting call. Anything the writer fixed stays; everything else varies.
+ * Without a model, the current description is used four times (the renders
+ * still differ by seed).
+ */
+export async function castingLooks(c: Character, count = 4): Promise<CastingLook[]> {
+  try {
+    const out = await castingDeps.llmJson<{ looks?: Array<{ label?: unknown; appearance?: unknown }> }>(
+      'You are a casting director for an invented film character. Propose ' +
+        count +
+        ' clearly different looks that all fit the brief, as {"looks":[{"label":"2-5 word summary","appearance":"..."}]}. ' +
+        'Keep every trait the brief already states (age, gender, species, named features). Vary everything it leaves open: ' +
+        'face shape, features, hair, colouring, skin tone, build, height, distinguishing marks. Each appearance is one paragraph ' +
+        'of concrete physical traits only: no wardrobe, no personality, no story. Never describe or resemble a real person.',
+      castingBrief(c),
+    );
+    const looks = (Array.isArray(out.looks) ? out.looks : [])
+      .map((l) => ({ label: asString(l?.label, 80) ?? '', appearance: asString(l?.appearance, 1500) ?? '' }))
+      .filter((l) => l.appearance)
+      .slice(0, count);
+    if (looks.length) return looks.map((l, i) => ({ ...l, label: l.label || `Look ${i + 1}` }));
+  } catch {
+    // fall through to seeds
+  }
+  const base = c.appearance?.trim() || [c.age, c.gender, c.species || c.kind].filter(Boolean).join(' ') || c.name;
+  return Array.from({ length: count }, (_, i) => ({ label: `Take ${i + 1}`, appearance: base }));
+}
+
+/** Queue a headshot for each look; rows are 'character' media labelled 'casting'. */
+export async function castCharacter(sp: Screenplay, c: Character, count = 4): Promise<ScreenplayMedia[]> {
+  const looks = await castingLooks(c, count);
+  const model = imageModelFor(sp);
+  const round = Date.now();
+  return looks.map((look) => {
+    const prompt = characterPrompt({ ...c, appearance: look.appearance }, 'portrait', sp.doc.settings.style);
+    const jobId = enqueue(
+      'image',
+      {
+        catalogId: model.id,
+        prompt,
+        negative: NEGATIVE,
+        ratio: ratioFor(model, '3:4'),
+        seed: Math.floor(Math.random() * 2_147_483_647),
+        enhance: false,
+        verifyAttempts: 1,
+      },
+      { userId: sp.userId, heavy: true },
+    );
+    const row = store.addMedia(sp.id, 'character', c.id, { prompt, job_id: jobId, label: 'casting', caption: look.appearance });
+    store.updateMedia(row.id, { meta: JSON.stringify({ look: look.label, round }) });
+    return { ...row, meta: JSON.stringify({ look: look.label, round }) };
+  });
+}
+
 /** Turn rough notes into a concise visual description for the image model. */
 export async function refineAppearance(c: Character, notes: string): Promise<string> {
   const out = await llmJson<{ appearance?: string }>(

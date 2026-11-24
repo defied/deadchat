@@ -3,7 +3,7 @@
 // into every shot the character is in.
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, ImagePlus, Loader2, Plus, Sparkles, Star, Trash2, UserPlus, Users } from 'lucide-react';
+import { AlertTriangle, Check, Clapperboard, ImagePlus, Loader2, Plus, Sparkles, Star, Trash2, UserPlus, Users } from 'lucide-react';
 import * as api from '../../api/screenplays';
 import type { Character, CharacterKind, Detail, ScreenplayDoc } from '../../api/screenplays';
 import { Alert, EmptyState, Field, errorMessage } from '../ui';
@@ -192,6 +192,9 @@ function CharacterForm({
   };
 
   const nonHuman = c.kind && c.kind !== 'human';
+  const casting = photos.filter((m) => m.label === 'casting');
+  const refs = photos.filter((m) => m.label !== 'casting');
+  const castingPending = casting.some((m) => m.status === 'pending');
 
   return (
     <div className="sp-char-form">
@@ -268,6 +271,60 @@ function CharacterForm({
         </div>
       )}
 
+      <h3 className="sp-h3">Casting</h3>
+      <div className="sp-views">
+        <p className="field-hint" style={{ flex: 1, margin: 0 }}>
+          Four different looks that fit this character. Cast one and its description becomes their appearance in every shot.
+        </p>
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={!!busy || castingPending || !c.name.trim()}
+          onClick={() =>
+            run('cast', async () => {
+              await flush();
+              setDetail(await api.castCharacter(screenplayId, c.id));
+            })
+          }
+        >
+          {busy === 'cast' || castingPending ? <Loader2 size={14} className="spin" /> : <Clapperboard size={14} />} {casting.length ? 'Recast' : 'Cast 4 looks'}
+        </button>
+      </div>
+      {casting.length > 0 && (
+        <div className="sp-photos sp-casting">
+          {[...casting].reverse().map((m) => {
+            const isCast = c.primaryRefId === m.id;
+            const look = api.castingLook(m);
+            return (
+              <figure key={m.id} className={`sp-photo ${isCast ? 'primary' : ''}`} title={m.caption ?? ''}>
+                {m.status === 'ready' && m.media_id ? (
+                  <SpImage mediaId={m.media_id} alt={look ?? 'Casting look'} />
+                ) : m.status === 'pending' ? (
+                  <div className="sp-img-loading"><Loader2 size={16} className="spin" /></div>
+                ) : (
+                  <div className="sp-img-missing"><AlertTriangle size={14} /> {m.error || 'Failed'}</div>
+                )}
+                <figcaption>
+                  <span>{look ?? 'Look'}</span>
+                  {m.status === 'ready' && m.caption && (
+                    isCast ? (
+                      <span className="sp-cast-badge"><Check size={12} /> Cast</span>
+                    ) : (
+                      <button className="btn btn-sm" title="Use this look's description as the character's appearance" onClick={() => set({ appearance: m.caption!, primaryRefId: m.id }, 'appearance')}>
+                        Cast
+                      </button>
+                    )
+                  )}
+                  <button className="icon-btn" title="Remove" onClick={() => run('del', async () => setDetail(await api.deleteMediaRow(screenplayId, m.id)))}>
+                    <Trash2 size={13} />
+                  </button>
+                </figcaption>
+                {m.caption && <p className="sp-cast-desc">{m.caption}</p>}
+              </figure>
+            );
+          })}
+        </div>
+      )}
+
       <Field label="Wardrobe" hint="Default costume in shots. Describe a change in the action when it differs.">
         <textarea rows={2} value={c.wardrobe ?? ''} onChange={(e) => set({ wardrobe: e.target.value }, 'wardrobe')} />
       </Field>
@@ -312,8 +369,8 @@ function CharacterForm({
       </div>
       {error && <Alert>{error}</Alert>}
       <div className="sp-photos">
-        {photos.length === 0 && <p className="field-hint">No photos yet. Describe the character, pick views and generate.</p>}
-        {[...photos].reverse().map((m) => (
+        {refs.length === 0 && <p className="field-hint">No photos yet. Describe the character, pick views and generate.</p>}
+        {[...refs].reverse().map((m) => (
           <figure key={m.id} className={`sp-photo ${c.primaryRefId === m.id ? 'primary' : ''}`}>
             {m.status === 'ready' && m.media_id ? (
               <SpImage mediaId={m.media_id} alt={m.label ?? ''} />
