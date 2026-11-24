@@ -79,7 +79,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: ghcr.io/defied/deadchat-backend:bd3be2b81a21
+          image: ghcr.io/defied/deadchat-backend:0ef7aed79428
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
@@ -151,7 +151,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/defied/deadchat-frontend:bd3be2b81a21
+          image: ghcr.io/defied/deadchat-frontend:0ef7aed79428
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
