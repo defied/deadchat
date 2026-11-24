@@ -132,6 +132,7 @@ test('planShot waits for a shot type and a description, then builds the prompt',
   assert.match(p.prompt!, /^Cinematic film still, extreme wide establishing shot: [^.]+\. 24mm wide-angle lens, deep focus[^.]*\. Interior, Jane's kitchen, night\. A single moment: Rain hammers the window/);
   assert.match(p.prompt!, /Jane \(woman in her forties, short grey hair, sharp features, wearing a worn green cardigan, whispering\)/);
   assert.match(p.prompt!, /Jane appears exactly once in the frame/);
+  assert.match(p.prompt!, /the name "Jane" is never written anywhere in the picture, not on clothing/);
   assert.doesNotMatch(p.prompt!, /shallow depth of field/, 'a wide lens is not shallow');
   assert.doesNotMatch(p.prompt!, /Who is there/, 'dialogue is not visual');
   assert.doesNotMatch(p.prompt!, /Tom/, 'off-screen Tom is not in the shot');
