@@ -340,6 +340,22 @@ export function planMusic(shot: Shot): MusicPlan {
 }
 
 /** Prompt for a character reference photo. */
+/**
+ * A casting headshot: the face decides, so no costume or props (a wardrobe
+ * full of sneakers and phones turns a headshot into a full-body fashion shot).
+ */
+export function castingPrompt(c: Character, style?: string): string {
+  const who = c.appearance?.trim() || [c.age, c.gender, c.species || c.kind].filter(Boolean).join(' ') || c.name;
+  return [
+    `Casting headshot: ${who}`,
+    'tight head-and-shoulders close-up, the face fills most of the frame, looking straight at the camera, relaxed neutral expression',
+    'plain dark grey t-shirt, nothing in the hands',
+    'plain grey studio backdrop, soft even lighting',
+    style?.trim() || 'photorealistic',
+    'No text or watermark',
+  ].join('. ');
+}
+
 export function characterPrompt(c: Character, view: 'portrait' | 'full' | 'profile' | 'expressions', style?: string): string {
   const who = [
     c.appearance?.trim() || [c.age, c.gender, c.species || c.kind].filter(Boolean).join(' ') || c.name,

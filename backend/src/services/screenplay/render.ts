@@ -13,7 +13,7 @@ import { localModels } from '../influencers/media';
 import { getMediaSettings } from '../media/settings';
 import { describeImage } from '../media/enhance';
 import { asString, llmJson } from '../influencers/llm';
-import { adjustKey, appendAdjustments, characterPrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
+import { adjustKey, appendAdjustments, castingPrompt, characterPrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
 import db from '../../db/connection';
 import { getActiveModel } from '../chatModels';
 import * as store from './store';
@@ -419,40 +419,46 @@ export const castingDeps = { llmJson };
 export async function castingLooks(c: Character, count = 4): Promise<CastingLook[]> {
   const base = c.appearance?.trim() || [c.age, c.gender, c.species || c.kind].filter(Boolean).join(' ') || c.name;
   const brief = castingBrief(c);
-  // One look per call, each pushed in a different direction: small local
-  // models return one look (or a copy of the brief) when asked for a list.
-  const looks = await Promise.all(
-    CASTING_ANGLES.slice(0, count).map(async (angle, i) => {
+  const name = c.name.trim();
+  const looks: CastingLook[] = [];
+  // One look per call, in turn, each told what has already been proposed:
+  // small local models return one look (or a copy of the brief) when asked for a list.
+  for (const angle of CASTING_ANGLES.slice(0, count)) {
+    let look: CastingLook | null = null;
+    for (let attempt = 0; attempt < 2 && !look; attempt++) {
       try {
         const out = await castingDeps.llmJson<{ label?: unknown; appearance?: unknown }>(
           'You are a casting director for an invented film character. Propose ONE look for the character as ' +
-            '{"label": "a few words, e.g. wiry freckled redhead", "appearance": "one paragraph"}. ' +
-            'Keep every trait the brief states (age, gender, species, named features); invent concrete details for what it leaves open: ' +
-            'face shape, features, hair, colouring, skin tone, build, height, distinguishing marks. ' +
-            `This look: ${angle}. Physical traits only: no wardrobe, personality or story. Never describe or resemble a real person.`,
+            '{"label": "a few words about the face, e.g. narrow fox-like face, freckles", "appearance": "one paragraph"}. ' +
+            'Every trait the brief states is fixed: keep the same hair colour, eye colour, height, age, gender, species and named features, word for word. ' +
+            'Invent concrete details only for what it leaves open: face shape, features, skin, hairstyle within the stated hair, build within the stated build, distinguishing marks. ' +
+            `This look: ${angle}.` +
+            (looks.length ? ` It must look clearly different from these already proposed: ${looks.map((l) => l.label).join('; ')}.` : '') +
+            ' Physical traits only: no wardrobe, personality or story, and do not use the character\'s name. Never describe or resemble a real person.',
           brief,
           { temperature: 0.9 },
         );
         const appearance = asString(out.appearance, 1500);
-        if (!appearance || appearance.length < 40 || base.startsWith(appearance)) return null;
-        let label = asString(out.label, 80);
-        if (!label || /\bword|summary|label\b/i.test(label)) label = appearance.split(/[,.;]/)[0].slice(0, 40);
-        return { label, appearance };
+        if (!appearance || appearance.length < 40 || base.startsWith(appearance)) continue;
+        let label = asString(out.label, 80).replace(new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b[\\s:–—-]*`, 'gi'), '').trim();
+        if (!label || /\bword|summary|label\b/i.test(label)) label = appearance.replace(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+(has|is)\\s+`, 'i'), '').split(/[,.;]/)[0].slice(0, 40);
+        look = { label, appearance };
       } catch {
-        return null;
+        // try again, then fall back
       }
-    }),
-  );
-  return looks.map((l, i) => l ?? { label: `Take ${i + 1}`, appearance: base });
+    }
+    looks.push(look ?? { label: `Take ${looks.length + 1}`, appearance: base });
+  }
+  return looks;
 }
 
 const CASTING_ANGLES = [
   'the most natural fit for the brief',
-  'against type: a less expected face that still fits the brief',
-  'a different build, height and colouring from the obvious choice',
-  'a striking, memorable face with one distinctive feature',
-  'weathered and lived-in',
-  'clean-cut and polished',
+  'a sharper, more angular face',
+  'a softer, rounder, younger-looking face',
+  'one distinctive facial feature, such as a scar, a crooked nose, heavy brows or a gap tooth',
+  'a weathered, lived-in face',
+  'a clean-cut, polished face',
 ];
 
 /** Queue a headshot for each look; rows are 'character' media labelled 'casting'. */
@@ -461,7 +467,7 @@ export async function castCharacter(sp: Screenplay, c: Character, count = 4): Pr
   const model = imageModelFor(sp);
   const round = Date.now();
   return looks.map((look) => {
-    const prompt = characterPrompt({ ...c, appearance: look.appearance }, 'portrait', sp.doc.settings.style);
+    const prompt = castingPrompt({ ...c, appearance: look.appearance }, sp.doc.settings.style);
     const jobId = enqueue(
       'image',
       {
