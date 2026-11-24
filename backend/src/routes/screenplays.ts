@@ -21,6 +21,7 @@ import {
   planAll,
   refreshShots,
   queueCharacterRefs,
+  castCharacter,
   reconcile,
   refineAppearance,
   scheduleReconcile,
@@ -338,6 +339,15 @@ router.post('/:id/characters/:cid/refs', owned, (req, res) =>
       .slice(0, 8);
     if (!views.length) throw new Error('Pick at least one view');
     queueCharacterRefs(sp(res), c, views);
+    return detail(sp(res));
+  }),
+);
+
+router.post('/:id/characters/:cid/casting', owned, (req, res) =>
+  wrap(res, async () => {
+    const c = characterOf(sp(res), String(req.params.cid));
+    if (!c.name.trim()) throw new Error('Name the character first');
+    await castCharacter(sp(res), c, 4);
     return detail(sp(res));
   }),
 );
