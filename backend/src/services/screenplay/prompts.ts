@@ -284,7 +284,9 @@ export function planShot(
     staging.text,
     refs.length ? `Look and feel: ${refs.join('; ')}` : '',
     doc.settings.style?.trim() || 'Photorealistic, natural film lighting, film grain',
-    'No text, captions, subtitles or watermarks',
+    cast.length
+      ? `No text, captions, subtitles or watermarks; ${cast.length === 1 ? `the name "${cast[0].name}" is` : `the names ${cast.map((c) => `"${c.name}"`).join(', ')} are`} never written anywhere in the picture, not on clothing, signs or screens`
+      : 'No text, captions, subtitles or watermarks',
   ].filter(Boolean);
   const prompt = parts.map((p) => p.replace(/\s+/g, ' ').trim().replace(/[.;,]$/, '')).join('. ') + '.';
   const adjustments = activeAdjustments(shot);
