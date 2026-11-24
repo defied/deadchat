@@ -138,6 +138,8 @@ const LIGHTS: [RegExp, string][] = [
   [/\bsirens?\b|\bpolice lights\b|\bemergency lights\b/i, 'the emergency lights'],
 ];
 
+const FAR_LIGHTS = new Set(['the low sun', 'the sun', 'the lightning']);
+
 export function lightSources(text: string): string[] {
   const found = LIGHTS.filter(([re]) => re.test(text)).map(([, name]) => name);
   return found.includes('the low sun') ? found.filter((f) => f !== 'the sun') : found;
@@ -147,8 +149,10 @@ export function lightSources(text: string): string[] {
 export function flareLine(type: string | undefined, sceneText: string): string {
   const flare = type ? LENS_TRAITS[type]?.flare : undefined;
   if (!flare) return '';
-  const lights = lightSources(sceneText);
-  if (!lights.length) return 'No lens flares: there is no bright light source in view';
+  // Far lights (sun, lightning) get placed anywhere by image models, so they
+  // never flare; only lights close to the camera do.
+  const lights = lightSources(sceneText).filter((l) => !FAR_LIGHTS.has(l));
+  if (!lights.length) return 'No lens flares, no light streaks';
   const list = lights.length === 1 ? lights[0] : `${lights.slice(0, -1).join(', ')} or ${lights[lights.length - 1]}`;
   return `Lens flare only where ${list} ${lights.length === 1 ? 'is' : 'are'} visible in the frame: ${flare} through that light, matching its colour and position; no flares anywhere else`;
 }

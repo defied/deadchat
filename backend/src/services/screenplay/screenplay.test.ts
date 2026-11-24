@@ -661,8 +661,10 @@ test('lens families add their look; a shot overrides the film kit', () => {
 
 test('flares come only from a light in the scene', () => {
   assert.equal(prompts.flareLine('spherical', 'Exterior, street, night, neon'), '', 'clean glass adds no flare line');
-  assert.equal(prompts.flareLine('anamorphic', 'Interior, office, day. She types.'), 'No lens flares: there is no bright light source in view');
-  assert.match(prompts.flareLine('anamorphic', 'Exterior, New York skyline, day, lightning storm'), /only where the lightning is visible.*blue anamorphic streak/);
+  assert.equal(prompts.flareLine('anamorphic', 'Interior, office, day. She types.'), 'No lens flares, no light streaks');
+  assert.equal(prompts.flareLine('anamorphic', 'Exterior, New York skyline, day, lightning storm'), 'No lens flares, no light streaks', 'distant lights never flare');
+  assert.equal(prompts.flareLine('anamorphic', 'Sunset over the bay.'), 'No lens flares, no light streaks');
+  assert.match(prompts.flareLine('anamorphic', 'Lightning flashes. He clicks on a flashlight.'), /only where the flashlight beam is visible.*blue anamorphic streak/);
   assert.match(prompts.flareLine('vintage-anamorphic', 'A car pulls up, headlights blazing. Neon hums.'), /the headlights or the neon signs are visible.*amber/);
   assert.deepEqual(prompts.lightSources('Golden hour. Sunlight floods the field.'), ['the low sun']);
 });
