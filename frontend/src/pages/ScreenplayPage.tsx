@@ -340,9 +340,19 @@ function SettingsModal({ doc, title, update, onClose }: { doc: ScreenplayDoc; ti
             <option value="9:16">9:16 vertical</option>
           </select>
         </Field>
+        <Field label="Lens kit" hint="The glass every shot uses unless a shot picks its own.">
+          <select value={doc.settings.lensType ?? ''} onChange={(e) => set({ lensType: e.target.value || undefined }, 'lensType')}>
+            <option value="">Not specified</option>
+            {api.LENS_TYPES.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </Field>
       </div>
       <Field label="Visual style" hint="Added to every frame. E.g. “35mm film, muted teal and orange grade, anamorphic” or “graphite storyboard sketch”.">
-        <input value={doc.settings.style ?? ''} onChange={(e) => set({ style: e.target.value }, 'style')} placeholder="Photorealistic, natural film lighting, shallow depth of field, film grain" />
+        <input value={doc.settings.style ?? ''} onChange={(e) => set({ style: e.target.value }, 'style')} placeholder="Photorealistic, natural film lighting, film grain" />
       </Field>
       <p className="field-hint">Music cues use ACE-Step on your GPU box.</p>
       <h3 className="sp-h3">Title page</h3>

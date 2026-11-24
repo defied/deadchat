@@ -27,7 +27,7 @@ import {
   syncJobs,
   type RefView,
 } from '../services/screenplay/render';
-import { planMusic } from '../services/screenplay/prompts';
+import { LENS_TYPES, planMusic } from '../services/screenplay/prompts';
 
 const router = Router();
 router.use(authenticate);
@@ -119,6 +119,8 @@ function cleanPitch(p: any): Pitch | undefined { // eslint-disable-line @typescr
   };
 }
 
+const LENS_TYPE_IDS = LENS_TYPES.map((l) => l.id);
+
 export function cleanDoc(raw: unknown): ScreenplayDoc {
   const d = (raw ?? {}) as Partial<ScreenplayDoc>;
   const base = emptyDoc();
@@ -132,6 +134,7 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     type: str(s?.type, 120),
     seconds: num(s?.seconds, 0, 3600),
     lens: num(s?.lens, 8, 800),
+    lensType: oneOf(s?.lensType, LENS_TYPE_IDS),
     music: str(s?.music, 600),
     notes: str(s?.notes, 2000),
     adjustments: (Array.isArray(s?.adjustments) ? s.adjustments : [])
@@ -198,6 +201,7 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
       imageModel: str(s.imageModel, 80),
       ratio: oneOf(s.ratio, ['16:9', '21:9', '4:3', '1:1', '9:16'] as const) ?? base.settings.ratio,
       style: str(s.style, 600),
+      lensType: oneOf(s.lensType, LENS_TYPE_IDS),
       paused: s.paused === true ? true : undefined,
     },
     titlePage: {

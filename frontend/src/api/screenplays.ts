@@ -23,6 +23,7 @@ export interface Shot {
   type?: string;
   seconds?: number;
   lens?: number;
+  lensType?: string;
   music?: string;
   notes?: string;
   /** Fine-tuning notes the AI applies to the image prompt (the script is never changed). */
@@ -91,8 +92,23 @@ export interface ScreenplaySettings {
   imageModel?: string;
   ratio?: '16:9' | '21:9' | '4:3' | '1:1' | '9:16';
   style?: string;
+  lensType?: string;
   paused?: boolean;
 }
+
+/** Lens families: what kind of glass, separate from focal length. */
+export const LENS_TYPES = [
+  { id: 'spherical', label: 'Spherical (modern cine prime)' },
+  { id: 'anamorphic', label: 'Anamorphic' },
+  { id: 'vintage-anamorphic', label: 'Vintage anamorphic' },
+  { id: 'vintage-prime', label: 'Vintage spherical prime' },
+  { id: 'cine-zoom', label: 'Cine zoom' },
+  { id: 'still-lens', label: 'Still-photo lens' },
+  { id: 'macro', label: 'Macro' },
+  { id: 'tilt-shift', label: 'Tilt-shift' },
+  { id: 'fisheye', label: 'Fisheye' },
+] as const;
+
 
 export interface TitlePage {
   title?: string;

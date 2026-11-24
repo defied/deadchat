@@ -84,14 +84,54 @@ export function composition(type: string, subject: string | null, other: string 
   return shotPhrase(type);
 }
 
-/** What a focal length does to the picture, in words image models follow. */
-export function lensLook(mm: number): string {
-  if (mm <= 18) return `${mm}mm ultra-wide-angle lens, exaggerated perspective, stretched edges, everything in sharp focus`;
-  if (mm <= 28) return `${mm}mm wide-angle lens, deep focus, wide field of view`;
-  if (mm <= 40) return `${mm}mm lens, natural perspective, moderate depth of field`;
-  if (mm <= 60) return `${mm}mm lens, natural perspective, background softly out of focus`;
-  if (mm <= 90) return `${mm}mm portrait lens, compressed background, strong background blur`;
-  return `${mm}mm telephoto lens, flattened compressed perspective, very shallow depth of field, background a soft blur`;
+/** Lens families: what kind of glass, separate from focal length. */
+export const LENS_TYPES = [
+  { id: 'spherical', label: 'Spherical (modern cine prime)' },
+  { id: 'anamorphic', label: 'Anamorphic' },
+  { id: 'vintage-anamorphic', label: 'Vintage anamorphic' },
+  { id: 'vintage-prime', label: 'Vintage spherical prime' },
+  { id: 'cine-zoom', label: 'Cine zoom' },
+  { id: 'still-lens', label: 'Still-photo lens' },
+  { id: 'macro', label: 'Macro' },
+  { id: 'tilt-shift', label: 'Tilt-shift' },
+  { id: 'fisheye', label: 'Fisheye' },
+] as const;
+
+/** What each lens family does to the picture, beyond its focal length. */
+const LENS_TRAITS: Record<string, { name: string; traits: string }> = {
+  spherical: { name: 'spherical cine prime', traits: 'clean, sharp and neutral rendering, round bokeh, straight lines stay straight' },
+  anamorphic: {
+    name: 'anamorphic',
+    traits: 'shot on anamorphic lenses: oval vertically stretched bokeh, horizontal blue streak lens flares from bright lights, gentle barrel distortion and softer edges, wide cinemascope feel',
+  },
+  'vintage-anamorphic': {
+    name: 'vintage anamorphic',
+    traits: '1970s vintage anamorphic lenses: oval bokeh, warm amber streak flares, lower contrast, soft blooming highlights, focus falloff and mild distortion at the frame edges',
+  },
+  'vintage-prime': {
+    name: 'vintage spherical prime',
+    traits: 'vintage cine prime, soft lower contrast, gentle halation and glow around highlights, warm veiling flare, creamy round bokeh',
+  },
+  'cine-zoom': { name: 'cine zoom', traits: 'cinema zoom lens, slightly softer and lower contrast than a prime, even, natural rendering' },
+  'still-lens': { name: 'still-photo', traits: 'still-photography lens, crisp and clinical, high contrast, busy bokeh' },
+  macro: { name: 'macro', traits: 'macro lens, extreme close focus, tiny details large and razor sharp, a wafer-thin plane of focus' },
+  'tilt-shift': { name: 'tilt-shift', traits: 'tilt-shift lens, a slanted plane of focus with strong blur above and below, a miniature-model look' },
+  fisheye: { name: 'fisheye', traits: 'fisheye lens, a circular, strongly curved barrel-distorted image, extreme field of view' },
+};
+
+/** What a focal length and lens family do to the picture, in words image models follow. */
+export function lensLook(mm: number, type?: string): string {
+  const kind = type ? LENS_TRAITS[type] : undefined;
+  const glass = kind && type !== 'spherical' ? `${mm}mm ${kind.name}` : `${mm}mm`;
+  let focal: string;
+  if (type === 'fisheye') focal = `${glass} lens`;
+  else if (mm <= 18) focal = `${glass} ultra-wide-angle lens, exaggerated perspective, stretched edges, everything in sharp focus`;
+  else if (mm <= 28) focal = `${glass} wide-angle lens, deep focus, wide field of view`;
+  else if (mm <= 40) focal = `${glass} lens, natural perspective, moderate depth of field`;
+  else if (mm <= 60) focal = `${glass} lens, natural perspective, background softly out of focus`;
+  else if (mm <= 90) focal = `${glass} portrait lens, compressed background, strong background blur`;
+  else focal = `${glass} telephoto lens, flattened compressed perspective, very shallow depth of field, background a soft blur`;
+  return kind ? `${focal}; ${kind.traits}` : focal;
 }
 
 /**
@@ -196,7 +236,7 @@ export function planShot(
   const moment = firstMoment(action);
   const parts = [
     `Cinematic film still, ${composition(shot.type, cast[0]?.name ?? null, cast[1]?.name ?? null)}`,
-    lensLook(lens),
+    lensLook(lens, shot.lensType || doc.settings.lensType),
     where,
     moment ? `A single moment: ${moment}` : '',
     cast.length ? `${cast.map((p) => describeCharacter(p.character, p.name, p.manner, inferred)).join('; ')}` : '',

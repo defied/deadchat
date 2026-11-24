@@ -642,3 +642,18 @@ test('saving with a stale version is refused', () => {
   store.saveScreenplay(sp.id, 1, { title: 'A' });
   assert.throws(() => store.saveScreenplay(sp.id, 1, { title: 'B' }), store.VersionConflict);
 });
+
+test('lens families add their look; a shot overrides the film kit', () => {
+  assert.equal(prompts.lensLook(50), '50mm lens, natural perspective, background softly out of focus');
+  assert.match(prompts.lensLook(40, 'anamorphic'), /^40mm anamorphic lens.*oval vertically stretched bokeh, horizontal blue streak lens flares/);
+  assert.match(prompts.lensLook(35, 'vintage-prime'), /halation/);
+  assert.match(prompts.lensLook(14, 'fisheye'), /^14mm fisheye lens; fisheye lens, a circular/);
+  const d = doc();
+  d.settings.lensType = 'anamorphic';
+  const film = prompts.planShot(d, d.shots[0]);
+  assert.match(film.prompt!, /24mm anamorphic wide-angle lens/);
+  d.shots[0].lensType = 'vintage-prime';
+  const own = prompts.planShot(d, d.shots[0]);
+  assert.match(own.prompt!, /vintage spherical prime/);
+  assert.notEqual(own.hash, film.hash, 'changing the glass re-renders');
+});

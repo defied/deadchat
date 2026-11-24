@@ -6,7 +6,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'reac
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, Search, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
-import { isVoiceRow, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
+import { LENS_TYPES, isVoiceRow, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
 import { useScreenplayActions } from './actions';
 import { Modal } from '../ui';
 import { SHOT_TYPES, newId, timecode } from './format';
@@ -287,6 +287,17 @@ function ShotCard({
             {LENSES.map((l) => (
               <option key={l} value={l}>
                 {l}mm
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Glass</span>
+          <select value={shot.lensType ?? ''} onChange={(e) => onPatch({ lensType: e.target.value || undefined }, 'lensType')}>
+            <option value="">Film default</option>
+            {LENS_TYPES.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label}
               </option>
             ))}
           </select>

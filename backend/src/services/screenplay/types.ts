@@ -33,6 +33,8 @@ export interface Shot {
   seconds?: number;
   /** Lens in mm; falls back to the set-plan camera, then to the shot type. */
   lens?: number;
+  /** Lens family (anamorphic, vintage prime…); falls back to the film's lens kit. */
+  lensType?: string;
   /** Music cue for this shot ("sparse piano, melancholy, slow"). */
   music?: string;
   notes?: string;
@@ -119,6 +121,8 @@ export interface ScreenplaySettings {
   ratio?: '16:9' | '21:9' | '4:3' | '1:1' | '9:16';
   /** Visual style for every frame: "35mm film, muted teal and orange grade". */
   style?: string;
+  /** Default lens family for every shot: "spherical", "anamorphic"… */
+  lensType?: string;
   /** Pause rendering (the writer keeps working; nothing is queued). */
   paused?: boolean;
 }
