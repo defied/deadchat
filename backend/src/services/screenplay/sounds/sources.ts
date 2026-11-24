@@ -78,7 +78,10 @@ export async function searchOpenverse(q: string, opts: { nonCommercial?: boolean
   const p = new URLSearchParams({ q, page_size: String(Math.min(20, opts.max ?? 20)), mature: 'false' });
   // Openverse can filter to licences that allow modification (and commercial use).
   p.set('license_type', opts.nonCommercial ? 'modification' : 'commercial,modification');
-  if (opts.category) p.set('category', opts.category);
+  // Freesound and Wikimedia sounds carry no category, so filtering on
+  // "sound_effect" returns nothing: pick those sources instead. Music is tagged.
+  if (opts.category === 'music') p.set('category', 'music');
+  else if (opts.category === 'sound_effect') p.set('source', 'freesound,wikimedia_audio');
   let d: { results?: OvAudio[] };
   try {
     d = await getJson<{ results?: OvAudio[] }>(`https://api.openverse.org/v1/audio/?${p}`);
@@ -135,8 +138,9 @@ const PREFERRED = ['VBR MP3', '128Kbps MP3', 'MP3', 'Ogg Vorbis', '64Kbps MP3'];
  * Creative Commons and public domain; the exact licence is checked here.
  */
 const IA_LICENSED = '(licenseurl:(*creativecommons.org*) OR licenseurl:(*publicdomain*))';
-/** Radio captures, podcasts and concert tapes swamp sound-effect searches; dropped here. */
-const IA_SKIP = /^(etree|podcasts|radioprograms|tvnews|tv-news|radio-archive|radio|oldtimeradio|librivoxaudio|audio_bookspoetry)$/i;
+/** Audiobooks, radio plays, podcasts, concert tapes and record rips swamp sound searches. */
+const IA_EXCLUDE = 'NOT collection:(librivoxaudio OR oldtimeradio OR podcasts OR radioprograms OR etree OR the-vinyl-box)';
+const IA_SKIP = /^(etree|podcasts|podcasts_miscellaneous|radioprograms|tvnews|tv-news|radio-archive|oldtimeradio|librivoxaudio|audio_bookspoetry|the-vinyl-box)$/i;
 
 /** Lucene-safe words. */
 const words = (q: string) => q.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').split(/\s+/).filter((w) => w.length > 1).slice(0, 8);
@@ -144,7 +148,9 @@ const words = (q: string) => q.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
 export async function searchArchive(q: string, opts: { nonCommercial?: boolean; max?: number; maxDurationS?: number }): Promise<Candidate[]> {
   const w = words(q);
   if (!w.length) return [];
-  const query = `${w.join(' AND ')} AND mediatype:audio AND ${IA_LICENSED}`;
+  // Title and subject tags, not full text: full text matches every audiobook that mentions the word.
+  const terms = w.join(' AND ');
+  const query = `(title:(${terms}) OR subject:(${terms})) AND mediatype:audio AND ${IA_LICENSED} AND ${IA_EXCLUDE}`;
   // Ask for more than we need: many CC items are NonCommercial or NoDerivatives.
   const p = new URLSearchParams({ q: query, rows: '40', output: 'json', 'sort[]': 'downloads desc' });
   for (const f of ['identifier', 'title', 'creator', 'licenseurl', 'downloads', 'collection']) p.append('fl[]', f);

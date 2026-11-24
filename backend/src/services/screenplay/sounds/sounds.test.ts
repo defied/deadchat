@@ -261,11 +261,13 @@ test('source adapters: Openverse and Internet Archive requests and result mappin
     const ov = await src.searchOpenverse('rain window', { category: 'sound_effect' });
     const ovUrl = new URL(asked[0]);
     assert.equal(ovUrl.searchParams.get('license_type'), 'commercial,modification');
-    assert.equal(ovUrl.searchParams.get('category'), 'sound_effect');
+    assert.equal(ovUrl.searchParams.get('category'), null, 'Freesound has no category: filtering on it returns nothing');
+    assert.equal(ovUrl.searchParams.get('source'), 'freesound,wikimedia_audio');
     assert.equal(ov.length, 1, 'mature results dropped');
     assert.deepEqual([ov[0].key, ov[0].sourceName, ov[0].license.name, ov[0].durationS, ov[0].tags], ['openverse:abc', 'Freesound', 'CC BY 4.0', 61.5, ['rain', 'window']]);
-    await src.searchOpenverse('x', { nonCommercial: true });
+    await src.searchOpenverse('x', { nonCommercial: true, category: 'music' });
     assert.equal(new URL(asked[1]).searchParams.get('license_type'), 'modification');
+    assert.equal(new URL(asked[1]).searchParams.get('category'), 'music');
     // A refused filter falls back to naming the licences.
     asked.length = 0;
     await src.searchOpenverse('refuse', {});
@@ -276,7 +278,8 @@ test('source adapters: Openverse and Internet Archive requests and result mappin
     asked.length = 0;
     const ia = await src.searchArchive('heavy rain!', { maxDurationS: 900 });
     const q = new URL(asked[0]).searchParams.get('q')!;
-    assert.match(q, /^heavy AND rain AND mediatype:audio AND /);
+    assert.match(q, /^\(title:\(heavy AND rain\) OR subject:\(heavy AND rain\)\) AND mediatype:audio AND /);
+    assert.match(q, /NOT collection:\(librivoxaudio OR oldtimeradio/);
     assert.match(q, /licenseurl:\(\*creativecommons\.org\*\) OR licenseurl:\(\*publicdomain\*\)/);
     assert.doesNotMatch(q.replace(/creativecommons\.org\*/g, ''), /\//, 'no slashes: Archive.org reads them as a regular expression');
     assert.equal(new URL(asked[0]).searchParams.get('rows'), '40');
