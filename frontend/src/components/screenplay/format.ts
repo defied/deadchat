@@ -100,8 +100,9 @@ export function newId(prefix = 'e'): string {
 }
 
 /** Character cue without extensions: "JANE (V.O.)" → "JANE". */
+/** "JANE (V.O.)", "JANE:" or "JANE ^" → "JANE". */
 export function cueName(text: string): string {
-  return text.replace(/\(.*?\)/g, '').replace(/\^$/, '').trim();
+  return text.replace(/\(.*?\)/g, '').replace(/\^\s*$/, '').trim().replace(/[:\s]+$/, '').trim();
 }
 
 // ── pages ────────────────────────────────────────────────────────────────────
