@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  AudioLines,
   Check,
   ChevronLeft,
   Clapperboard,
@@ -34,6 +35,7 @@ import { CharactersTab } from '../components/screenplay/CharactersTab';
 import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
 import { PitchTab } from '../components/screenplay/PitchTab';
+import { SoundTab } from '../components/screenplay/SoundTab';
 import { useScreenplay } from '../components/screenplay/useScreenplay';
 import { ELEMENTS, download, pageStarts, parseFdx, parseFountain, printHtml, toFdx, toFountain } from '../components/screenplay/format';
 
@@ -173,6 +175,7 @@ export function ScreenplayPage() {
           { to: `/screenplays/${id}/characters`, label: 'Characters', icon: <Users size={14} /> },
           { to: `/screenplays/${id}/plan`, label: 'Set plan', icon: <LayoutGrid size={14} /> },
           { to: `/screenplays/${id}/references`, label: 'References', icon: <ImageIcon size={14} /> },
+          { to: `/screenplays/${id}/sound`, label: 'Sound', icon: <AudioLines size={14} /> },
           { to: `/screenplays/${id}/pitch`, label: 'Pitch', icon: <Presentation size={14} /> },
         ]}
       />
@@ -261,6 +264,7 @@ export function ScreenplayPage() {
           onScene={(scene) => setParams({ scene }, { replace: true })}
         />
       )}
+      {tab === 'sound' && <SoundTab key={params.get('scope') ?? ''} screenplayId={id} doc={doc} detail={s.detail} flush={s.flush} setDetail={s.setDetail} initialScope={params.get('scope')} />}
       {tab === 'pitch' && (
         <PitchTab
           screenplayId={id}

@@ -86,3 +86,44 @@ export function MusicButton({ mediaId, label = 'Play music cue' }: { mediaId: nu
     </button>
   );
 }
+
+/** Play a sound straight from a library's own link (a preview before keeping it). */
+export function PreviewButton({ url, label = 'Listen' }: { url: string; label?: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'playing' | 'failed'>('idle');
+  const audio = useRef<HTMLAudioElement | null>(null);
+  useEffect(
+    () => () => {
+      audio.current?.pause();
+      audio.current = null;
+    },
+    [url],
+  );
+  const toggle = async () => {
+    if (state === 'playing') {
+      audio.current?.pause();
+      setState('idle');
+      return;
+    }
+    setState('loading');
+    try {
+      if (!audio.current) {
+        const a = new Audio(url);
+        a.preload = 'auto';
+        a.onended = () => setState('idle');
+        a.onpause = () => setState((s) => (s === 'playing' ? 'idle' : s));
+        audio.current = a;
+      }
+      if (playing && playing !== audio.current) playing.pause();
+      playing = audio.current;
+      await audio.current.play();
+      setState('playing');
+    } catch {
+      setState('failed');
+    }
+  };
+  return (
+    <button className={`sp-play ${state === 'playing' ? 'on' : ''}`} onClick={toggle} title={state === 'failed' ? 'Couldn’t play this one; open it at the source' : state === 'playing' ? 'Stop' : label} aria-label={label} disabled={state === 'failed'}>
+      {state === 'loading' ? <Loader2 size={14} className="spin" /> : state === 'playing' ? <Pause size={14} /> : <Play size={14} />}
+    </button>
+  );
+}

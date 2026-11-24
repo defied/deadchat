@@ -183,7 +183,7 @@ export interface Screenplay {
   updatedAt: string;
 }
 
-export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel';
+export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel' | 'sound';
 export type MediaStatus = 'pending' | 'ready' | 'failed' | 'superseded';
 
 export interface ScreenplayMedia {
@@ -202,6 +202,8 @@ export interface ScreenplayMedia {
   media_id: number | null;
   error: string | null;
   created_at: string;
+  /** JSON: source, creator, licence and credit for gathered sounds; volume. */
+  meta?: string | null;
 }
 
 export function emptyDoc(): ScreenplayDoc {

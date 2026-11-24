@@ -3,7 +3,8 @@
 // frame DeadChat keeps in step with that part of the script.
 
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertTriangle, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { AlertTriangle, AudioLines, Search, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
 import { Modal } from '../ui';
 import { SHOT_TYPES, newId, timecode } from './format';
@@ -293,6 +294,7 @@ function ShotCard({
           <textarea rows={1} value={shot.music ?? ''} placeholder="e.g. sparse piano, melancholy, slow" onChange={(e) => onPatch({ music: e.target.value }, 'music')} />
         </label>
         {cue?.status === 'failed' && <div className="sp-shot-warn wide"><AlertTriangle size={12} /> {cue.error}</div>}
+        <ShotSounds shot={shot} detail={detail} />
         <AdjustmentNotes shot={shot} plan={plan} onChange={(adjustments) => onPatch({ adjustments }, 'adjustments')} />
         <label className="wide">
           <span>Notes</span>
@@ -375,6 +377,29 @@ function AdjustmentNotes({ shot, plan, onChange }: { shot: Shot; plan?: ShotPlan
           <AlertTriangle size={12} /> {plan.adjustNote}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Sounds kept for this shot, and a way to gather more. */
+function ShotSounds({ shot, detail }: { shot: Shot; detail?: Detail }) {
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const sounds = (detail?.media.other ?? []).filter((m) => m.role === 'sound' && m.target === shot.id);
+  return (
+    <div className="sp-shot-sounds wide">
+      <span className="sp-adj-head">
+        <AudioLines size={11} /> Sounds
+      </span>
+      {sounds.map((m) => (
+        <span key={m.id} className="sp-sound-chip" title={m.label ?? ''}>
+          {m.media_id && <MusicButton mediaId={m.media_id} label={`Play ${m.label}`} />}
+          <span>{m.label}</span>
+        </span>
+      ))}
+      <button className="btn btn-sm btn-ghost" onClick={() => navigate(`/screenplays/${id}/sound?scope=${encodeURIComponent(shot.id)}`)} title="Gather sounds for this shot from free libraries">
+        <Search size={12} /> Find sounds
+      </button>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { createWebSocketServer } from './ws/index';
 import { countMissingMediaFiles } from './services/mediaStore';
 import { startWorker } from './services/worker';
 import { resumeAnalyses } from './services/cases/analysis';
+import { resumeHunts } from './services/screenplay/sounds/gatherer';
 import { startScheduler } from './services/scheduler';
 import { startInfluencerAutomation } from './services/influencers/automation';
 
@@ -43,6 +44,7 @@ server.listen(config.port, () => {
   if (config.runWorker) {
     startWorker();
     resumeAnalyses();
+    resumeHunts();
     startScheduler();
     startInfluencerAutomation();
   } else {
