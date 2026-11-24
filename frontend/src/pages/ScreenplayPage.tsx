@@ -36,6 +36,7 @@ import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
 import { PitchTab } from '../components/screenplay/PitchTab';
 import { SoundTab } from '../components/screenplay/SoundTab';
+import { ScreenplayActionsContext } from '../components/screenplay/actions';
 import { useScreenplay } from '../components/screenplay/useScreenplay';
 import { ELEMENTS, download, pageStarts, parseFdx, parseFountain, printHtml, toFdx, toFountain } from '../components/screenplay/format';
 
@@ -54,6 +55,7 @@ export function ScreenplayPage() {
   const [menu, setMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
+  const actions = useMemo(() => ({ screenplayId: id, flush: s.flush, setDetail: s.setDetail }), [id, s.flush, s.setDetail]);
 
   const doc = s.doc;
   const onCurrentType = useCallback((t: ElementType | null) => setCurType(t), []);
@@ -112,6 +114,7 @@ export function ScreenplayPage() {
     s.saveState === 'saving' ? 'Saving…' : s.saveState === 'unsaved' ? 'Unsaved' : s.saveState === 'error' ? 'Not saved' : s.saveState === 'conflict' ? 'Conflict' : 'Saved';
 
   return (
+    <ScreenplayActionsContext.Provider value={actions}>
     <div className="page sp-page-shell">
       <div className="sp-header">
         <Link to="/screenplays" className="icon-btn" title="All screenplays">
@@ -283,6 +286,7 @@ export function ScreenplayPage() {
       {settingsOpen && <SettingsModal doc={doc} title={s.title} update={s.update} onClose={() => setSettingsOpen(false)} />}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
     </div>
+    </ScreenplayActionsContext.Provider>
   );
 }
 

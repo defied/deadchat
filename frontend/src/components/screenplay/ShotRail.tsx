@@ -4,8 +4,10 @@
 
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, AudioLines, Search, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
+import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, Search, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
+import { isVoiceRow, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
+import { useScreenplayActions } from './actions';
 import { Modal } from '../ui';
 import { SHOT_TYPES, newId, timecode } from './format';
 import { MusicButton, SpImage } from './media';
@@ -174,14 +176,17 @@ function ShotCard({
   };
   const plan = detail?.plans[shot.id];
   const latest = detail?.media.latest[`frame:${shot.id}`];
-  const ready = detail?.media.lastReady[`frame:${shot.id}`];
+  const rendered = detail?.media.lastReady[`frame:${shot.id}`];
+  const ownRow = shot.frameImage ? detail?.media.other.find((m) => m.id === shot.frameImage && m.media_id) : undefined;
+  // An image the writer chose stands in for the rendered frame.
+  const ready = ownRow ?? rendered;
   const cue = detail?.media.latest[`music:${shot.id}`];
   const cueReady = detail?.media.lastReady[`music:${shot.id}`];
   const pending = latest?.status === 'pending';
   const locked = !!shot.locked;
   const outOfDate = !locked && (!!plan?.stale || !!plan?.musicStale);
   const staleWhat = plan?.stale && plan?.musicStale ? 'frame and music' : plan?.stale ? 'frame' : 'music';
-  const failed = latest?.status === 'failed' ? latest.error : null;
+  const failed = latest?.status === 'failed' && !ownRow ? latest.error : null;
 
   let note: string | null = null;
   if (plan?.blocked) note = plan.blocked;
@@ -294,6 +299,7 @@ function ShotCard({
           <textarea rows={1} value={shot.music ?? ''} placeholder="e.g. sparse piano, melancholy, slow" onChange={(e) => onPatch({ music: e.target.value }, 'music')} />
         </label>
         {cue?.status === 'failed' && <div className="sp-shot-warn wide"><AlertTriangle size={12} /> {cue.error}</div>}
+        <ShotImages shot={shot} detail={detail} onPatch={onPatch} />
         <ShotSounds shot={shot} detail={detail} />
         <AdjustmentNotes shot={shot} plan={plan} onChange={(adjustments) => onPatch({ adjustments }, 'adjustments')} />
         <label className="wide">
@@ -381,25 +387,148 @@ function AdjustmentNotes({ shot, plan, onChange }: { shot: Shot; plan?: ShotPlan
   );
 }
 
-/** Sounds kept for this shot, and a way to gather more. */
+/** Sounds kept for this shot: add from the library, set volume, take off, or gather more. */
 function ShotSounds({ shot, detail }: { shot: Shot; detail?: Detail }) {
   const navigate = useNavigate();
-  const { id } = useParams();
-  const sounds = (detail?.media.other ?? []).filter((m) => m.role === 'sound' && m.target === shot.id);
+  const { screenplayId, flush, setDetail } = useScreenplayActions();
+  const [busy, setBusy] = useState(false);
+  const all = (detail?.media.other ?? []).filter((m) => m.role === 'sound' && !isVoiceRow(m));
+  const mine = all.filter((m) => m.target === shot.id);
+  const others = all.filter((m) => m.target !== shot.id);
+  const act = async (fn: () => Promise<Detail>) => {
+    setBusy(true);
+    try {
+      await flush();
+      setDetail(await fn());
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <div className="sp-shot-sounds wide">
+    <div className="sp-shot-media wide">
       <span className="sp-adj-head">
         <AudioLines size={11} /> Sounds
+        {busy && <Loader2 size={11} className="spin" />}
       </span>
-      {sounds.map((m) => (
-        <span key={m.id} className="sp-sound-chip" title={m.label ?? ''}>
+      {mine.map((m) => (
+        <div key={m.id} className="sp-shot-media-row">
           {m.media_id && <MusicButton mediaId={m.media_id} label={`Play ${m.label}`} />}
-          <span>{m.label}</span>
-        </span>
+          <span className="sp-shot-media-name" title={m.label ?? ''}>{m.label}</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            defaultValue={soundMeta(m)?.volume ?? 0.8}
+            title="Volume under the picture"
+            aria-label={`Volume of ${m.label}`}
+            onPointerUp={(e) => void act(() => updateSound(screenplayId, m.id, { volume: Number((e.target as HTMLInputElement).value) }))}
+          />
+          <button className="icon-btn" title="Take off this shot (stays in the library)" onClick={() => void act(() => updateSound(screenplayId, m.id, { target: '' }))}>
+            <X size={12} />
+          </button>
+        </div>
       ))}
-      <button className="btn btn-sm btn-ghost" onClick={() => navigate(`/screenplays/${id}/sound?scope=${encodeURIComponent(shot.id)}`)} title="Gather sounds for this shot from free libraries">
-        <Search size={12} /> Find sounds
-      </button>
+      <div className="sp-shot-media-add">
+        {others.length > 0 && (
+          <select value="" onChange={(e) => e.target.value && void act(() => updateSound(screenplayId, Number(e.target.value), { target: shot.id }))} aria-label="Add a kept sound">
+            <option value="">Add a kept sound…</option>
+            {others.map((m) => <option key={m.id} value={m.id}>{m.label}{m.target ? ' (in another shot)' : ''}</option>)}
+          </select>
+        )}
+        <button className="btn btn-sm btn-ghost" onClick={() => navigate(`/screenplays/${screenplayId}/sound?scope=${encodeURIComponent(shot.id)}`)} title="Gather sounds for this shot from free libraries">
+          <Search size={12} /> Find sounds
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Images for this shot: reference images steer its frame (their look is
+ * described and added to the prompt); one can stand in as the frame itself.
+ */
+function ShotImages({ shot, detail, onPatch }: { shot: Shot; detail?: Detail; onPatch: (p: Partial<Shot>, field: string) => void }) {
+  const { screenplayId, flush, setDetail } = useScreenplayActions();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement | null>(null);
+  const refs = (detail?.media.other ?? []).filter((m) => m.role === 'reference' && m.media_id);
+  const mine = refs.filter((m) => m.target === shot.id);
+  const others = refs.filter((m) => m.target !== shot.id);
+  const act = async (fn: () => Promise<Detail>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await flush();
+      setDetail(await fn());
+    } catch (e) {
+      setError((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="sp-shot-media wide">
+      <span className="sp-adj-head">
+        <ImageIcon size={11} /> Images
+        {busy && <Loader2 size={11} className="spin" />}
+      </span>
+      {mine.length > 0 && (
+        <div className="sp-shot-thumbs">
+          {mine.map((m) => {
+            const isFrame = shot.frameImage === m.id;
+            return (
+              <figure key={m.id} className={`sp-shot-thumb ${isFrame ? 'frame' : ''}`} title={m.caption ?? m.label ?? ''}>
+                <SpImage mediaId={m.media_id!} />
+                <figcaption>
+                  <button
+                    className={`btn btn-sm ${isFrame ? 'btn-primary' : 'btn-ghost'}`}
+                    title={isFrame ? 'This image is the frame. Click to render one again.' : 'Use this image as the frame instead of rendering one'}
+                    onClick={() => onPatch({ frameImage: isFrame ? undefined : m.id }, 'frameImage')}
+                  >
+                    {isFrame ? 'Frame' : 'Use as frame'}
+                  </button>
+                  <button
+                    className="icon-btn"
+                    title="Stop using it for this shot (stays in References)"
+                    onClick={() => {
+                      if (isFrame) onPatch({ frameImage: undefined }, 'frameImage');
+                      void act(() => updateMedia(screenplayId, m.id, { target: '' }));
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </figcaption>
+              </figure>
+            );
+          })}
+        </div>
+      )}
+      <div className="sp-shot-media-add">
+        <button className="btn btn-sm btn-ghost" onClick={() => input.current?.click()} disabled={busy} title="Upload a photo or still for this shot">
+          <ImagePlus size={12} /> Add image
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void act(() => uploadReference(screenplayId, f, shot.id));
+          }}
+        />
+        {others.length > 0 && (
+          <select value="" onChange={(e) => e.target.value && void act(() => updateMedia(screenplayId, Number(e.target.value), { target: shot.id }))} aria-label="Use a reference image">
+            <option value="">Use a reference image…</option>
+            {others.map((m) => <option key={m.id} value={m.id}>{m.label ?? m.caption?.slice(0, 50) ?? `Image ${m.id}`}</option>)}
+          </select>
+        )}
+      </div>
+      {mine.length > 0 && !shot.frameImage && <span className="field-hint">Their look (light, palette, framing) steers this shot’s frame.</span>}
+      {error && <div className="sp-shot-warn"><AlertTriangle size={12} /> {error}</div>}
     </div>
   );
 }

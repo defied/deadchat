@@ -46,6 +46,8 @@ export interface Shot {
   take?: number;
   /** Keep the current frame and music: nothing re-renders, whatever changes. */
   locked?: boolean;
+  /** Use this reference image (screenplay_media id) as the frame instead of rendering one. */
+  frameImage?: number;
 }
 
 export interface Adjustment {
@@ -71,6 +73,8 @@ export interface Character {
   personality?: string;
   backstory?: string;
   voice?: string;
+  /** Where the spoken voice comes from: a sample kept with the screenplay, or a Studio character's voice. */
+  voiceRef?: { kind: 'upload'; mediaRowId: number } | { kind: 'studio'; characterId: number };
   notes?: string;
   /** screenplay_media id of the chosen reference photo. */
   primaryRefId?: number;

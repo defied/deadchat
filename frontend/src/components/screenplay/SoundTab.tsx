@@ -96,7 +96,7 @@ export function SoundTab({ screenplayId, doc, detail, flush, setDetail, initialS
     }
   };
 
-  const kept = (detail?.media.other ?? []).filter((m) => m.role === 'sound');
+  const kept = (detail?.media.other ?? []).filter((m) => m.role === 'sound' && !api.isVoiceRow(m));
   const keptKeys = new Map(kept.map((m) => [soundMeta(m)?.key, m]));
   const live = hunt.data && !['done', 'failed'].includes(hunt.data.status);
 

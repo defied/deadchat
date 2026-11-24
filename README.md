@@ -147,7 +147,13 @@ Meta tokens are renewed automatically about once a week (they expire after 60 da
   - By default you only see sounds you can change and use commercially (CC0, public domain, CC BY, CC BY-SA). "Include non-commercial" adds NC sounds for private pitches. "No derivatives" sounds are never offered, since we trim and mix.
   - Credits for sounds that need them are kept, can be copied, and are printed in the pitch document.
   - A shot's box shows its sounds and has a **Find sounds** button.
-- **Animatic** (Pitch → Rip reel → Play animatic): every shot in script order for its length, with dialogue as subtitles, its kept sounds and its music cue underneath. Storyboard frames in the rip reel also bring their shot's sounds along.
+- **Shot box:**
+  - **Images:** add an image to the shot, or pick one from References. Its look steers the frame, or **Use as frame** shows it instead of rendering one.
+  - **Sounds:** add kept sounds from the library with a volume each, take them off, or **Find sounds**.
+- **Speaking voices** (Characters → Speaking voice): record or upload a 6–30 second sample, or use a Studio character's voice.
+  - **Voice the dialogue** (Pitch → Rip reel) speaks every line through the local speech service (XTTS-v2, `tts-service` on the GPU box).
+  - Lines are re-made only when the words or the voice change. XTTS-v2 is licensed for non-commercial use.
+- **Animatic** (Pitch → Rip reel → Play animatic): every shot in script order for its length (longer if its spoken lines need it), with dialogue as subtitles and spoken in each character's voice, its kept sounds and its music cue underneath. Storyboard frames in the rip reel also bring their shot's sounds along.
 - **Pitch tab:** a logline plus three parts, all written by you (no AI).
   - **Rip reel:** upload clips (MP4, WebM, MOV), stills and a soundtrack, or add storyboard frames.
     - Set in and out points, hold times and on-screen captions, and reorder.

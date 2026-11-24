@@ -30,6 +30,8 @@ export interface Shot {
   take?: number;
   /** Keep the current frame and music: nothing re-renders, whatever changes. */
   locked?: boolean;
+  /** Use this reference image (media row id) as the frame instead of rendering one. */
+  frameImage?: number;
 }
 
 export interface Adjustment {
@@ -58,6 +60,8 @@ export interface Character {
   primaryRefId?: number;
   /** Made automatically for a name that speaks in the script; cleared once edited. */
   placeholder?: boolean;
+  /** Where the spoken voice comes from: a sample kept with the screenplay, or a Studio character's voice. */
+  voiceRef?: { kind: 'upload'; mediaRowId: number } | { kind: 'studio'; characterId: number };
 }
 
 export type PlanItemKind = 'character' | 'camera' | 'light' | 'prop';
@@ -399,3 +403,34 @@ export async function updateSound(id: number, rowId: number, patch: { target?: s
   const { data } = await client.patch<Detail>(`/api/screenplays/${id}/media/${rowId}`, patch);
   return data;
 }
+
+// ── voices ──
+
+export async function listStudioVoices(): Promise<Array<{ id: number; name: string; sampleMediaId: number }>> {
+  const { data } = await client.get<{ characters: Array<{ id: number; name: string; sampleMediaId: number }> }>('/api/screenplays/voices/studio');
+  return data.characters;
+}
+
+export async function uploadVoiceSample(id: number, characterId: string, file: Blob, name: string): Promise<Detail & { added: number }> {
+  const form = new FormData();
+  form.append('file', file, name);
+  const { data } = await client.post<Detail & { added: number }>(`/api/screenplays/${id}/characters/${encodeURIComponent(characterId)}/voice`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 0,
+  });
+  return data;
+}
+
+export interface LinesResult {
+  queued: number;
+  current: number;
+  skipped: Array<{ cue: string; reason: string }>;
+}
+
+export async function speakLines(id: number, shotIds?: string[]): Promise<Detail & { lines: LinesResult }> {
+  const { data } = await client.post<Detail & { lines: LinesResult }>(`/api/screenplays/${id}/lines`, { shotIds });
+  return data;
+}
+
+/** Rows that are voice samples or spoken lines rather than gathered sounds. */
+export const isVoiceRow = (m: ScreenplayMedia) => m.target.startsWith('voice:') || m.target.startsWith('line:');
