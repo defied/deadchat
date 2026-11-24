@@ -645,7 +645,8 @@ test('saving with a stale version is refused', () => {
 
 test('lens families add their look; a shot overrides the film kit', () => {
   assert.equal(prompts.lensLook(50), '50mm lens, natural perspective, background softly out of focus');
-  assert.match(prompts.lensLook(40, 'anamorphic'), /^40mm anamorphic lens.*oval vertically stretched bokeh, horizontal blue streak lens flares/);
+  assert.match(prompts.lensLook(40, 'anamorphic'), /^40mm anamorphic lens.*oval vertically stretched bokeh/);
+  assert.doesNotMatch(prompts.lensLook(40, 'anamorphic'), /flare/, 'flares depend on the scene, not the lens');
   assert.match(prompts.lensLook(35, 'vintage-prime'), /halation/);
   assert.match(prompts.lensLook(14, 'fisheye'), /^14mm fisheye lens; fisheye lens, a circular/);
   const d = doc();
@@ -656,4 +657,12 @@ test('lens families add their look; a shot overrides the film kit', () => {
   const own = prompts.planShot(d, d.shots[0]);
   assert.match(own.prompt!, /vintage spherical prime/);
   assert.notEqual(own.hash, film.hash, 'changing the glass re-renders');
+});
+
+test('flares come only from a light in the scene', () => {
+  assert.equal(prompts.flareLine('spherical', 'Exterior, street, night, neon'), '', 'clean glass adds no flare line');
+  assert.equal(prompts.flareLine('anamorphic', 'Interior, office, day. She types.'), 'No lens flares: there is no bright light source in view');
+  assert.match(prompts.flareLine('anamorphic', 'Exterior, New York skyline, day, lightning storm'), /only where the lightning is visible.*blue anamorphic streak/);
+  assert.match(prompts.flareLine('vintage-anamorphic', 'A car pulls up, headlights blazing. Neon hums.'), /the headlights or the neon signs are visible.*amber/);
+  assert.deepEqual(prompts.lightSources('Golden hour. Sunlight floods the field.'), ['the low sun']);
 });
