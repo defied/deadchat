@@ -98,19 +98,22 @@ export const LENS_TYPES = [
 ] as const;
 
 /** What each lens family does to the picture, beyond its focal length. */
-const LENS_TRAITS: Record<string, { name: string; traits: string }> = {
+const LENS_TRAITS: Record<string, { name: string; traits: string; flare?: string }> = {
   spherical: { name: 'spherical cine prime', traits: 'clean, sharp and neutral rendering, round bokeh, straight lines stay straight' },
   anamorphic: {
     name: 'anamorphic',
-    traits: 'shot on anamorphic lenses: oval vertically stretched bokeh, horizontal blue streak lens flares from bright lights, gentle barrel distortion and softer edges, wide cinemascope feel',
+    traits: 'shot on anamorphic lenses: oval vertically stretched bokeh, gentle barrel distortion and softer edges, wide cinemascope feel',
+    flare: 'a thin horizontal blue anamorphic streak',
   },
   'vintage-anamorphic': {
     name: 'vintage anamorphic',
-    traits: '1970s vintage anamorphic lenses: oval bokeh, warm amber streak flares, lower contrast, soft blooming highlights, focus falloff and mild distortion at the frame edges',
+    traits: '1970s vintage anamorphic lenses: oval bokeh, lower contrast, soft blooming highlights, focus falloff and mild distortion at the frame edges',
+    flare: 'a warm amber horizontal streak',
   },
   'vintage-prime': {
     name: 'vintage spherical prime',
-    traits: 'vintage cine prime, soft lower contrast, gentle halation and glow around highlights, warm veiling flare, creamy round bokeh',
+    traits: 'vintage cine prime, soft lower contrast, gentle halation and glow around highlights, creamy round bokeh',
+    flare: 'a soft warm veiling glow',
   },
   'cine-zoom': { name: 'cine zoom', traits: 'cinema zoom lens, slightly softer and lower contrast than a prime, even, natural rendering' },
   'still-lens': { name: 'still-photo', traits: 'still-photography lens, crisp and clinical, high contrast, busy bokeh' },
@@ -118,6 +121,37 @@ const LENS_TRAITS: Record<string, { name: string; traits: string }> = {
   'tilt-shift': { name: 'tilt-shift', traits: 'tilt-shift lens, a slanted plane of focus with strong blur above and below, a miniature-model look' },
   fisheye: { name: 'fisheye', traits: 'fisheye lens, a circular, strongly curved barrel-distorted image, extreme field of view' },
 };
+
+/** Bright light sources the scene puts in view; flares only make sense from these. */
+const LIGHTS: [RegExp, string][] = [
+  [/\b(?:sunset|sunrise|dawn|dusk|golden hour|low sun|setting sun|rising sun)\b/i, 'the low sun'],
+  [/\bsun(?:light|lit|shine|beams?)?\b|\bbacklit\b/i, 'the sun'],
+  [/\blightning\b/i, 'the lightning'],
+  [/\bhead ?lights?\b|\bhigh ?beams?\b|\btail ?lights?\b/i, 'the headlights'],
+  [/\bstreet ?lights?\b|\bstreet ?lamps?\b|\blamp ?posts?\b/i, 'the streetlights'],
+  [/\bneon\b/i, 'the neon signs'],
+  [/\bspot ?lights?\b|\bsearch ?lights?\b|\bstage lights?\b|\bfloodlights?\b/i, 'the spotlights'],
+  [/\bflash ?lights?\b|\btorch(?:es)?\b/i, 'the flashlight beam'],
+  [/\bcandles?\b|\bcandlelit\b/i, 'the candle flames'],
+  [/\bfire\b|\bflames?\b|\bbonfire\b|\bexplosion\b|\bmuzzle flash\b/i, 'the flames'],
+  [/\blamps?\b|\bchandelier\b|\bbare bulb\b|\blight ?bulbs?\b/i, 'the lamps'],
+  [/\bsirens?\b|\bpolice lights\b|\bemergency lights\b/i, 'the emergency lights'],
+];
+
+export function lightSources(text: string): string[] {
+  const found = LIGHTS.filter(([re]) => re.test(text)).map(([, name]) => name);
+  return found.includes('the low sun') ? found.filter((f) => f !== 'the sun') : found;
+}
+
+/** Flares come from a light that is in the shot, or there are none. */
+export function flareLine(type: string | undefined, sceneText: string): string {
+  const flare = type ? LENS_TRAITS[type]?.flare : undefined;
+  if (!flare) return '';
+  const lights = lightSources(sceneText);
+  if (!lights.length) return 'No lens flares: there is no bright light source in view';
+  const list = lights.length === 1 ? lights[0] : `${lights.slice(0, -1).join(', ')} or ${lights[lights.length - 1]}`;
+  return `Lens flare only where ${list} ${lights.length === 1 ? 'is' : 'are'} visible in the frame: ${flare} through that light, matching its colour and position; no flares anywhere else`;
+}
 
 /** What a focal length and lens family do to the picture, in words image models follow. */
 export function lensLook(mm: number, type?: string): string {
@@ -237,6 +271,7 @@ export function planShot(
   const parts = [
     `Cinematic film still, ${composition(shot.type, cast[0]?.name ?? null, cast[1]?.name ?? null)}`,
     lensLook(lens, shot.lensType || doc.settings.lensType),
+    flareLine(shot.lensType || doc.settings.lensType, `${where} ${moment}`),
     where,
     moment ? `A single moment: ${moment}` : '',
     cast.length ? `${cast.map((p) => describeCharacter(p.character, p.name, p.manner, inferred)).join('; ')}` : '',
