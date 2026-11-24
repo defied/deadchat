@@ -219,6 +219,8 @@ function Collection({
       {error && <Alert>{error}</Alert>}
       {searching ? (
         <p className="field-hint"><Loader2 size={12} className="spin" /> Searching…</p>
+      ) : want.candidates.length === 0 && want.errors.length >= 2 ? (
+        <p className="field-hint">Neither library answered, so this wasn’t really searched. Try again in a minute.</p>
       ) : want.candidates.length === 0 ? (
         <p className="field-hint">Nothing free turned up. Try describing it differently{hunt.options.allowNonCommercial ? '' : ', or include non-commercial sounds'}.</p>
       ) : (

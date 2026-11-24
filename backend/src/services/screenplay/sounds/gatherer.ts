@@ -209,6 +209,7 @@ async function run(id: number): Promise<void> {
         const name = i === 0 ? 'Openverse' : 'Internet Archive';
         if (r.status === 'rejected') {
           const msg = `${name}: ${(r.reason as Error)?.message ?? 'failed'}`;
+          console.warn(`[sounds] hunt ${id} “${q}”: ${msg}`);
           if (!w.errors.includes(msg)) w.errors.push(msg);
           return;
         }

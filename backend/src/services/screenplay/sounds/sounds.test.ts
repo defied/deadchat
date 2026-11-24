@@ -219,6 +219,9 @@ test('source adapters: Openverse and Internet Archive requests and result mappin
   globalThis.fetch = (async (u: string | URL) => {
     const url = new URL(String(u));
     asked.push(url.toString());
+    if (url.host === 'api.openverse.org' && url.searchParams.get('q') === 'refuse' && url.searchParams.get('license_type')) {
+      return new Response('{"detail":"Invalid license_type"}', { status: 400 });
+    }
     if (url.host === 'api.openverse.org') {
       return Response.json({
         results: [
@@ -228,7 +231,16 @@ test('source adapters: Openverse and Internet Archive requests and result mappin
       });
     }
     if (url.pathname === '/advancedsearch.php') {
-      return Response.json({ response: { docs: [{ identifier: 'storm_sfx', title: 'Storm sounds', licenseurl: 'http://creativecommons.org/publicdomain/zero/1.0/' }] } });
+      return Response.json({
+        response: {
+          docs: [
+            { identifier: 'nd_item', title: 'No derivatives', licenseurl: 'https://creativecommons.org/licenses/by-nd/4.0/' },
+            { identifier: 'nc_item', title: 'Non-commercial', licenseurl: 'https://creativecommons.org/licenses/by-nc/4.0/' },
+            { identifier: 'kpod_radio', title: 'KPOD 1240 AM', licenseurl: 'https://creativecommons.org/publicdomain/mark/1.0/', collection: ['radioprograms', 'kpod'] },
+            { identifier: 'storm_sfx', title: 'Storm sounds', licenseurl: 'http://creativecommons.org/publicdomain/zero/1.0/' },
+          ],
+        },
+      });
     }
     if (url.pathname === '/metadata/storm_sfx') {
       return Response.json({
@@ -254,15 +266,23 @@ test('source adapters: Openverse and Internet Archive requests and result mappin
     assert.deepEqual([ov[0].key, ov[0].sourceName, ov[0].license.name, ov[0].durationS, ov[0].tags], ['openverse:abc', 'Freesound', 'CC BY 4.0', 61.5, ['rain', 'window']]);
     await src.searchOpenverse('x', { nonCommercial: true });
     assert.equal(new URL(asked[1]).searchParams.get('license_type'), 'modification');
+    // A refused filter falls back to naming the licences.
+    asked.length = 0;
+    await src.searchOpenverse('refuse', {});
+    assert.equal(asked.length, 2);
+    assert.equal(new URL(asked[1]).searchParams.get('license'), 'cc0,pdm,by,by-sa');
+    assert.equal(new URL(asked[1]).searchParams.get('license_type'), null);
 
     asked.length = 0;
     const ia = await src.searchArchive('heavy rain!', { maxDurationS: 900 });
     const q = new URL(asked[0]).searchParams.get('q')!;
-    assert.match(q, /title:\("heavy" AND "rain"\)/);
-    assert.match(q, /mediatype:audio/);
-    assert.match(q, /licenseurl:\*publicdomain\*/);
-    assert.doesNotMatch(q, /by-nc/);
-    assert.deepEqual(new URL(asked[0]).searchParams.getAll('fl[]'), ['identifier', 'title', 'creator', 'licenseurl', 'downloads']);
+    assert.match(q, /^heavy AND rain AND mediatype:audio AND /);
+    assert.match(q, /licenseurl:\(\*creativecommons\.org\*\) OR licenseurl:\(\*publicdomain\*\)/);
+    assert.doesNotMatch(q.replace(/creativecommons\.org\*/g, ''), /\//, 'no slashes: Archive.org reads them as a regular expression');
+    assert.equal(new URL(asked[0]).searchParams.get('rows'), '40');
+    assert.ok(!asked.some((u) => u.includes('/metadata/nd_item') || u.includes('/metadata/nc_item')), 'unusable licences are dropped before fetching files');
+    assert.ok(!asked.some((u) => u.includes('/metadata/kpod_radio')), 'radio captures are skipped');
+    assert.deepEqual(new URL(asked[0]).searchParams.getAll('fl[]'), ['identifier', 'title', 'creator', 'licenseurl', 'downloads', 'collection']);
     // One encoding per recording, the over-long file left out, best name match first.
     assert.deepEqual(ia.map((c) => [c.title, c.durationS]), [['rain heavy (Storm sounds)', 65], ['thunder (Storm sounds)', 12]]);
     assert.equal(ia[0].audioUrl, 'https://archive.org/download/storm_sfx/rain_heavy.mp3');

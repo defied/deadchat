@@ -2,7 +2,7 @@
 // search and metadata APIs, and Openverse (openly licensed audio from
 // Freesound, Wikimedia Commons, Jamendo, ccMixter and others).
 
-import { licenseOf, type LicenseInfo } from './licenses';
+import { allowed, licenseOf, type LicenseInfo } from './licenses';
 
 export interface Candidate {
   /** Unique across sources: "<source>:<id>[:<file>]". */
@@ -30,7 +30,11 @@ const TIMEOUT = 20_000;
 
 async function getJson<T>(url: string): Promise<T> {
   const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT) });
-  if (!r.ok) throw new Error(`${new URL(url).host} answered ${r.status}`);
+  if (!r.ok) {
+    const body = (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160);
+    console.warn(`[sounds] ${new URL(url).host} ${r.status}: ${body}`);
+    throw Object.assign(new Error(`${new URL(url).host} answered ${r.status}${body ? `: ${body}` : ''}`), { status: r.status });
+  }
   return (await r.json()) as T;
 }
 
@@ -75,7 +79,16 @@ export async function searchOpenverse(q: string, opts: { nonCommercial?: boolean
   // Openverse can filter to licences that allow modification (and commercial use).
   p.set('license_type', opts.nonCommercial ? 'modification' : 'commercial,modification');
   if (opts.category) p.set('category', opts.category);
-  const d = await getJson<{ results?: OvAudio[] }>(`https://api.openverse.org/v1/audio/?${p}`);
+  let d: { results?: OvAudio[] };
+  try {
+    d = await getJson<{ results?: OvAudio[] }>(`https://api.openverse.org/v1/audio/?${p}`);
+  } catch (e) {
+    if ((e as { status?: number }).status !== 400) throw e;
+    // Refused filter: name the licences instead.
+    p.delete('license_type');
+    p.set('license', opts.nonCommercial ? 'cc0,pdm,by,by-sa,by-nc,by-nc-sa' : 'cc0,pdm,by,by-sa');
+    d = await getJson<{ results?: OvAudio[] }>(`https://api.openverse.org/v1/audio/?${p}`);
+  }
   const rows = (d.results ?? []).filter((r) => r.url && !r.mature);
   return rows.map((r, i) => ({
     key: `openverse:${r.id}`,
@@ -101,6 +114,7 @@ interface IaDoc {
   creator?: string | string[];
   licenseurl?: string;
   downloads?: number;
+  collection?: string | string[];
 }
 interface IaFile {
   name: string;
@@ -115,12 +129,14 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 const AUDIO_FORMATS = /^(vbr mp3|128kbps mp3|64kbps mp3|mp3|ogg vorbis|flac|wave)$/i;
 const PREFERRED = ['VBR MP3', '128Kbps MP3', 'MP3', 'Ogg Vorbis', '64Kbps MP3'];
 
-/** Free (or, if asked, non-commercial) licences, by URL pattern. */
-function iaLicenseClause(nonCommercial: boolean): string {
-  const free = ['*publicdomain*', '*creativecommons.org/licenses/by/*', '*creativecommons.org/licenses/by-sa/*'];
-  const nc = ['*creativecommons.org/licenses/by-nc/*', '*creativecommons.org/licenses/by-nc-sa/*'];
-  return `(${[...free, ...(nonCommercial ? nc : [])].map((p) => `licenseurl:${p}`).join(' OR ')})`;
-}
+/**
+ * Items with an open licence. Archive.org's search rejects '/' inside a
+ * wildcard (it starts a regular expression), so this only narrows to
+ * Creative Commons and public domain; the exact licence is checked here.
+ */
+const IA_LICENSED = '(licenseurl:(*creativecommons.org*) OR licenseurl:(*publicdomain*))';
+/** Radio captures, podcasts and concert tapes swamp sound-effect searches; dropped here. */
+const IA_SKIP = /^(etree|podcasts|radioprograms|tvnews|tv-news|radio-archive|radio|oldtimeradio|librivoxaudio|audio_bookspoetry)$/i;
 
 /** Lucene-safe words. */
 const words = (q: string) => q.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').split(/\s+/).filter((w) => w.length > 1).slice(0, 8);
@@ -128,12 +144,15 @@ const words = (q: string) => q.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
 export async function searchArchive(q: string, opts: { nonCommercial?: boolean; max?: number; maxDurationS?: number }): Promise<Candidate[]> {
   const w = words(q);
   if (!w.length) return [];
-  const text = w.map((x) => `"${x}"`).join(' AND ');
-  const query = `(title:(${text}) OR subject:(${text}) OR description:(${text})) AND mediatype:audio AND ${iaLicenseClause(!!opts.nonCommercial)}`;
-  const p = new URLSearchParams({ q: query, rows: String(Math.min(12, opts.max ?? 8)), output: 'json', 'sort[]': 'downloads desc' });
-  for (const f of ['identifier', 'title', 'creator', 'licenseurl', 'downloads']) p.append('fl[]', f);
+  const query = `${w.join(' AND ')} AND mediatype:audio AND ${IA_LICENSED}`;
+  // Ask for more than we need: many CC items are NonCommercial or NoDerivatives.
+  const p = new URLSearchParams({ q: query, rows: '40', output: 'json', 'sort[]': 'downloads desc' });
+  for (const f of ['identifier', 'title', 'creator', 'licenseurl', 'downloads', 'collection']) p.append('fl[]', f);
   const d = await getJson<{ response?: { docs?: IaDoc[] } }>(`https://archive.org/advancedsearch.php?${p}`);
-  const docs = d.response?.docs ?? [];
+  const docs = (d.response?.docs ?? [])
+    .filter((doc) => allowed(licenseOf(doc.licenseurl), { allowNonCommercial: !!opts.nonCommercial }))
+    .filter((doc) => !(Array.isArray(doc.collection) ? doc.collection : doc.collection ? [doc.collection] : []).some((c) => IA_SKIP.test(c)))
+    .slice(0, Math.min(12, opts.max ?? 8));
   const out: Candidate[] = [];
   // Items can hold hundreds of files: take the few whose names best match.
   await Promise.all(
