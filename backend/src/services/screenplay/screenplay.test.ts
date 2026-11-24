@@ -167,7 +167,7 @@ test('a set-plan camera adds staging and limits the cast to who it sees', () => 
 test('shot types become a described composition; lenses become a look', () => {
   const ots = prompts.composition('Over-the-shoulder', 'Ann', 'Bo');
   assert.match(ots, /camera is behind Bo, whose shoulder .* foreground, large and out of focus; we look past them at Ann/);
-  assert.match(prompts.composition('OTS', 'Ann', null), /just behind Ann, Ann's shoulder/);
+  assert.match(prompts.composition('OTS', 'Ann', null), /from behind Ann: the back of Ann's head .* face is not visible.*does not also appear further away/);
   assert.match(prompts.composition('Close-up', 'Ann', null), /Ann's face fills most of the frame/);
   assert.match(prompts.composition('POV', 'Ann', null), /through their eyes/);
   assert.match(prompts.lensLook(14), /ultra-wide.*everything in sharp focus/);

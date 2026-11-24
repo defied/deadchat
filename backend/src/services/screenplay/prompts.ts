@@ -60,7 +60,7 @@ export function composition(type: string, subject: string | null, other: string 
   if (/over.?the.?shoulder|\bots\b/.test(t)) {
     return other
       ? `over-the-shoulder shot: the camera is behind ${other}, whose shoulder and the back of whose head fill one side of the foreground, large and out of focus; we look past them at ${who}, in focus, facing the camera`
-      : `over-the-shoulder shot: the camera is just behind ${who}, ${who}'s shoulder and the back of their head large and out of focus in the foreground; we look past them at what they are looking at, in focus`;
+      : `over-the-shoulder shot from behind ${who}: the back of ${who}'s head and one shoulder fill a side of the foreground, large and out of focus; ${who}'s face is not visible; over the shoulder, in focus, we see what ${who} is looking at and the place beyond; ${who} is the only person in the foreground and does not also appear further away facing the camera`;
   }
   if (/extreme close/.test(t)) return `extreme close-up: one detail (eyes, hands or an object) fills the whole frame`;
   if (/medium close|mcu/.test(t)) return `medium close-up: ${who} framed from the chest up`;
