@@ -434,3 +434,18 @@ export async function speakLines(id: number, shotIds?: string[]): Promise<Detail
 
 /** Rows that are voice samples or spoken lines rather than gathered sounds. */
 export const isVoiceRow = (m: ScreenplayMedia) => m.target.startsWith('voice:') || m.target.startsWith('line:');
+
+// ── shot suggestions ──
+
+export interface SuggestedShot {
+  anchorId: string;
+  type: string;
+  seconds: number;
+  lens?: number;
+  notes?: string;
+}
+
+export async function suggestShots(id: number, sceneId: string, density: 'fewer' | 'normal' | 'more'): Promise<{ shots: SuggestedShot[]; source: 'ai' | 'rules' }> {
+  const { data } = await client.post<{ shots: SuggestedShot[]; source: 'ai' | 'rules' }>(`/api/screenplays/${id}/shots/suggest`, { sceneId, density }, { timeout: 200_000 });
+  return data;
+}

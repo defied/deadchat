@@ -11,6 +11,7 @@ import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
 import { queueLines, voiceTarget } from '../services/screenplay/voices';
+import { suggestShots } from '../services/screenplay/suggestShots';
 import { getLatestCharacterAsset, listCharacters as listStudioCharacters } from '../services/characters';
 import { getAsset } from '../services/assetPipeline';
 import * as store from '../services/screenplay/store';
@@ -371,6 +372,14 @@ router.post('/:id/reel', owned, reelUpload.single('file'), (req, res) =>
     const media = saveMediaFile({ userId: sp(res).userId, type: kind, tmpPath: f.path, mime: f.mimetype, originalFilename: f.originalname, prompt: 'Screenplay rip reel' });
     const row = store.addMedia(sp(res).id, 'reel', kind, { status: 'ready', media_id: media.id, label: f.originalname.slice(0, 200) });
     return { ...detail(sp(res)), added: row.id };
+  }),
+);
+
+// Suggest shots for one scene (the client adds them to the document, so they can be undone).
+router.post('/:id/shots/suggest', owned, (req, res) =>
+  wrap(res, async () => {
+    const density = oneOf(req.body?.density, ['fewer', 'normal', 'more'] as const) ?? 'normal';
+    return suggestShots(sp(res), id(req.body?.sceneId), density);
   }),
 );
 

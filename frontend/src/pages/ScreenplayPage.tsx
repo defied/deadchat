@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   Clapperboard,
   Download,
+  Eraser,
   FileUp,
   Image as ImageIcon,
   Keyboard,
@@ -21,6 +22,7 @@ import {
   Presentation,
   Redo2,
   Settings,
+  Sparkles,
   Trash2,
   Undo2,
   Users,
@@ -36,6 +38,7 @@ import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
 import { PitchTab } from '../components/screenplay/PitchTab';
 import { SoundTab } from '../components/screenplay/SoundTab';
+import { GenerateShotsModal } from '../components/screenplay/GenerateShots';
 import { ScreenplayActionsContext } from '../components/screenplay/actions';
 import { useScreenplay } from '../components/screenplay/useScreenplay';
 import { ELEMENTS, download, pageStarts, parseFdx, parseFountain, printHtml, toFdx, toFountain } from '../components/screenplay/format';
@@ -52,6 +55,7 @@ export function ScreenplayPage() {
   const [curType, setCurType] = useState<ElementType | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [menu, setMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -201,6 +205,22 @@ export function ScreenplayPage() {
             <button className="btn btn-sm" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.current?.addShot()} title="Pin a storyboard shot to the current line">
               <Clapperboard size={14} /> Add shot
             </button>
+            <button className="btn btn-sm" onClick={() => setGenerating(true)} title="Suggest shots for every scene that has none">
+              <Sparkles size={14} /> Generate shots
+            </button>
+            <button
+              className="btn btn-sm"
+              disabled={!doc.shots.some((x) => !x.locked)}
+              title="Remove all shots (locked shots stay). Undo brings them back."
+              onClick={() => {
+                const n = doc.shots.filter((x) => !x.locked).length;
+                const kept = doc.shots.length - n;
+                if (!window.confirm(`Clear ${n} shot${n === 1 ? '' : 's'}?${kept ? ` ${kept} locked shot${kept === 1 ? ' stays' : 's stay'}.` : ''} Undo brings them back.`)) return;
+                s.update((d) => ({ ...d, shots: d.shots.filter((x) => x.locked) }));
+              }}
+            >
+              <Eraser size={14} /> Clear shots
+            </button>
             <button className="icon-btn" onMouseDown={(e) => e.preventDefault()} onClick={s.undo} disabled={!s.canUndo} title={`Undo (${mod}+Z)`}>
               <Undo2 size={15} />
             </button>
@@ -285,6 +305,7 @@ export function ScreenplayPage() {
 
       {settingsOpen && <SettingsModal doc={doc} title={s.title} update={s.update} onClose={() => setSettingsOpen(false)} />}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {generating && <GenerateShotsModal screenplayId={id} doc={doc} update={s.update} flush={s.flush} onClose={() => setGenerating(false)} />}
     </div>
     </ScreenplayActionsContext.Provider>
   );
