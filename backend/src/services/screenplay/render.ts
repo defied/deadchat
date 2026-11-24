@@ -417,27 +417,43 @@ export const castingDeps = { llmJson };
  * still differ by seed).
  */
 export async function castingLooks(c: Character, count = 4): Promise<CastingLook[]> {
-  try {
-    const out = await castingDeps.llmJson<{ looks?: Array<{ label?: unknown; appearance?: unknown }> }>(
-      'You are a casting director for an invented film character. Propose ' +
-        count +
-        ' clearly different looks that all fit the brief, as {"looks":[{"label":"2-5 word summary","appearance":"..."}]}. ' +
-        'Keep every trait the brief already states (age, gender, species, named features). Vary everything it leaves open: ' +
-        'face shape, features, hair, colouring, skin tone, build, height, distinguishing marks. Each appearance is one paragraph ' +
-        'of concrete physical traits only: no wardrobe, no personality, no story. Never describe or resemble a real person.',
-      castingBrief(c),
-    );
-    const looks = (Array.isArray(out.looks) ? out.looks : [])
-      .map((l) => ({ label: asString(l?.label, 80) ?? '', appearance: asString(l?.appearance, 1500) ?? '' }))
-      .filter((l) => l.appearance)
-      .slice(0, count);
-    if (looks.length) return looks.map((l, i) => ({ ...l, label: l.label || `Look ${i + 1}` }));
-  } catch {
-    // fall through to seeds
-  }
   const base = c.appearance?.trim() || [c.age, c.gender, c.species || c.kind].filter(Boolean).join(' ') || c.name;
-  return Array.from({ length: count }, (_, i) => ({ label: `Take ${i + 1}`, appearance: base }));
+  const brief = castingBrief(c);
+  // One look per call, each pushed in a different direction: small local
+  // models return one look (or a copy of the brief) when asked for a list.
+  const looks = await Promise.all(
+    CASTING_ANGLES.slice(0, count).map(async (angle, i) => {
+      try {
+        const out = await castingDeps.llmJson<{ label?: unknown; appearance?: unknown }>(
+          'You are a casting director for an invented film character. Propose ONE look for the character as ' +
+            '{"label": "a few words, e.g. wiry freckled redhead", "appearance": "one paragraph"}. ' +
+            'Keep every trait the brief states (age, gender, species, named features); invent concrete details for what it leaves open: ' +
+            'face shape, features, hair, colouring, skin tone, build, height, distinguishing marks. ' +
+            `This look: ${angle}. Physical traits only: no wardrobe, personality or story. Never describe or resemble a real person.`,
+          brief,
+          { temperature: 0.9 },
+        );
+        const appearance = asString(out.appearance, 1500);
+        if (!appearance || appearance.length < 40 || base.startsWith(appearance)) return null;
+        let label = asString(out.label, 80);
+        if (!label || /\bword|summary|label\b/i.test(label)) label = appearance.split(/[,.;]/)[0].slice(0, 40);
+        return { label, appearance };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return looks.map((l, i) => l ?? { label: `Take ${i + 1}`, appearance: base });
 }
+
+const CASTING_ANGLES = [
+  'the most natural fit for the brief',
+  'against type: a less expected face that still fits the brief',
+  'a different build, height and colouring from the obvious choice',
+  'a striking, memorable face with one distinctive feature',
+  'weathered and lived-in',
+  'clean-cut and polished',
+];
 
 /** Queue a headshot for each look; rows are 'character' media labelled 'casting'. */
 export async function castCharacter(sp: Screenplay, c: Character, count = 4): Promise<ScreenplayMedia[]> {

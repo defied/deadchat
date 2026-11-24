@@ -670,28 +670,27 @@ test('flares come only from a light in the scene', () => {
   assert.deepEqual(prompts.lightSources('Golden hour. Sunlight floods the field.'), ['the low sun']);
 });
 
-test('casting proposes four looks from the brief, or reuses the description without a model', async () => {
+test('casting asks for each look separately and falls back to the description', async () => {
   const c = { id: 'ch1', name: 'Ferk', age: '20s', gender: 'male', personality: 'cocky influencer', appearance: 'red hair' };
   assert.match(render.castingBrief(c), /Name: Ferk\nAge: 20s\nGender: male\nAppearance so far: red hair\nPersonality: cocky influencer/);
   const real = render.castingDeps.llmJson;
   try {
-    let asked = '';
-    render.castingDeps.llmJson = (async (_sys: string, user: string) => {
-      asked = user;
-      return { looks: [{ label: 'wiry freckled redhead', appearance: 'Wiry, freckled, copper curls.' }, { appearance: 'Stocky, buzz-cut ginger.' }, { label: 'x', appearance: '' }] };
-    }) as typeof real;
-    const looks = await render.castingLooks(c);
-    assert.match(asked, /Name: Ferk/);
-    assert.deepEqual(looks, [
-      { label: 'wiry freckled redhead', appearance: 'Wiry, freckled, copper curls.' },
-      { label: 'Look 2', appearance: 'Stocky, buzz-cut ginger.' },
-    ]);
-    render.castingDeps.llmJson = (async () => {
+    const systems: string[] = [];
+    render.castingDeps.llmJson = (async (sys: string) => {
+      systems.push(sys);
+      const n = systems.length;
+      if (n === 1) return { label: 'wiry freckled redhead', appearance: 'Wiry and freckled, copper curls, a narrow fox-like face, pale grey eyes.' };
+      if (n === 2) return { label: '2-5 word summary', appearance: 'Stocky with a buzz-cut ginger scalp, a broken nose and a heavy jaw.' };
+      if (n === 3) return { appearance: 'red' };
       throw new Error('offline');
     }) as typeof real;
-    const fallback = await render.castingLooks(c);
-    assert.equal(fallback.length, 4);
-    assert.deepEqual(fallback[0], { label: 'Take 1', appearance: 'red hair' });
+    const looks = await render.castingLooks(c);
+    assert.equal(systems.length, 4);
+    assert.ok(new Set(systems).size === 4, 'each call pushes a different direction');
+    assert.deepEqual(looks[0], { label: 'wiry freckled redhead', appearance: 'Wiry and freckled, copper curls, a narrow fox-like face, pale grey eyes.' });
+    assert.equal(looks[1].label, 'Stocky with a buzz-cut ginger scalp', 'template labels are replaced');
+    assert.deepEqual(looks[2], { label: 'Take 3', appearance: 'red hair' }, 'too short or a copy falls back');
+    assert.deepEqual(looks[3], { label: 'Take 4', appearance: 'red hair' });
   } finally {
     render.castingDeps.llmJson = real;
   }
