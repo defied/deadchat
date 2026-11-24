@@ -479,6 +479,36 @@ test('extras are described as different people from the named characters', () =>
   assert.doesNotMatch(p.split('Background extras')[1], /green cardigan/, 'the cast’s wardrobe isn’t repeated for extras');
 });
 
+test('cleanDoc keeps the pitch and drops junk', () => {
+  const d = cleanDoc({
+    elements: [{ id: 'a1', type: 'action', text: 'x' }],
+    pitch: {
+      logline: 'A lighthouse keeper hides a storm.',
+      vision: { statement: 'Quiet dread.', comps: ['Moonlight meets The Lighthouse', '', 42], moodboard: [3, 'x', -1, 7] },
+      treatment: 'ACT ONE\nThe storm arrives.',
+      reel: {
+        items: [
+          { id: 'r1', source: { kind: 'upload', mediaRowId: 9 }, in: 2, out: 6.5, caption: 'Silence' },
+          { id: 'r2', source: { kind: 'frame', shotId: 'sh1' }, hold: 3 },
+          { id: 'r3', source: { kind: 'nope' } },
+          { id: 'r4', source: { kind: 'upload', mediaRowId: 2 }, in: 5, out: 1 },
+        ],
+        soundtrack: { kind: 'cue', shotId: 'sh2' },
+        openCard: false,
+        endCard: 'IN DEVELOPMENT',
+      },
+    },
+  });
+  assert.equal(d.pitch!.logline, 'A lighthouse keeper hides a storm.');
+  assert.deepEqual(d.pitch!.vision!.comps, ['Moonlight meets The Lighthouse']);
+  assert.deepEqual(d.pitch!.vision!.moodboard, [3, 7]);
+  assert.deepEqual(d.pitch!.reel!.items.map((i) => i.id), ['r1', 'r2', 'r4']);
+  assert.equal(d.pitch!.reel!.items[2].out, undefined, 'an out point before the in point is dropped');
+  assert.deepEqual(d.pitch!.reel!.soundtrack, { kind: 'cue', shotId: 'sh2' });
+  assert.equal(d.pitch!.reel!.openCard, false);
+  assert.equal(cleanDoc({ elements: [] }).pitch, undefined);
+});
+
 test('saving with a stale version is refused', () => {
   const sp = store.createScreenplay(1, 'Conflict', doc());
   store.saveScreenplay(sp.id, 1, { title: 'A' });

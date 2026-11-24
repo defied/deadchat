@@ -76,6 +76,44 @@ export function saveMedia(opts: SaveMediaOptions): Media {
     .get(result.lastInsertRowid) as Media;
 }
 
+/**
+ * Like saveMedia, for an upload already on disk (large videos): the file is
+ * moved into the media folder instead of being read into memory.
+ */
+export function saveMediaFile(opts: Omit<SaveMediaOptions, 'bytes'> & { tmpPath: string }): Media {
+  ensureMediaDir();
+  const ext = (opts.originalFilename ? path.extname(opts.originalFilename) : '') || extFromMime(opts.mime);
+  const filename = `${randomUUID()}${ext.toLowerCase()}`;
+  const dest = path.join(config.mediaDir, filename);
+  try {
+    fs.renameSync(opts.tmpPath, dest);
+  } catch {
+    // Different filesystem: copy, then remove the upload.
+    fs.copyFileSync(opts.tmpPath, dest);
+    fs.rmSync(opts.tmpPath, { force: true });
+  }
+  const size = fs.statSync(dest).size;
+  const result = db.prepare(`
+    INSERT INTO media (user_id, job_id, type, filename, mime, size_bytes,
+                       width, height, duration_s, prompt, provider_id, meta)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    opts.userId ?? null,
+    opts.jobId ?? null,
+    opts.type,
+    filename,
+    opts.mime,
+    size,
+    opts.width ?? null,
+    opts.height ?? null,
+    opts.durationS ?? null,
+    opts.prompt ?? null,
+    opts.providerId ?? null,
+    opts.meta ? JSON.stringify(opts.meta) : null,
+  );
+  return db.prepare('SELECT * FROM media WHERE id = ?').get(result.lastInsertRowid) as Media;
+}
+
 export function getMedia(id: number): Media | null {
   return db.prepare('SELECT * FROM media WHERE id = ?').get(id) as Media | null;
 }

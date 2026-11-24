@@ -128,6 +128,49 @@ export interface ScreenplayDoc {
   settings: ScreenplaySettings;
   /** Title page fields. */
   titlePage?: { title?: string; credit?: string; author?: string; source?: string; contact?: string; draftDate?: string };
+  /** The pitch: rip reel, director's vision and treatment. All written by the user. */
+  pitch?: Pitch;
+}
+
+export interface Pitch {
+  logline?: string;
+  vision?: {
+    statement?: string;
+    tone?: string;
+    look?: string;
+    sound?: string;
+    themes?: string;
+    audience?: string;
+    whyNow?: string;
+    /** "X meets Y" and other comparable titles. */
+    comps?: string[];
+    /** Reference images (screenplay_media ids) for the mood board. */
+    moodboard?: number[];
+  };
+  treatment?: string;
+  reel?: Reel;
+}
+
+export interface Reel {
+  items: ReelItem[];
+  /** Soundtrack: an uploaded audio file (screenplay_media id) or a shot's music cue. */
+  soundtrack?: { kind: 'upload'; mediaRowId: number } | { kind: 'cue'; shotId: string };
+  /** Opening title card (defaults to the title and logline). */
+  openCard?: boolean;
+  endCard?: string;
+}
+
+export interface ReelItem {
+  id: string;
+  /** An uploaded clip or still (screenplay_media id), or a storyboard frame. */
+  source: { kind: 'upload'; mediaRowId: number } | { kind: 'frame'; shotId: string };
+  /** Video trim, seconds. */
+  in?: number;
+  out?: number;
+  /** How long a still stays on screen, seconds. */
+  hold?: number;
+  /** Text over the shot. */
+  caption?: string;
 }
 
 export interface Screenplay {
@@ -140,7 +183,7 @@ export interface Screenplay {
   updatedAt: string;
 }
 
-export type MediaRole = 'frame' | 'music' | 'character' | 'reference';
+export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel';
 export type MediaStatus = 'pending' | 'ready' | 'failed' | 'superseded';
 
 export interface ScreenplayMedia {

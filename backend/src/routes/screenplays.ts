@@ -4,7 +4,11 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
-import { ELEMENT_TYPES, emptyDoc, type Character, type PlanItem, type Screenplay, type ScreenplayDoc, type ScreenplayMedia } from '../services/screenplay/types';
+import { ELEMENT_TYPES, emptyDoc, type Character, type Pitch, type PlanItem, type Reel, type ReelItem, type Screenplay, type ScreenplayDoc, type ScreenplayMedia } from '../services/screenplay/types';
+import fs from 'fs';
+import os from 'os';
+import multer from 'multer';
+import { saveMediaFile } from '../services/mediaStore';
 import * as store from '../services/screenplay/store';
 import {
   REF_VIEWS,
@@ -60,6 +64,56 @@ function oneOf<T extends string>(v: unknown, opts: readonly T[]): T | undefined 
 }
 
 /** Keep only well-formed fields, with sane sizes. */
+function cleanPitch(p: any): Pitch | undefined { // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (!p || typeof p !== 'object') return undefined;
+  const v = p.vision && typeof p.vision === 'object' ? p.vision : {};
+  const r = p.reel && typeof p.reel === 'object' ? p.reel : {};
+  const rowId = (x: unknown): number | undefined => (typeof x === "number" && Number.isSafeInteger(x) && x > 0 ? x : undefined);
+  const items: ReelItem[] = (Array.isArray(r.items) ? r.items : [])
+    .slice(0, 300)
+    .map((it: any): ReelItem | null => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      const src = it?.source ?? {};
+      const source: ReelItem['source'] | null =
+        src.kind === 'upload' && rowId(src.mediaRowId) ? { kind: 'upload', mediaRowId: rowId(src.mediaRowId)! } : src.kind === 'frame' && id(src.shotId) ? { kind: 'frame', shotId: id(src.shotId) } : null;
+      if (!id(it?.id) || !source) return null;
+      const inS = num(it?.in, 0, 36000);
+      const outS = num(it?.out, 0, 36000);
+      return {
+        id: id(it.id),
+        source,
+        ...(inS !== undefined ? { in: inS } : {}),
+        ...(outS !== undefined && (inS === undefined || outS > inS) ? { out: outS } : {}),
+        ...(num(it?.hold, 0.5, 60) !== undefined ? { hold: num(it.hold, 0.5, 60) } : {}),
+        ...(str(it?.caption, 300) ? { caption: str(it.caption, 300) } : {}),
+      };
+    })
+    .filter((x: ReelItem | null): x is ReelItem => !!x);
+  const st = r.soundtrack;
+  const soundtrack: Reel['soundtrack'] =
+    st?.kind === 'upload' && rowId(st.mediaRowId) ? { kind: 'upload', mediaRowId: rowId(st.mediaRowId)! } : st?.kind === 'cue' && id(st.shotId) ? { kind: 'cue', shotId: id(st.shotId) } : undefined;
+  return {
+    logline: str(p.logline, 600),
+    vision: {
+      statement: str(v.statement, 20000),
+      tone: str(v.tone, 4000),
+      look: str(v.look, 4000),
+      sound: str(v.sound, 4000),
+      themes: str(v.themes, 4000),
+      audience: str(v.audience, 4000),
+      whyNow: str(v.whyNow, 4000),
+      comps: (Array.isArray(v.comps) ? v.comps : []).map((c: unknown) => str(c, 200)).filter((c: string | undefined): c is string => !!c?.trim()).slice(0, 20),
+      moodboard: (Array.isArray(v.moodboard) ? v.moodboard : []).map(rowId).filter((x: number | undefined): x is number => !!x).slice(0, 60),
+    },
+    treatment: str(p.treatment, 200000),
+    reel: {
+      items,
+      ...(soundtrack ? { soundtrack } : {}),
+      ...(r.openCard === false ? { openCard: false } : {}),
+      ...(str(r.endCard, 300) ? { endCard: str(r.endCard, 300) } : {}),
+    },
+  };
+}
+
 export function cleanDoc(raw: unknown): ScreenplayDoc {
   const d = (raw ?? {}) as Partial<ScreenplayDoc>;
   const base = emptyDoc();
@@ -122,7 +176,9 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
   }
   const s = d.settings ?? {};
   const t = d.titlePage ?? {};
+  const pitch = cleanPitch(d.pitch);
   return {
+    ...(pitch ? { pitch } : {}),
     elements: elements.length ? elements : base.elements,
     shots,
     characters,
@@ -291,6 +347,23 @@ router.post('/:id/references', owned, (req, res) =>
   }),
 );
 
+// Rip reel: clips, stills and soundtrack files, kept with the screenplay.
+const reelUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
+router.post('/:id/reel', owned, reelUpload.single('file'), (req, res) =>
+  wrap(res, () => {
+    const f = req.file;
+    if (!f) throw new Error('No file');
+    const kind = f.mimetype.startsWith('video/') ? 'video' : f.mimetype.startsWith('image/') ? 'image' : f.mimetype.startsWith('audio/') ? 'audio' : null;
+    if (!kind || !/^(video\/(mp4|webm|quicktime)|image\/(png|jpe?g|webp|gif)|audio\/(mpeg|mp4|x-m4a|wav|x-wav|webm|ogg|aac))$/.test(f.mimetype)) {
+      fs.rmSync(f.path, { force: true });
+      throw new Error('Upload an MP4, WebM or MOV clip, an image, or an MP3, M4A, WAV or OGG soundtrack');
+    }
+    const media = saveMediaFile({ userId: sp(res).userId, type: kind, tmpPath: f.path, mime: f.mimetype, originalFilename: f.originalname, prompt: 'Screenplay rip reel' });
+    const row = store.addMedia(sp(res).id, 'reel', kind, { status: 'ready', media_id: media.id, label: f.originalname.slice(0, 200) });
+    return { ...detail(sp(res)), added: row.id };
+  }),
+);
+
 router.patch('/:id/media/:mid', owned, (req, res) =>
   wrap(res, () => {
     const row = store.getMedia(Number(req.params.mid));
@@ -301,6 +374,8 @@ router.patch('/:id/media/:mid', owned, (req, res) =>
         ...(req.body?.caption !== undefined ? { caption: (str(req.body.caption, 800) ?? '').trim() || null, error: null } : {}),
       });
       scheduleReconcile(sp(res).id, 0);
+    } else if (row.role === 'reel' && req.body?.label !== undefined) {
+      store.updateMedia(row.id, { label: (str(req.body.label, 200) ?? '').trim() || null });
     }
     return detail(sp(res));
   }),
@@ -310,7 +385,7 @@ router.delete('/:id/media/:mid', owned, (req, res) =>
   wrap(res, () => {
     const row = store.getMedia(Number(req.params.mid));
     if (!row || row.screenplay_id !== sp(res).id) throw new Error('Not found');
-    if (row.role !== 'reference' && row.role !== 'character') throw new Error('Only reference and character photos can be removed');
+    if (row.role !== 'reference' && row.role !== 'character' && row.role !== 'reel') throw new Error('Only reference, character and reel files can be removed');
     store.deleteMedia(row.id);
     if (row.role === 'reference') scheduleReconcile(sp(res).id, 0);
     return detail(sp(res));
