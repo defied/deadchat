@@ -129,8 +129,10 @@ test('planShot waits for a shot type and a description, then builds the prompt',
   assert.match(prompts.planShot(d, d.shots[2]).waiting!, /shot type/);
   const p = prompts.planShot(d, d.shots[0]);
   assert.ok(p.prompt);
-  assert.match(p.prompt!, /^Cinematic film still, Wide establishing shot, 24mm lens\. Interior, Jane's kitchen, night\. Rain hammers the window/);
-  assert.match(p.prompt!, /Characters: Jane: woman in her forties, short grey hair, sharp features, wearing a worn green cardigan, whispering/);
+  assert.match(p.prompt!, /^Cinematic film still, extreme wide establishing shot: [^.]+\. 24mm wide-angle lens, deep focus[^.]*\. Interior, Jane's kitchen, night\. A single moment: Rain hammers the window/);
+  assert.match(p.prompt!, /Jane \(woman in her forties, short grey hair, sharp features, wearing a worn green cardigan, whispering\)/);
+  assert.match(p.prompt!, /Jane appears exactly once in the frame/);
+  assert.doesNotMatch(p.prompt!, /shallow depth of field/, 'a wide lens is not shallow');
   assert.doesNotMatch(p.prompt!, /Who is there/, 'dialogue is not visual');
   assert.doesNotMatch(p.prompt!, /Tom/, 'off-screen Tom is not in the shot');
 });
@@ -157,9 +159,29 @@ test('a set-plan camera adds staging and limits the cast to who it sees', () => 
     ],
   };
   const p = prompts.planShot(d, d.shots[1]);
-  assert.match(p.prompt!, /Characters: Tom: tall man/);
+  assert.match(p.prompt!, /Tom \(tall man/);
   assert.match(p.staging!, /Tom, centre frame, facing the camera/);
-  assert.doesNotMatch(p.prompt!, /Jane:/);
+  assert.doesNotMatch(p.prompt!, /Jane \(/);
+});
+
+test('shot types become a described composition; lenses become a look', () => {
+  const ots = prompts.composition('Over-the-shoulder', 'Ann', 'Bo');
+  assert.match(ots, /camera is behind Bo, whose shoulder .* foreground, large and out of focus; we look past them at Ann/);
+  assert.match(prompts.composition('OTS', 'Ann', null), /just behind Ann, Ann's shoulder/);
+  assert.match(prompts.composition('Close-up', 'Ann', null), /Ann's face fills most of the frame/);
+  assert.match(prompts.composition('POV', 'Ann', null), /through their eyes/);
+  assert.match(prompts.lensLook(14), /ultra-wide.*everything in sharp focus/);
+  assert.match(prompts.lensLook(85), /compressed background, strong background blur/);
+  assert.match(prompts.lensLook(135), /telephoto.*very shallow depth of field/);
+});
+
+test('a frame shows one moment, one of each character, and passers-by on busy streets', () => {
+  const action = 'Ferk leans in close to his phone and grins. He flips off the screen. He looks right, then left, then walks left out of the shot.';
+  assert.equal(prompts.firstMoment(action), 'Ferk leans in close to his phone and grins. He flips off the screen.');
+  assert.equal(prompts.genderFromText(action), 'man');
+  assert.equal(prompts.genderFromText('She waves. He nods.'), null);
+  assert.equal(prompts.extrasLine('Ferk stands on the sidewalk.', ['Ferk']), '');
+  assert.match(prompts.extrasLine('Ferk stands on the sidewalk.', ['Ferk'], true), /Ferk/);
 });
 
 test('references add a look; sexual content with a minor is never rendered', () => {
