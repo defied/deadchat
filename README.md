@@ -140,6 +140,13 @@ Meta tokens are renewed automatically about once a week (they expire after 60 da
   - **Hover:** hovering a shot highlights its script block, and hovering a script line highlights its shot.
   - **Lock:** the padlock on a shot keeps its frame and music exactly as they are. Nothing re-renders, not even when its script changes, on Render now, or on Re-roll, until you unlock it.
   - **Extras:** when the action mentions unnamed people (a crowd, waiters, passers-by), the prompt describes them as unrelated strangers with their own faces and clothes, so they don't copy a named character's look or outfit.
+- **Pitch tab:** a logline plus three parts, all written by you (no AI).
+  - **Rip reel:** upload clips (MP4, WebM, MOV), stills and a soundtrack, or add storyboard frames.
+    - Set in and out points, hold times and on-screen captions, and reorder.
+    - Play it full screen with an optional title card and end card. Clips from other films are for private pitching only.
+  - **Director's vision:** a statement plus tone, look, sound, themes, audience, "why now", comparables, and a mood board picked from your reference images.
+  - **Treatment:** a prose editor with Markdown preview and word count. It can insert your scene headings and characters to write under.
+  - **Pitch document:** prints the cover, vision, mood board and treatment, or saves them as a PDF.
 - **Character names:** cues autocomplete from the Characters tab and from anyone already speaking. Names also complete mid-line in action and dialogue (Enter, Tab or → accepts). A name that speaks but has no profile gets a placeholder profile in the Characters tab. Editing a placeholder keeps it; an untouched placeholder disappears if its cue was a typo you fixed.
 - **Characters:** build out each character (human or not), refine a visual description, and generate reference photos. Appearance and wardrobe go into every shot the character is in; voice-over and off-screen cues don't put them in frame.
 - **Set plan:** a top-down plan per scene with the cast, one camera per shot, lights and set pieces. Moving them changes the frame's staging (who's in frame and where, shot size, facing, camera height, light direction).

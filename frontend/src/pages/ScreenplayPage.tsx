@@ -17,6 +17,7 @@ import {
   Loader2,
   Pause,
   Play,
+  Presentation,
   Redo2,
   Settings,
   Trash2,
@@ -32,6 +33,7 @@ import { ScriptEditor, type EditorApi } from '../components/screenplay/ScriptEdi
 import { CharactersTab } from '../components/screenplay/CharactersTab';
 import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
+import { PitchTab } from '../components/screenplay/PitchTab';
 import { useScreenplay } from '../components/screenplay/useScreenplay';
 import { ELEMENTS, download, pageStarts, parseFdx, parseFountain, printHtml, toFdx, toFountain } from '../components/screenplay/format';
 
@@ -171,6 +173,7 @@ export function ScreenplayPage() {
           { to: `/screenplays/${id}/characters`, label: 'Characters', icon: <Users size={14} /> },
           { to: `/screenplays/${id}/plan`, label: 'Set plan', icon: <LayoutGrid size={14} /> },
           { to: `/screenplays/${id}/references`, label: 'References', icon: <ImageIcon size={14} /> },
+          { to: `/screenplays/${id}/pitch`, label: 'Pitch', icon: <Presentation size={14} /> },
         ]}
       />
 
@@ -256,6 +259,19 @@ export function ScreenplayPage() {
           sceneId={params.get('scene')}
           focusShot={params.get('shot')}
           onScene={(scene) => setParams({ scene }, { replace: true })}
+        />
+      )}
+      {tab === 'pitch' && (
+        <PitchTab
+          screenplayId={id}
+          title={s.title}
+          doc={doc}
+          detail={s.detail}
+          update={s.update}
+          flush={s.flush}
+          setDetail={s.setDetail}
+          section={(['reel', 'vision', 'treatment'] as const).find((x) => x === params.get('section')) ?? 'reel'}
+          onSection={(section) => setParams({ section }, { replace: true })}
         />
       )}
       {tab === 'references' && <ReferencesTab screenplayId={id} doc={doc} detail={s.detail} flush={s.flush} setDetail={s.setDetail} />}

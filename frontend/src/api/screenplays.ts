@@ -106,6 +106,8 @@ export interface ScreenplayDoc {
   plans: Record<string, SetPlan>;
   settings: ScreenplaySettings;
   titlePage?: TitlePage;
+  /** Rip reel, director's vision and treatment: all written by the user. */
+  pitch?: Pitch;
 }
 
 export interface Screenplay {
@@ -127,7 +129,41 @@ export interface ScreenplaySummary {
   characters: number;
 }
 
-export type MediaRole = 'frame' | 'music' | 'character' | 'reference';
+export interface Pitch {
+  logline?: string;
+  vision?: {
+    statement?: string;
+    tone?: string;
+    look?: string;
+    sound?: string;
+    themes?: string;
+    audience?: string;
+    whyNow?: string;
+    comps?: string[];
+    /** Reference image rows (screenplay_media ids), in order. */
+    moodboard?: number[];
+  };
+  treatment?: string;
+  reel?: Reel;
+}
+
+export interface Reel {
+  items: ReelItem[];
+  soundtrack?: { kind: 'upload'; mediaRowId: number } | { kind: 'cue'; shotId: string };
+  openCard?: boolean;
+  endCard?: string;
+}
+
+export interface ReelItem {
+  id: string;
+  source: { kind: 'upload'; mediaRowId: number } | { kind: 'frame'; shotId: string };
+  in?: number;
+  out?: number;
+  hold?: number;
+  caption?: string;
+}
+
+export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel';
 
 export interface ScreenplayMedia {
   id: number;
@@ -246,6 +282,18 @@ export async function uploadReference(id: number, file: File, target: string): P
 
 export async function updateMedia(id: number, mediaRowId: number, patch: { target?: string; caption?: string }): Promise<Detail> {
   const { data } = await client.patch<Detail>(`/api/screenplays/${id}/media/${mediaRowId}`, patch);
+  return data;
+}
+
+/** Upload a rip-reel clip, still or soundtrack. `added` is the new row's id. */
+export async function uploadReelFile(id: number, file: File, onProgress?: (f: number) => void): Promise<Detail & { added: number }> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const { data } = await client.post<Detail & { added: number }>(`/api/screenplays/${id}/reel`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 0,
+    onUploadProgress: (e) => e.total && onProgress?.(e.loaded / e.total),
+  });
   return data;
 }
 
