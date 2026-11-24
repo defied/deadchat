@@ -27,6 +27,9 @@ const NEGATIVE = 'text, subtitles, captions, watermark, logo, signature, deforme
 
 function friendlyError(e: string | null, role: ScreenplayMedia['role']): string {
   const msg = e || 'Failed';
+  if (role === 'sound' && /ECONNREFUSED|fetch failed|No provider|tts/i.test(msg)) {
+    return 'The speech service isn’t running on the GPU box (tts-service on port 8020). Start it with tts-service\\run.ps1.';
+  }
   if (role === 'music' && /ace_step|ckpt_name|TextEncodeAceStepAudio|not in list/i.test(msg)) {
     return 'The ACE-Step music model isn’t installed on the GPU box: put ace_step_v1_3.5b.safetensors in ComfyUI/models/checkpoints.';
   }
@@ -116,6 +119,9 @@ type Gate = 'current' | 'auto' | 'approved' | 'stale' | 'none';
 
 function frameGate(spId: number, shotId: string, plan: ShotPlan, locked = false): Gate {
   if (!plan.hash || locked) return 'none';
+  const shot = store.getScreenplay(spId)?.doc.shots.find((s) => s.id === shotId);
+  // The writer chose an image for this frame: nothing to render.
+  if (shot?.frameImage) return 'none';
   const frame = store.latestMedia(spId, 'frame', shotId);
   if (frame?.hash === plan.hash) return 'current';
   if (approved.get(`${spId}:${shotId}:frame`) === plan.hash) return 'approved';

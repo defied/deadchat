@@ -20,6 +20,7 @@ const prompts = require('./prompts') as typeof import('./prompts');
 const store = require('./store') as typeof import('./store');
 const render = require('./render') as typeof import('./render');
 const { cleanDoc } = require('../../routes/screenplays') as typeof import('../../routes/screenplays');
+const voices = require('./voices') as typeof import('./voices');
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 import type { ScreenplayDoc, PlanItem } from './types';
@@ -507,6 +508,69 @@ test('cleanDoc keeps the pitch and drops junk', () => {
   assert.deepEqual(d.pitch!.reel!.soundtrack, { kind: 'cue', shotId: 'sh2' });
   assert.equal(d.pitch!.reel!.openCard, false);
   assert.equal(cleanDoc({ elements: [] }).pitch, undefined);
+});
+
+test('dialogue lines are spoken in each character’s voice, re-made only when the words or voice change', () => {
+  const sp = store.createScreenplay(1, 'Voices', doc());
+  assert.deepEqual(voices.dialogueLines(sp).map((l) => [l.shotId, l.cue, l.text]), [['sh1', 'JANE', 'Who is there?'], ['sh1', 'TOM', 'It is me.']]);
+  assert.equal(voices.characterFor(sp.doc.characters, 'JANE')!.id, 'jane');
+  assert.equal(voices.characterFor([{ id: 'x', name: 'Jane Doe', kind: 'human' }], 'JANE')!.id, 'x', 'first name answers');
+
+  // No voices yet: nothing queued, and the writer is told who's missing one.
+  const none = voices.queueLines(sp, 1);
+  assert.equal(none.queued, 0);
+  assert.deepEqual(none.skipped, [{ cue: 'JANE', reason: 'Jane has no voice yet' }, { cue: 'TOM', reason: 'Tom has no voice yet' }]);
+
+  // Jane gets an uploaded sample.
+  const mediaId = Number(db.prepare("INSERT INTO media (user_id, type, filename, mime, size_bytes) VALUES (1, 'audio', 'jane.wav', 'audio/wav', 10)").run().lastInsertRowid);
+  const sample = store.addMedia(sp.id, 'sound', voices.voiceTarget('jane'), { status: 'ready', media_id: mediaId });
+  let v = 1;
+  const edit = (fn: (d: ScreenplayDoc) => void) => {
+    const d = store.getScreenplay(sp.id)!.doc;
+    fn(d);
+    v = store.saveScreenplay(sp.id, v, { doc: d }).version;
+  };
+  edit((d) => (d.characters[0].voiceRef = { kind: 'upload', mediaRowId: sample.id }));
+  const before = jobs().length;
+  const r1 = voices.queueLines(store.getScreenplay(sp.id)!, 1);
+  assert.deepEqual([r1.queued, r1.current], [1, 0]);
+  assert.deepEqual(r1.skipped, [{ cue: 'TOM', reason: 'Tom has no voice yet' }]);
+  const job = jobs().slice(before)[0];
+  assert.equal(job.type, 'tts');
+  assert.deepEqual(JSON.parse(job.params), { referenceMediaId: mediaId, prompt: 'Who is there?', language: 'en' });
+  const row = store.listMedia(sp.id, 'sound').find((m) => m.target === voices.lineTarget('d1'))!;
+  assert.equal(row.label, 'JANE: Who is there?');
+  assert.equal(JSON.parse(row.meta!).shotId, 'sh1');
+
+  // Same words, same voice: nothing new. New words: the old pending line is replaced.
+  assert.deepEqual(voices.queueLines(store.getScreenplay(sp.id)!, 1).queued, 0);
+  edit((d) => (d.elements[4].text = 'Who’s there?'));
+  assert.equal(voices.queueLines(store.getScreenplay(sp.id)!, 1).queued, 1);
+  assert.equal(store.getMedia(row.id)!.status, 'superseded');
+  assert.equal(jobs().length, before + 2);
+
+  // Only the shots asked for.
+  assert.equal(voices.dialogueLines(store.getScreenplay(sp.id)!, ['sh2']).length, 0);
+
+  // A removed sample, and cleanDoc keeps a valid voice source only.
+  store.deleteMedia(sample.id);
+  assert.deepEqual(voices.queueLines(store.getScreenplay(sp.id)!, 1).skipped[0], { cue: 'JANE', reason: 'Jane’s voice sample was removed' });
+  const cleaned = cleanDoc({ elements: [{ id: 'a1', type: 'action', text: 'x' }], characters: [{ id: 'a', name: 'A', voiceRef: { kind: 'upload', mediaRowId: 3 } }, { id: 'b', name: 'B', voiceRef: { kind: 'studio', characterId: 'x' } }] });
+  assert.deepEqual(cleaned.characters.map((c) => c.voiceRef), [{ kind: 'upload', mediaRowId: 3 }, undefined]);
+});
+
+test('a shot using a chosen image as its frame never renders one', () => {
+  const sp = store.createScreenplay(1, 'Own frame', doc());
+  const d = store.getScreenplay(sp.id)!.doc;
+  d.shots[0].frameImage = 42;
+  store.saveScreenplay(sp.id, 1, { doc: d });
+  const base = jobs().length;
+  render.reconcile(sp.id, 200_000_000);
+  render.reconcile(sp.id, 200_000_000 + render.STABLE_MS);
+  const made = jobs().slice(base).filter((j) => j.type === 'image').map((j) => JSON.parse(j.params).prompt as string);
+  assert.equal(made.length, 1, 'only shot 2 renders');
+  assert.doesNotMatch(made[0], /gripping a knife/);
+  assert.equal(cleanDoc({ elements: [{ id: 'a1', type: 'action', text: 'x' }], shots: [{ id: 's', anchorId: 'a1', frameImage: 7 }] }).shots[0].frameImage, 7);
 });
 
 test('saving with a stale version is refused', () => {

@@ -14,6 +14,7 @@ import {
   Image as ImageIcon,
   ListOrdered,
   Loader2,
+  Mic,
   Music,
   Play,
   Plus,
@@ -94,10 +95,20 @@ export function PitchTab({ screenplayId, title, doc, detail, update, flush, setD
 // ── rip reel ─────────────────────────────────────────────────────────────────
 
 /** Where an item's picture comes from: a media id, and whether it moves. */
-function sourceOf(item: ReelItem, detail?: Detail): { mediaId: number | null; kind: 'video' | 'image'; label: string; missing?: string } {
+/** A shot's picture: the image the writer chose for it, or its latest rendered frame. */
+export function frameOf(shotId: string, doc: ScreenplayDoc | undefined, detail?: Detail): number | null {
+  const own = doc?.shots.find((s) => s.id === shotId)?.frameImage;
+  if (own) {
+    const row = detail?.media.other.find((m) => m.id === own);
+    if (row?.media_id) return row.media_id;
+  }
+  return detail?.media.lastReady[`frame:${shotId}`]?.media_id ?? null;
+}
+
+function sourceOf(item: ReelItem, detail?: Detail, doc?: ScreenplayDoc): { mediaId: number | null; kind: 'video' | 'image'; label: string; missing?: string } {
   if (item.source.kind === 'frame') {
-    const f = detail?.media.lastReady[`frame:${item.source.shotId}`];
-    return { mediaId: f?.media_id ?? null, kind: 'image', label: 'Storyboard frame', missing: f ? undefined : 'This shot has no frame yet' };
+    const mediaId = frameOf(item.source.shotId, doc, detail);
+    return { mediaId, kind: 'image', label: 'Storyboard frame', missing: mediaId ? undefined : 'This shot has no frame yet' };
   }
   const id = item.source.mediaRowId;
   const row = detail?.media.other.find((m) => m.id === id);
@@ -186,7 +197,7 @@ function ReelEditor({
       return { ...r, items };
     });
   const length = (it: ReelItem) => {
-    const src = sourceOf(it, detail);
+    const src = sourceOf(it, detail, doc);
     if (src.kind === 'image') return it.hold ?? DEFAULT_HOLD;
     const full = durations[it.id];
     const end = it.out ?? full;
@@ -243,6 +254,7 @@ function ReelEditor({
         <button className="btn" disabled={!doc.shots.length} onClick={() => setPlaying('animatic')} title="Every shot in script order, for its length, with dialogue subtitles, its sounds and music cue">
           <Clapperboard size={14} /> Play animatic
         </button>
+        <VoiceLines screenplayId={screenplayId} detail={detail} flush={flush} setDetail={setDetail} />
         <span className="field-hint">
           {reel.items.length} item{reel.items.length === 1 ? '' : 's'} · about {fmt(total)}
         </span>
@@ -291,7 +303,7 @@ function ReelEditor({
       ) : (
         <ol className="sp-reel-items">
           {reel.items.map((it, i) => {
-            const src = sourceOf(it, detail);
+            const src = sourceOf(it, detail, doc);
             return (
               <li key={it.id} className="sp-reel-item">
                 <span className="sp-reel-n">{i + 1}</span>
@@ -418,6 +430,49 @@ function ReelEditor({
   );
 }
 
+/** Speak every line of dialogue in its character's voice, for the animatic. */
+function VoiceLines({ screenplayId, detail, flush, setDetail }: { screenplayId: number; detail?: Detail; flush: () => Promise<void>; setDetail: (d: Detail) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<api.LinesResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const lines = (detail?.media.other ?? []).filter((m) => m.role === 'sound' && m.target.startsWith('line:') && m.status !== 'superseded');
+  const pending = lines.filter((m) => m.status === 'pending').length;
+  const failed = lines.filter((m) => m.status === 'failed');
+  return (
+    <span className="sp-voice-lines">
+      <button
+        className="btn"
+        disabled={busy}
+        title="Speak each line of dialogue in its character's voice (set voices on the Characters tab)"
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await flush();
+            const r = await api.speakLines(screenplayId);
+            setDetail(r);
+            setResult(r.lines);
+          } catch (e) {
+            setError(errorMessage(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy || pending ? <Loader2 size={14} className="spin" /> : <Mic size={14} />} {pending ? `Speaking ${pending} line${pending === 1 ? '' : 's'}…` : 'Voice the dialogue'}
+      </button>
+      {(result || lines.length > 0) && !pending && (
+        <span className="field-hint">
+          {lines.filter((m) => m.status === 'ready').length} of {lines.length} line{lines.length === 1 ? '' : 's'} voiced
+          {result?.skipped.length ? ` · no voice for ${result.skipped.map((s) => s.cue).join(', ')} (set one on the Characters tab)` : ''}
+        </span>
+      )}
+      {failed.length > 0 && !pending && <span className="cs-warn"><AlertTriangle size={11} /> {failed[0].error}</span>}
+      {error && <span className="cs-warn"><AlertTriangle size={11} /> {error}</span>}
+    </span>
+  );
+}
+
 function ReelVideoThumb({ mediaId, at, onDuration }: { mediaId: number; at: number; onDuration: (d: number) => void }) {
   const { url, failed } = useBlobUrl(mediaId);
   if (failed) return <div className="sp-img-missing">Unavailable</div>;
@@ -441,7 +496,7 @@ interface Layer {
   volume: number;
 }
 
-type Beat = { layers?: Layer[] } & (
+type Beat = { layers?: Layer[]; /** Spoken lines, played in order; the beat lasts until they finish. */ lines?: number[] } & (
   | { kind: 'card'; title: string; sub?: string; seconds: number; shot?: boolean }
   | { kind: 'image'; mediaId: number; seconds: number; caption?: string }
   | { kind: 'video'; mediaId: number; from: number; to?: number; caption?: string }
@@ -462,7 +517,7 @@ function reelBeats(title: string, doc: ScreenplayDoc, detail?: Detail): Beat[] {
   const out: Beat[] = [];
   if (reel.openCard !== false) out.push({ kind: 'card', title: doc.titlePage?.title || title, sub: doc.pitch?.logline, seconds: CARD_SECONDS });
   for (const it of reel.items) {
-    const src = sourceOf(it, detail);
+    const src = sourceOf(it, detail, doc);
     if (!src.mediaId) continue;
     // A storyboard frame brings its shot's sounds along (the soundtrack covers music).
     const layers = it.source.kind === 'frame' ? shotLayers(it.source.shotId, detail, false) : undefined;
@@ -471,6 +526,12 @@ function reelBeats(title: string, doc: ScreenplayDoc, detail?: Detail): Beat[] {
   }
   if (reel.endCard) out.push({ kind: 'card', title: reel.endCard, seconds: CARD_SECONDS });
   return out;
+}
+
+/** The latest finished recording of a dialogue line, if it's been spoken. */
+function spokenLine(elementId: string, detail?: Detail): number | null {
+  const rows = (detail?.media.other ?? []).filter((m) => m.role === 'sound' && m.target === `line:${elementId}` && m.status === 'ready' && m.media_id);
+  return rows.sort((a, b) => b.id - a.id)[0]?.media_id ?? null;
 }
 
 /**
@@ -493,10 +554,15 @@ export function animaticBeats(title: string, doc: ScreenplayDoc, detail?: Detail
       if (said) lines.push(`${who}: ${said}`);
     }
     const seconds = s.seconds ?? DEFAULT_HOLD;
-    const frame = detail?.media.lastReady[`frame:${s.id}`]?.media_id;
+    const frame = frameOf(s.id, doc, detail);
     const layers = shotLayers(s.id, detail, true);
-    if (frame) out.push({ kind: 'image', mediaId: frame, seconds, caption: lines.join('\n') || undefined, layers });
-    else out.push({ kind: 'card', shot: true, title: els.find((e) => e.type === 'action')?.text ?? s.type ?? 'Shot', sub: lines.join('\n') || undefined, seconds, layers });
+    const spoken = els
+      .filter((e) => e.type === 'dialogue')
+      .map((e) => spokenLine(e.id, detail))
+      .filter((x): x is number => !!x);
+    const extra = { layers, lines: spoken.length ? spoken : undefined };
+    if (frame) out.push({ kind: 'image', mediaId: frame, seconds, caption: lines.join('\n') || undefined, ...extra });
+    else out.push({ kind: 'card', shot: true, title: els.find((e) => e.type === 'action')?.text ?? s.type ?? 'Shot', sub: lines.join('\n') || undefined, seconds, ...extra });
   }
   out.push({ kind: 'card', title: 'End', seconds: 2 });
   return out;
@@ -525,12 +591,21 @@ function ReelPlayer({ beats, soundtrackMediaId, onClose }: { beats: Beat[]; soun
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // Stills and cards advance on a timer.
+  // Stills and cards advance on a timer, and wait for their spoken lines to finish.
+  const [timeUp, setTimeUp] = useState(false);
+  const [linesDone, setLinesDone] = useState(true);
   useEffect(() => {
-    if (!beat || paused || beat.kind === 'video') return;
-    const t = window.setTimeout(next, beat.seconds * 1000);
+    setTimeUp(false);
+    setLinesDone(!beat?.lines?.length);
+  }, [i]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!beat || paused || beat.kind === 'video' || timeUp) return;
+    const t = window.setTimeout(() => setTimeUp(true), beat.seconds * 1000);
     return () => window.clearTimeout(t);
-  }, [i, paused, beat]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [i, paused, beat, timeUp]);
+  useEffect(() => {
+    if (timeUp && linesDone) next();
+  }, [timeUp, linesDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const a = audio.current;
@@ -562,6 +637,7 @@ function ReelPlayer({ beats, soundtrackMediaId, onClose }: { beats: Beat[]; soun
       )}
       {!done && beat.kind !== 'card' && beat.caption && <div className="sp-reel-caption">{beat.caption}</div>}
       {!done && !paused && beat.layers?.map((l, n) => <LayerAudio key={`${i}-${n}`} layer={l} />)}
+      {!done && beat.lines?.length ? <LinePlayer key={`lines-${i}`} mediaIds={beat.lines} paused={paused} onDone={() => setLinesDone(true)} /> : null}
       <div className="sp-reel-hud" onClick={(e) => e.stopPropagation()}>
         <span>{Math.min(i + 1, beats.length)} / {beats.length}{paused ? ' · paused' : ''}</span>
         <span className="field-hint">Space pauses · ← → skip · Esc closes</span>
@@ -569,6 +645,28 @@ function ReelPlayer({ beats, soundtrackMediaId, onClose }: { beats: Beat[]; soun
       </div>
     </div>
   );
+}
+
+/** Speak a shot's lines one after another, with a short breath between. */
+function LinePlayer({ mediaIds, paused, onDone }: { mediaIds: number[]; paused: boolean; onDone: () => void }) {
+  const [n, setN] = useState(0);
+  const { url, failed } = useBlobUrl(mediaIds[n] ?? null);
+  const a = useRef<HTMLAudioElement | null>(null);
+  // A line that won't load is skipped rather than holding the shot forever.
+  useEffect(() => {
+    if (failed) setN((x) => x + 1);
+  }, [failed]);
+  useEffect(() => {
+    if (n >= mediaIds.length) onDone();
+  }, [n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = a.current;
+    if (!el || !url) return;
+    if (paused) el.pause();
+    else void el.play().catch(() => setN((x) => x + 1));
+  }, [url, paused]);
+  if (n >= mediaIds.length || !url) return null;
+  return <audio ref={a} src={url} onEnded={() => window.setTimeout(() => setN((x) => x + 1), 250)} onError={() => setN((x) => x + 1)} />;
 }
 
 function LayerAudio({ layer }: { layer: Layer }) {

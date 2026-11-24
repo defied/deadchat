@@ -413,3 +413,28 @@ kbd {
   .sp-cand, .sp-sound-library .sp-cand { grid-template-columns: auto minmax(0, 1fr) auto; }
 }
 .sp-reel-card.shot h2 { font-size: clamp(18px, 2.6vw, 32px); font-weight: 400; letter-spacing: 0; line-height: 1.4; color: rgba(255,255,255,.85); }
+
+/* Shot box: images and sounds */
+.sp-shot-media { display: flex; flex-direction: column; gap: 4px; }
+.sp-shot-media-row { display: grid; grid-template-columns: auto minmax(0, 1fr) 70px auto; gap: 6px; align-items: center; font-size: 12px; }
+.sp-shot-media-row input[type='range'] { width: 70px; }
+.sp-shot-media-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-shot-media-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sp-shot-media-add select { width: auto; max-width: 200px; padding: 3px 6px; font-size: 12px; }
+.sp-shot-media-add .btn { display: inline-flex; gap: 4px; align-items: center; }
+.sp-shot-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.sp-shot-thumb { margin: 0; border: 1px solid var(--color-border); border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; }
+.sp-shot-thumb.frame { border-color: var(--color-accent); }
+.sp-shot-thumb img, .sp-shot-thumb > div { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+.sp-shot-thumb figcaption { display: flex; justify-content: space-between; align-items: center; padding: 2px; }
+.sp-shot-thumb figcaption .btn { padding: 1px 6px; font-size: 11px; }
+
+/* Character speaking voice */
+.sp-voice { display: flex; flex-direction: column; gap: 6px; }
+.sp-voice-now { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.sp-voice-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sp-voice-actions .btn { display: inline-flex; gap: 5px; align-items: center; }
+.sp-voice-actions select { width: auto; max-width: 240px; padding: 3px 6px; font-size: 12px; }
+.sp-voice p { margin: 0; }
+.sp-voice-lines { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sp-voice-lines .btn { display: inline-flex; gap: 6px; align-items: center; }

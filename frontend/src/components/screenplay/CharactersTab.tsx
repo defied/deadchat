@@ -8,6 +8,7 @@ import * as api from '../../api/screenplays';
 import type { Character, CharacterKind, Detail, ScreenplayDoc } from '../../api/screenplays';
 import { Alert, EmptyState, Field, errorMessage } from '../ui';
 import { answersTo, cueName, newId, titleCase } from './format';
+import { VoiceSource } from './VoiceSource';
 import { SpImage } from './media';
 
 const KINDS: Array<{ value: CharacterKind; label: string }> = [
@@ -107,6 +108,7 @@ export function CharactersTab({ screenplayId, doc, detail, update, flush, setDet
             doc={doc}
             character={c}
             photos={photosFor(c.id)}
+            detail={detail}
             update={update}
             flush={flush}
             setDetail={setDetail}
@@ -131,6 +133,7 @@ function CharacterForm({
   doc,
   character: c,
   photos,
+  detail,
   update,
   flush,
   setDetail,
@@ -139,6 +142,7 @@ function CharacterForm({
   screenplayId: number;
   doc: ScreenplayDoc;
   character: Character;
+  detail?: Detail;
   photos: api.ScreenplayMedia[];
   update: Props['update'];
   flush: () => Promise<void>;
@@ -275,6 +279,9 @@ function CharacterForm({
           <textarea rows={3} value={c.voice ?? ''} onChange={(e) => set({ voice: e.target.value }, 'voice')} placeholder="Accent, rhythm, verbal tics" />
         </Field>
       </div>
+      <Field label="Speaking voice" hint="Used to speak this character's lines in the animatic.">
+        <VoiceSource screenplayId={screenplayId} character={c} detail={detail} set={set} flush={flush} setDetail={setDetail} />
+      </Field>
       <Field label="Backstory">
         <textarea rows={4} value={c.backstory ?? ''} onChange={(e) => set({ backstory: e.target.value }, 'backstory')} />
       </Field>

@@ -10,6 +10,9 @@ import os from 'os';
 import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
+import { queueLines, voiceTarget } from '../services/screenplay/voices';
+import { getLatestCharacterAsset, listCharacters as listStudioCharacters } from '../services/characters';
+import { getAsset } from '../services/assetPipeline';
 import * as store from '../services/screenplay/store';
 import {
   REF_VIEWS,
@@ -136,6 +139,7 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
       .filter((a) => a.id),
     take: num(s?.take, 0, 1e6),
     ...(s?.locked === true ? { locked: true } : {}),
+    ...(Number.isSafeInteger(s?.frameImage) && (s?.frameImage ?? 0) > 0 ? { frameImage: s.frameImage } : {}),
   })).filter((s) => s.id && s.anchorId);
   const characters: Character[] = (Array.isArray(d.characters) ? d.characters : []).slice(0, 500).map((c) => ({
     id: id(c?.id),
@@ -153,6 +157,11 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     notes: str(c?.notes, 4000),
     primaryRefId: num(c?.primaryRefId, 1, Number.MAX_SAFE_INTEGER),
     ...(c?.placeholder === true ? { placeholder: true } : {}),
+    ...(c?.voiceRef?.kind === 'upload' && Number.isSafeInteger(c.voiceRef.mediaRowId) && c.voiceRef.mediaRowId > 0
+      ? { voiceRef: { kind: 'upload' as const, mediaRowId: c.voiceRef.mediaRowId } }
+      : c?.voiceRef?.kind === 'studio' && Number.isSafeInteger(c.voiceRef.characterId) && c.voiceRef.characterId > 0
+        ? { voiceRef: { kind: 'studio' as const, characterId: c.voiceRef.characterId } }
+        : {}),
   })).filter((c) => c.id);
   const plans: ScreenplayDoc['plans'] = {};
   for (const [k, p] of Object.entries(d.plans && typeof d.plans === 'object' ? d.plans : {}).slice(0, 2000)) {
@@ -362,6 +371,51 @@ router.post('/:id/reel', owned, reelUpload.single('file'), (req, res) =>
     const media = saveMediaFile({ userId: sp(res).userId, type: kind, tmpPath: f.path, mime: f.mimetype, originalFilename: f.originalname, prompt: 'Screenplay rip reel' });
     const row = store.addMedia(sp(res).id, 'reel', kind, { status: 'ready', media_id: media.id, label: f.originalname.slice(0, 200) });
     return { ...detail(sp(res)), added: row.id };
+  }),
+);
+
+// ── voices: spoken dialogue for the animatic ─────────────────────────────────
+
+// Your Studio characters that have a voice ready (before /:id).
+router.get('/voices/studio', (req, res) =>
+  wrap(res, () => ({
+    characters: listStudioCharacters(req.user!.id, 200)
+      .map((c) => {
+        const link = getLatestCharacterAsset(c.id, 'voice');
+        const asset = link ? getAsset(link.asset_id) : null;
+        const mediaId = asset?.final_media_id ?? asset?.draft_media_id ?? null;
+        return mediaId ? { id: c.id, name: c.name, sampleMediaId: mediaId } : null;
+      })
+      .filter(Boolean),
+  })),
+);
+
+// A voice sample (6–30 seconds of one person speaking) for a screenplay character.
+const voiceUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
+router.post('/:id/characters/:cid/voice', owned, voiceUpload.single('file'), (req, res) =>
+  wrap(res, () => {
+    const f = req.file;
+    if (!f) throw new Error('No recording');
+    if (!/^audio\//.test(f.mimetype)) {
+      fs.rmSync(f.path, { force: true });
+      throw new Error('Upload or record audio (WAV, MP3, M4A, WebM or OGG)');
+    }
+    const s = sp(res);
+    const cid = id(req.params.cid);
+    const media = saveMediaFile({ userId: s.userId, type: 'audio', tmpPath: f.path, mime: f.mimetype, originalFilename: f.originalname || 'voice.webm', prompt: 'Screenplay voice sample' });
+    const row = store.addMedia(s.id, 'sound', voiceTarget(cid), { status: 'ready', media_id: media.id, label: f.originalname || 'Voice sample' });
+    store.updateMedia(row.id, { meta: JSON.stringify({ voiceSample: true, characterId: cid }) });
+    return { ...detail(s), added: row.id };
+  }),
+);
+
+// Speak the dialogue of some shots (or all) in each character's voice.
+router.post('/:id/lines', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const shotIds = Array.isArray(req.body?.shotIds) ? req.body.shotIds.map((x: unknown) => id(x)).filter(Boolean) : undefined;
+    const result = queueLines(s, req.user!.id, shotIds, oneOf(req.body?.language, ['en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'ja', 'hu', 'ko', 'hi'] as const) ?? 'en');
+    return { ...detail(store.getScreenplay(s.id)!), lines: result };
   }),
 );
 
