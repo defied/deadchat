@@ -127,10 +127,23 @@ export interface ScreenplaySettings {
   paused?: boolean;
 }
 
+/** A prop with reference photos, so it looks the same in every frame it's put into. */
+export interface Prop {
+  id: string;
+  name: string;
+  /** Other words the script uses for it ("the blade", "her phone"), comma-separated. */
+  aliases?: string;
+  /** What it looks like: used when the AI puts it into a frame. */
+  description?: string;
+  /** screenplay_media id of the main reference photo. */
+  primaryRefId?: number;
+}
+
 export interface ScreenplayDoc {
   elements: ScriptElement[];
   shots: Shot[];
   characters: Character[];
+  props?: Prop[];
   /** Set plans keyed by scene-heading element id. */
   plans: Record<string, SetPlan>;
   settings: ScreenplaySettings;
@@ -191,7 +204,7 @@ export interface Screenplay {
   updatedAt: string;
 }
 
-export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel' | 'sound';
+export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel' | 'sound' | 'prop';
 export type MediaStatus = 'pending' | 'ready' | 'failed' | 'superseded';
 
 export interface ScreenplayMedia {

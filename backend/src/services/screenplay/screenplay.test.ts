@@ -789,3 +789,56 @@ test('a find proposes ten varied photos, find more adds ten new ones, and a pick
     globalThis.fetch = realFetch;
   }
 });
+
+// ── props ──
+
+test('props: found in a shot by name or alias, kept through cleanDoc, searched by what they are', () => {
+  const d = doc();
+  d.props = [
+    { id: 'p1', name: 'Knife', aliases: 'the blade, cleaver', description: 'a heavy black-handled chef’s knife' },
+    { id: 'p2', name: 'Umbrella' },
+  ];
+  assert.deepEqual(script.propsInShot(d, d.shots[0]).map((p) => p.id), ['p1']);
+  d.elements[1].text = 'JANE raises the blade.';
+  assert.deepEqual(script.propsInShot(d, d.shots[0]).map((p) => p.id), ['p1'], 'aliases count');
+  assert.deepEqual(script.propsInShot(d, d.shots[1]).map((p) => p.id), []);
+  const clean = cleanDoc({ ...d, props: [...d.props, { name: 'no id' }, { id: 'p3', name: 'Lamp', primaryRefId: 'x' }] });
+  assert.deepEqual(clean.props!.map((p) => p.id), ['p1', 'p2', 'p3']);
+  assert.equal(clean.props![2].primaryRefId, undefined);
+  const plan = finder.planPropFind(d.props[0]);
+  assert.equal(plan.look, 'a heavy black-handled chef’s knife');
+  assert.ok(plan.queries.includes('knife'));
+  assert.match(prompts.propPrompt(d.props[0]), /^Product reference photo of Knife: a heavy black-handled chef’s knife\. the whole object in frame/);
+});
+
+test('a prop search keeps its photos as prop images', async () => {
+  const d = doc();
+  d.props = [{ id: 'p1', name: 'Knife', description: 'black handle' }];
+  const sp = store.createScreenplay(1, 'Props', d);
+  const real = { ...finder.deps };
+  const realFetch = globalThis.fetch;
+  try {
+    let wide: boolean | null = null;
+    finder.deps.searchOpenverseImages = async (q, o) => {
+      wide = o.wide;
+      return o.page > 1 ? [] : [{ key: `openverse:${q}`, source: 'openverse', sourceName: 'Flickr', title: q, creator: null, license: { code: 'cc0', name: 'CC0', url: null, commercial: true, derivatives: true, attribution: false, rank: 0 }, landingUrl: 'https://x', imageUrl: 'https://x/i.jpg', thumbUrl: 'https://x/t.jpg', width: 800, height: 800, tags: [], query: q, sourceScore: 1 }];
+    };
+    finder.deps.searchPexels = async () => [];
+    finder.deps.searchUnsplash = async () => [];
+    const f = finder.createFind(sp, finder.propTarget('p1'));
+    let x = f;
+    for (let i = 0; i < 100 && x.status !== 'done' && x.status !== 'failed'; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      x = finder.getFind(f.id)!;
+    }
+    assert.equal(x.status, 'done', x.error ?? '');
+    assert.equal(wide, false, 'props are not searched as wide frames');
+    globalThis.fetch = (async () => new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } })) as typeof fetch;
+    const rowId = await finder.keepFound(sp, x, x.candidates[0].key, (bytes) => Number(db.prepare("INSERT INTO media (user_id, type, filename, mime, size_bytes) VALUES (1, 'image', 'p.png', 'image/png', ?)").run(bytes.length).lastInsertRowid));
+    const row = store.getMedia(rowId)!;
+    assert.deepEqual([row.role, row.target], ['prop', 'p1']);
+  } finally {
+    Object.assign(finder.deps, real);
+    globalThis.fetch = realFetch;
+  }
+});

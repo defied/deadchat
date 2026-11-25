@@ -499,3 +499,15 @@ kbd {
   .sp-find-top { grid-template-columns: 1fr; }
   .sp-find-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ── props ── */
+.sp-prop-search { border: 1px solid var(--color-border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; background: var(--color-surface); }
+.sp-prop-search-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sp-prop-search-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sp-prop-search .btn { display: inline-flex; align-items: center; gap: 5px; }
+.sp-prop-search .sp-find-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.sp-prop-tile { position: relative; }
+.sp-prop-tile .sp-find-tile { width: 100%; aspect-ratio: 1; }
+.sp-prop-keeping { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); color: #fff; border-radius: 8px; }
+.sp-prop-kept { position: absolute; left: 6px; top: 6px; display: inline-flex; gap: 3px; align-items: center; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; background: var(--color-accent); color: #fff; }
+.sp-find-empty.small { min-height: 120px; }
