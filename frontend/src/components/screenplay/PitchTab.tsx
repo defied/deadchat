@@ -906,6 +906,13 @@ function PrintPitch({ title, doc, detail, onDone }: { title: string; doc: Screen
     .map((m) => ({ m, meta: soundMeta(m) }))
     .filter((x) => x.meta?.license.attribution)
     .map((x) => soundCredit(x.m.label ?? 'Untitled', x.meta!));
+  // Photos used as frames that ask for credit (CC BY and the like).
+  const frameIds = new Set(doc.shots.map((s) => s.frameImage).filter(Boolean));
+  const photoCredits = (detail?.media.other ?? [])
+    .filter((m) => frameIds.has(m.id))
+    .map((m) => api.foundMeta(m))
+    .filter((f): f is api.FoundMeta => !!f && f.license.attribution)
+    .map((f) => `“${f.title}”${f.creator ? ` by ${f.creator}` : ''} (${f.sourceName}), ${f.license.name}`);
   return (
     <div className="sp-print-pitch-wait">
       {error ? (
@@ -956,6 +963,12 @@ function PrintPitch({ title, doc, detail, onDone }: { title: string; doc: Screen
           <section className="credits">
             <h2>Sound credits</h2>
             <ul>{credits.map((c) => <li key={c}>{c}</li>)}</ul>
+          </section>
+        )}
+        {photoCredits.length > 0 && (
+          <section className="credits">
+            <h2>Photo credits</h2>
+            <ul>{[...new Set(photoCredits)].map((c) => <li key={c}>{c}</li>)}</ul>
           </section>
         )}
       </div>

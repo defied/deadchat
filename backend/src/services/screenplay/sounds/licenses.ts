@@ -1,7 +1,7 @@
 // Licences of gathered sounds, from freest to least free. "Free" means anyone
 // may use, change and sell work that includes it; some still ask for credit.
 
-export type LicenseCode = 'cc0' | 'pdm' | 'by' | 'by-sa' | 'by-nc' | 'by-nc-sa' | 'by-nd' | 'by-nc-nd' | 'unknown';
+export type LicenseCode = 'cc0' | 'pdm' | 'by' | 'by-sa' | 'by-nc' | 'by-nc-sa' | 'by-nd' | 'by-nc-nd' | 'pexels' | 'unsplash' | 'unknown';
 
 export interface LicenseInfo {
   code: LicenseCode;
@@ -26,6 +26,9 @@ const TABLE: Record<LicenseCode, Omit<LicenseInfo, 'code' | 'url' | 'name'> & { 
   'by-nc-sa': { name: 'CC BY-NC-SA', commercial: false, derivatives: true, attribution: true, rank: 4 },
   'by-nd': { name: 'CC BY-ND', commercial: true, derivatives: false, attribution: true, rank: 8 },
   'by-nc-nd': { name: 'CC BY-NC-ND', commercial: false, derivatives: false, attribution: true, rank: 9 },
+  // Free stock licences: use, change and sell, no credit needed (but welcome).
+  pexels: { name: 'Pexels licence', commercial: true, derivatives: true, attribution: false, rank: 1 },
+  unsplash: { name: 'Unsplash licence', commercial: true, derivatives: true, attribution: false, rank: 1 },
   unknown: { name: 'Unknown licence', commercial: false, derivatives: false, attribution: true, rank: 10 },
 };
 
@@ -68,4 +71,11 @@ export function allowed(l: LicenseInfo, p: LicensePolicy = {}): boolean {
 /** "“Rain” by Jane Doe (Freesound), CC BY 4.0" — the TASL credit line. */
 export function creditLine(c: { title: string; creator?: string | null; sourceName: string; license: LicenseInfo }): string {
   return `“${c.title}”${c.creator ? ` by ${c.creator}` : ''} (${c.sourceName}), ${c.license.name}`;
+}
+
+/** The free licences of stock libraries that aren't Creative Commons. */
+export function stockLicense(code: 'pexels' | 'unsplash'): LicenseInfo {
+  const t = TABLE[code];
+  const url = code === 'pexels' ? 'https://www.pexels.com/license/' : 'https://unsplash.com/license';
+  return { code, name: t.name, url, commercial: t.commercial, derivatives: t.derivatives, attribution: t.attribution, rank: t.rank };
 }

@@ -106,6 +106,8 @@ router.put('/settings', adminOnly, (req: Request, res: Response): void => {
     enhanceByDefault: typeof b.enhanceByDefault === 'boolean' ? b.enhanceByDefault : undefined,
     cloudflareAccountId: b.cloudflareAccountId === undefined ? undefined : (b.cloudflareAccountId as string | null) || null,
     cloudflareToken: b.cloudflareToken === undefined ? undefined : (b.cloudflareToken as string | null) || null,
+    pexelsKey: b.pexelsKey === undefined ? undefined : typeof b.pexelsKey === 'string' && b.pexelsKey.trim() ? b.pexelsKey.trim().slice(0, 200) : null,
+    unsplashKey: b.unsplashKey === undefined ? undefined : typeof b.unsplashKey === 'string' && b.unsplashKey.trim() ? b.unsplashKey.trim().slice(0, 200) : null,
   });
   invalidateAvailability();
   res.json(s);

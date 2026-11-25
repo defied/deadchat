@@ -9,6 +9,7 @@ import { countMissingMediaFiles } from './services/mediaStore';
 import { startWorker } from './services/worker';
 import { resumeAnalyses } from './services/cases/analysis';
 import { resumeHunts } from './services/screenplay/sounds/gatherer';
+import { resumeFinds } from './services/screenplay/finds/finder';
 import { startScheduler } from './services/scheduler';
 import { startInfluencerAutomation } from './services/influencers/automation';
 
@@ -45,6 +46,7 @@ server.listen(config.port, () => {
     startWorker();
     resumeAnalyses();
     resumeHunts();
+    resumeFinds();
     startScheduler();
     startInfluencerAutomation();
   } else {

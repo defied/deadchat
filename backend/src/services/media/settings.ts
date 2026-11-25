@@ -11,6 +11,8 @@ const KEY_CF_USAGE = 'media.cloudflare_usage'; // {"day":"YYYY-MM-DD","neurons":
 const KEY_DEFAULT_IMAGE = 'media.default_image_model';
 const KEY_DEFAULT_VIDEO = 'media.default_video_model';
 const KEY_ENHANCE = 'media.enhance_default';
+const KEY_PEXELS = 'media.pexels_api_key';
+const KEY_UNSPLASH = 'media.unsplash_access_key';
 
 /** Cloudflare's free Workers AI allocation, reset 00:00 UTC. */
 export const CLOUDFLARE_FREE_NEURONS = 10_000;
@@ -52,6 +54,11 @@ export function setComfyApiKey(key: string | null): void {
   putSecret(KEY_API, key);
 }
 
+/** Free photo-library keys for the shot finder (Openverse needs none). */
+export function getPhotoKeys(): { pexels: string | null; unsplash: string | null } {
+  return { pexels: getSecret(KEY_PEXELS, 'PEXELS_API_KEY'), unsplash: getSecret(KEY_UNSPLASH, 'UNSPLASH_ACCESS_KEY') };
+}
+
 export function getCloudflareCredentials(): { accountId: string; token: string } | null {
   const accountId = get(KEY_CF_ACCOUNT) || process.env.CLOUDFLARE_ACCOUNT_ID || '';
   const token = getSecret(KEY_CF_TOKEN, 'CLOUDFLARE_API_TOKEN');
@@ -89,6 +96,8 @@ export interface MediaSettings {
   defaultImageModel: string;
   defaultVideoModel: string;
   enhanceByDefault: boolean;
+  pexelsSet: boolean;
+  unsplashSet: boolean;
 }
 
 export function getMediaSettings(): MediaSettings {
@@ -103,6 +112,8 @@ export function getMediaSettings(): MediaSettings {
     defaultImageModel: get(KEY_DEFAULT_IMAGE) || 'z-image-turbo',
     defaultVideoModel: get(KEY_DEFAULT_VIDEO) || 'wan22-5b',
     enhanceByDefault: get(KEY_ENHANCE) !== '0',
+    pexelsSet: !!getPhotoKeys().pexels,
+    unsplashSet: !!getPhotoKeys().unsplash,
   };
 }
 
@@ -113,7 +124,11 @@ export function updateMediaSettings(patch: {
   defaultImageModel?: string;
   defaultVideoModel?: string;
   enhanceByDefault?: boolean;
+  pexelsKey?: string | null;
+  unsplashKey?: string | null;
 }): MediaSettings {
+  if (patch.pexelsKey !== undefined) putSecret(KEY_PEXELS, patch.pexelsKey);
+  if (patch.unsplashKey !== undefined) putSecret(KEY_UNSPLASH, patch.unsplashKey);
   if (patch.apiKey !== undefined) setComfyApiKey(patch.apiKey);
   if (patch.cloudflareAccountId !== undefined) put(KEY_CF_ACCOUNT, patch.cloudflareAccountId?.trim() || null);
   if (patch.cloudflareToken !== undefined) putSecret(KEY_CF_TOKEN, patch.cloudflareToken);
