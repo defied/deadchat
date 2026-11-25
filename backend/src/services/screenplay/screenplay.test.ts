@@ -670,8 +670,8 @@ test('flares come only from a light in the scene', () => {
   assert.deepEqual(prompts.lightSources('Golden hour. Sunlight floods the field.'), ['the low sun']);
 });
 
-test('casting asks for each look separately and falls back to the description', async () => {
-  const c = { id: 'ch1', name: 'Ferk', age: '20s', gender: 'male', personality: 'cocky influencer', appearance: 'red hair' };
+test('casting asks for each look in turn, keeps the brief, and falls back to the description', async () => {
+  const c = { id: 'ch1', name: 'Ferk', age: '20s', gender: 'male', personality: 'cocky influencer', appearance: 'red hair', wardrobe: 'neon hoodie, sneakers' };
   assert.match(render.castingBrief(c), /Name: Ferk\nAge: 20s\nGender: male\nAppearance so far: red hair\nPersonality: cocky influencer/);
   const real = render.castingDeps.llmJson;
   try {
@@ -679,19 +679,23 @@ test('casting asks for each look separately and falls back to the description', 
     render.castingDeps.llmJson = (async (sys: string) => {
       systems.push(sys);
       const n = systems.length;
-      if (n === 1) return { label: 'wiry freckled redhead', appearance: 'Wiry and freckled, copper curls, a narrow fox-like face, pale grey eyes.' };
-      if (n === 2) return { label: '2-5 word summary', appearance: 'Stocky with a buzz-cut ginger scalp, a broken nose and a heavy jaw.' };
-      if (n === 3) return { appearance: 'red' };
+      if (n === 1) return { label: 'Ferk - narrow fox face', appearance: 'Wiry and freckled, copper curls, a narrow fox-like face, pale grey eyes.' };
+      if (n === 2) return { label: '2-5 word summary', appearance: 'Ferk has a stocky frame, a buzz-cut ginger scalp, a broken nose and a heavy jaw.' };
+      if (n <= 4) return { appearance: 'red' };
       throw new Error('offline');
     }) as typeof real;
     const looks = await render.castingLooks(c);
-    assert.equal(systems.length, 4);
-    assert.ok(new Set(systems).size === 4, 'each call pushes a different direction');
-    assert.deepEqual(looks[0], { label: 'wiry freckled redhead', appearance: 'Wiry and freckled, copper curls, a narrow fox-like face, pale grey eyes.' });
-    assert.equal(looks[1].label, 'Stocky with a buzz-cut ginger scalp', 'template labels are replaced');
-    assert.deepEqual(looks[2], { label: 'Take 3', appearance: 'red hair' }, 'too short or a copy falls back');
+    assert.equal(systems.length, 2 + 2 + 2, 'a bad answer is retried once');
+    assert.match(systems[0], /Every trait the brief states is fixed/);
+    assert.match(systems[1], /clearly different from these already proposed: narrow fox face/);
+    assert.deepEqual(looks[0], { label: 'narrow fox face', appearance: 'Wiry and freckled, copper curls, a narrow fox-like face, pale grey eyes.' });
+    assert.equal(looks[1].label, 'a stocky frame', 'template labels are replaced, without the name');
+    assert.deepEqual(looks[2], { label: 'Take 3', appearance: 'red hair' });
     assert.deepEqual(looks[3], { label: 'Take 4', appearance: 'red hair' });
   } finally {
     render.castingDeps.llmJson = real;
   }
+  const head = prompts.castingPrompt({ ...c, appearance: 'Wiry and freckled' });
+  assert.match(head, /^Casting headshot: Wiry and freckled\. tight head-and-shoulders close-up/);
+  assert.doesNotMatch(head, /hoodie|sneakers/, 'no costume in a casting headshot');
 });

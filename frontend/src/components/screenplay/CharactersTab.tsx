@@ -286,7 +286,7 @@ function CharacterForm({
             })
           }
         >
-          {busy === 'cast' || castingPending ? <Loader2 size={14} className="spin" /> : <Clapperboard size={14} />} {casting.length ? 'Recast' : 'Cast 4 looks'}
+          {busy === 'cast' || castingPending ? <Loader2 size={14} className="spin" /> : <Clapperboard size={14} />} {busy === 'cast' ? 'Writing looks…' : casting.length ? 'Recast' : 'Cast 4 looks'}
         </button>
       </div>
       {casting.length > 0 && (
