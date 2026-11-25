@@ -24,6 +24,8 @@ import {
   queueCharacterRefs,
   castCharacter,
   queuePropDrawing,
+  recreateCandidates,
+  recreateFrame,
   reconcile,
   refineAppearance,
   scheduleReconcile,
@@ -470,6 +472,27 @@ router.post('/:id/shots/:shotId/finds', owned, (req, res) =>
 );
 
 router.get('/:id/shots/:shotId/finds/latest', owned, (req, res) => wrap(res, () => ({ find: latestFind(sp(res).id, id(req.params.shotId)) })));
+
+// Recreate a shot's picked photo with the film's characters and props (FLUX.2 multi-reference).
+router.get('/:id/shots/:shotId/recreate', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const shot = s.doc.shots.find((x) => x.id === id(req.params.shotId));
+    if (!shot) throw new Error('That shot no longer exists');
+    return recreateCandidates(s, shot);
+  }),
+);
+
+router.post('/:id/shots/:shotId/recreate', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const shot = s.doc.shots.find((x) => x.id === id(req.params.shotId));
+    if (!shot) throw new Error('That shot no longer exists. Save and try again.');
+    const ids = (v: unknown) => (Array.isArray(v) ? v.map((x) => id(x)).filter(Boolean).slice(0, 20) : undefined);
+    const row = recreateFrame(s, shot, Number(req.body?.from), { characterIds: ids(req.body?.characterIds), propIds: ids(req.body?.propIds) });
+    return { ...detail(store.getScreenplay(s.id)!), added: row.id };
+  }),
+);
 
 // Props: reference photos from uploads, the finder, or drawn with AI.
 function propOf(s: Screenplay, pid: unknown) {

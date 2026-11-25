@@ -594,3 +594,29 @@ export async function latestPropFind(id: number, propId: string): Promise<ShotFi
   const { data } = await client.get<{ find: ShotFind | null }>(`/api/screenplays/${id}/props/${propId}/finds/latest`);
   return data.find;
 }
+
+// ── recreate a picked photo with the cast and props ──────────────────────────
+
+export interface RecreateCandidates {
+  characters: Array<{ id: string; name: string; photo: number | null }>;
+  props: Array<{ id: string; name: string; photo: number | null }>;
+}
+
+export async function recreateCandidates(id: number, shotId: string): Promise<RecreateCandidates> {
+  const { data } = await client.get<RecreateCandidates>(`/api/screenplays/${id}/shots/${shotId}/recreate`);
+  return data;
+}
+
+export async function recreateFrame(id: number, shotId: string, from: number, characterIds: string[], propIds: string[]): Promise<Detail & { added: number }> {
+  const { data } = await client.post<Detail & { added: number }>(`/api/screenplays/${id}/shots/${shotId}/recreate`, { from, characterIds, propIds });
+  return data;
+}
+
+export function recreatedFrom(m: ScreenplayMedia | undefined | null): { from: number; characters: string[]; props: string[] } | null {
+  if (!m?.meta) return null;
+  try {
+    return (JSON.parse(m.meta) as { recreated?: { from: number; characters: string[]; props: string[] } }).recreated ?? null;
+  } catch {
+    return null;
+  }
+}

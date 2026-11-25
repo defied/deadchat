@@ -4,15 +4,16 @@
 
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, Search, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
+import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, Search, Sparkles, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
-import { LENS_TYPES, foundMeta, isVoiceRow, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
+import { LENS_TYPES, foundMeta, isVoiceRow, recreatedFrom, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
 import { useScreenplayActions } from './actions';
 import { Modal } from '../ui';
 import { SHOT_TYPES, newId, timecode } from './format';
 import { MusicButton, SpImage } from './media';
 import { AdjustmentNotes } from './AdjustmentNotes';
 import { ShotFinder } from './ShotFinder';
+import { RecreateFrame } from './RecreateFrame';
 
 const LENSES = [14, 18, 24, 35, 50, 85, 100, 135];
 const GAP = 12;
@@ -164,6 +165,7 @@ function ShotCard({
 }) {
   const [open, setOpen] = useState(false);
   const [finding, setFinding] = useState(false);
+  const [recreating, setRecreating] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const refresh = async () => {
@@ -180,7 +182,15 @@ function ShotCard({
   const plan = detail?.plans[shot.id];
   const latest = detail?.media.latest[`frame:${shot.id}`];
   const rendered = detail?.media.lastReady[`frame:${shot.id}`];
-  const ownRow = shot.frameImage ? detail?.media.other.find((m) => m.id === shot.frameImage && m.media_id) : undefined;
+  // The writer's chosen image: a photo, or the AI's recreation of one (shown
+  // over the original photo while it's being made, or if it failed).
+  const frameRow = shot.frameImage ? detail?.media.other.find((m) => m.id === shot.frameImage) : undefined;
+  const rec = recreatedFrom(frameRow);
+  const original = rec ? detail?.media.other.find((m) => m.id === rec.from && m.media_id) : undefined;
+  const ownRow = frameRow?.status === 'ready' && frameRow.media_id ? frameRow : original;
+  const recreatePending = frameRow?.status === 'pending';
+  const recreateError = rec && frameRow?.status === 'failed' ? frameRow.error || 'The AI couldn’t recreate this shot' : null;
+  const recreateBase = rec ? original : ownRow?.role === 'reference' ? ownRow : undefined;
   // An image the writer chose stands in for the rendered frame.
   const ready = ownRow ?? rendered;
   const cue = detail?.media.latest[`music:${shot.id}`];
@@ -190,7 +200,7 @@ function ShotCard({
   const outOfDate = !locked && (!!plan?.stale || !!plan?.musicStale);
   const staleWhat = plan?.stale && plan?.musicStale ? 'frame and music' : plan?.stale ? 'frame' : 'music';
   const failed = latest?.status === 'failed' && !ownRow ? latest.error : null;
-  const found = foundMeta(ownRow);
+  const found = foundMeta(frameRow) ?? foundMeta(ownRow);
 
   let note: string | null = null;
   if (plan?.blocked) note = plan.blocked;
@@ -244,7 +254,7 @@ function ShotCard({
         </button>
       </div>
 
-      {!ready?.media_id && !pending ? (
+      {!ready?.media_id && !pending && !recreatePending ? (
         <div className="sp-frame sp-frame-start">
           <span>{plan?.blocked ?? 'No frame yet'}</span>
           <div>
@@ -270,6 +280,11 @@ function ShotCard({
             <Loader2 size={12} className="spin" /> {ready ? 'Updating to match the script…' : 'Rendering…'}
           </span>
         )}
+        {recreatePending && (
+          <span className="sp-frame-status">
+            <Loader2 size={12} className="spin" /> Recreating with your cast and props…
+          </span>
+        )}
         {locked && (
           <span className="sp-frame-lock" title="Locked">
             <Lock size={11} /> Locked
@@ -282,6 +297,21 @@ function ShotCard({
         )}
       </button>
       )}
+      {(recreateBase || rec) && !locked && (
+        <div className="sp-frame-actions">
+          {recreateBase && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setRecreating(true)} disabled={recreatePending} title="The AI keeps this photo’s camera, setting and light, and puts your characters and props in">
+              <Sparkles size={12} /> {rec ? 'Recreate again' : 'Recreate with cast & props'}
+            </button>
+          )}
+          {rec && original && (
+            <button className="btn btn-sm btn-ghost" onClick={() => onPatch({ frameImage: original.id }, 'frameImage')} disabled={recreatePending}>
+              Use the original photo
+            </button>
+          )}
+        </div>
+      )}
+      {recreateError && <div className="sp-shot-warn"><AlertTriangle size={12} /> {recreateError}</div>}
       {found && (
         <div className="sp-found-credit" title={found.title}>
           <a href={found.landingUrl} target="_blank" rel="noreferrer">{found.title}</a>
@@ -353,7 +383,8 @@ function ShotCard({
           <textarea rows={1} value={shot.notes ?? ''} placeholder="Blocking, movement, VFX… (for you; not used for the frame)" onChange={(e) => onPatch({ notes: e.target.value }, 'notes')} />
         </label>
       </div>
-      {finding && <ShotFinder shot={shot} number={number} detail={detail} onPatch={onPatch} onClose={() => setFinding(false)} />}
+      {recreating && recreateBase && <RecreateFrame shot={shot} number={number} baseRow={recreateBase} detail={detail} onPatch={onPatch} onClose={() => setRecreating(false)} />}
+      {finding && <ShotFinder shot={shot} number={number} detail={detail} onPatch={onPatch} onClose={() => setFinding(false)} onRecreate={() => setRecreating(true)} />}
       {open && ready?.media_id && (
         <Modal title={`Shot ${number}${shot.type ? ` · ${shot.type}` : ''}`} onClose={() => setOpen(false)} width={1100}>
           <div className="sp-frame-large">

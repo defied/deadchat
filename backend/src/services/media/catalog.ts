@@ -25,6 +25,11 @@ export interface MediaParams {
   fast?: boolean;
   /** ComfyUI input filename of the start/reference image */
   image?: string;
+  /**
+   * ComfyUI input filenames of reference images for multi-reference editing
+   * (models with maxRefs). The prompt calls them "image 1", "image 2"… in order.
+   */
+  refImages?: string[];
   /** generate a soundtrack where the model supports it */
   audio?: boolean;
 }
@@ -44,6 +49,8 @@ export interface MediaModel {
   needsImage?: boolean;
   /** accepts an optional start image */
   acceptsImage?: boolean;
+  /** takes up to this many reference images (multi-reference editing) */
+  maxRefs?: number;
   summary: string;
   strengths: string[];
   ratios: Ratio[];
@@ -160,6 +167,7 @@ export const MEDIA_MODELS: MediaModel[] = [
     strengths: ['photorealism', 'detail', 'typography'],
     ratios: WIDE_RATIOS,
     hasFastMode: true,
+    maxRefs: 6,
     speed: 'draft ~35 s · final ~2 min',
     files: [
       'diffusion_models/flux2_dev_fp8mixed.safetensors', 'text_encoders/mistral_3_small_flux2_fp8.safetensors',
@@ -175,6 +183,20 @@ export const MEDIA_MODELS: MediaModel[] = [
         set(g, n, 'height', h);
       }
       set(g, '98:104', 'value', !!p.fast); // turbo LoRA, 8 steps
+      // Reference images: each is scaled, encoded and chained onto the text
+      // conditioning (FLUX.2's multi-reference editing; "image 1" is the first).
+      let cond: [string, number] = ['98:6', 0];
+      (p.refImages ?? []).forEach((name, i) => {
+        // The first reference is the scene: same shape as the output. The rest
+        // (faces, props) are squared around their centre.
+        const [rw, rh] = i === 0 ? [w, h] : [1024, 1024];
+        g[`dc_ref${i}_load`] = { class_type: 'LoadImage', inputs: { image: name } };
+        g[`dc_ref${i}_scale`] = { class_type: 'ImageScale', inputs: { image: [`dc_ref${i}_load`, 0], upscale_method: 'lanczos', width: rw, height: rh, crop: 'center' } };
+        g[`dc_ref${i}_enc`] = { class_type: 'VAEEncode', inputs: { pixels: [`dc_ref${i}_scale`, 0], vae: ['98:10', 0] } };
+        g[`dc_ref${i}`] = { class_type: 'ReferenceLatent', inputs: { conditioning: cond, latent: [`dc_ref${i}_enc`, 0] } };
+        cond = [`dc_ref${i}`, 0];
+      });
+      if (p.refImages?.length) set(g, '98:26', 'conditioning', cond);
     },
   },
 
@@ -819,6 +841,7 @@ export function resolveParams(model: MediaModel, params: Partial<MediaParams> & 
     duration,
     fast: params.fast,
     image: params.image,
+    refImages: model.maxRefs && params.refImages?.length ? params.refImages.slice(0, model.maxRefs) : undefined,
     audio: params.audio,
   };
 }

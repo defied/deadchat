@@ -511,3 +511,18 @@ kbd {
 .sp-prop-keeping { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); color: #fff; border-radius: 8px; }
 .sp-prop-kept { position: absolute; left: 6px; top: 6px; display: inline-flex; gap: 3px; align-items: center; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; background: var(--color-accent); color: #fff; }
 .sp-find-empty.small { min-height: 120px; }
+
+/* ── recreate ── */
+.sp-recreate { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.sp-recreate-photo img { width: 100%; border-radius: 8px; display: block; }
+.sp-recreate-side { display: flex; flex-direction: column; gap: 14px; }
+.sp-recreate-side section { display: flex; flex-direction: column; gap: 6px; }
+.sp-recreate-pick { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; }
+.sp-recreate-pick.on { border-color: var(--color-accent); background: var(--color-accent-dim); }
+.sp-recreate-pick > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.sp-recreate-pick small { font-size: 11px; color: var(--color-text-dim); }
+.sp-recreate-thumb { flex: none; width: 40px; height: 40px; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-bg); color: var(--color-text-dim); }
+.sp-recreate-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.sp-frame-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.sp-frame-actions .btn { display: inline-flex; align-items: center; gap: 5px; }
+@media (max-width: 900px) { .sp-recreate { grid-template-columns: 1fr; } }

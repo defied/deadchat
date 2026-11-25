@@ -13,11 +13,13 @@ import { localModels } from '../influencers/media';
 import { getMediaSettings } from '../media/settings';
 import { describeImage } from '../media/enhance';
 import { asString, llmJson } from '../influencers/llm';
-import { adjustKey, appendAdjustments, castingPrompt, characterPrompt, propPrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
+import { activeAdjustments, adjustKey, appendAdjustments, castingPrompt, characterPrompt, firstMoment, lensLook, propPrompt, recreatePrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
 import db from '../../db/connection';
 import { getActiveModel } from '../chatModels';
 import * as store from './store';
 import type { Character, Prop, Screenplay, ScreenplayMedia, Shot } from './types';
+import { presentCharacters, propsInShot, shotSection, visualText } from './script';
+import { defaultLens } from './staging';
 
 export const STABLE_MS = 6000;
 export const MUSIC_MODEL = 'ace-step-v1';
@@ -385,6 +387,99 @@ export function queueCharacterRefs(sp: Screenplay, c: Character, views: RefView[
     );
     return store.addMedia(sp.id, 'character', c.id, { prompt, job_id: jobId, label: view });
   });
+}
+
+// ── recreate a picked photo with the cast and props ──────────────────────────
+
+/** The model that recreates frames: FLUX.2 [dev] on the GPU box (it takes several reference images). */
+export const RECREATE_MODEL = 'flux2-dev';
+
+/** The photo that stands for a character or prop: its main one, else the newest that's ready. */
+function mainPhoto(spId: number, role: 'character' | 'prop', target: string, primaryId?: number): ScreenplayMedia | null {
+  const rows = store.listMedia(spId, role).filter((m) => m.target === target && m.status === 'ready' && m.media_id);
+  return rows.find((m) => m.id === primaryId) ?? rows.filter((m) => m.label !== 'expressions').at(-1) ?? null;
+}
+
+export interface RecreateChoice {
+  characterIds?: string[];
+  propIds?: string[];
+}
+
+/** Who and what a recreate would put in, with whether each has a photo (for the UI). */
+export function recreateCandidates(sp: Screenplay, shot: Shot) {
+  const sec = shotSection(sp.doc, shot);
+  const present = sec ? presentCharacters(sec.elements, sp.doc.characters) : [];
+  const characters = present
+    .filter((p) => p.character)
+    .map((p) => ({ id: p.character!.id, name: p.character!.name, photo: mainPhoto(sp.id, 'character', p.character!.id, p.character!.primaryRefId)?.media_id ?? null }));
+  const props = propsInShot(sp.doc, shot).map((p) => ({ id: p.id, name: p.name, photo: mainPhoto(sp.id, 'prop', p.id, p.primaryRefId)?.media_id ?? null }));
+  return { characters, props };
+}
+
+/**
+ * Queue the AI recreating `baseRowId` (a photo of this shot) with the chosen
+ * characters and props in it. The result is a new image of the shot that
+ * keeps the photo's credit.
+ */
+export function recreateFrame(sp: Screenplay, shot: Shot, baseRowId: number, choice: RecreateChoice): ScreenplayMedia {
+  const base = store.getMedia(baseRowId);
+  if (!base || base.screenplay_id !== sp.id || base.role !== 'reference' || base.status !== 'ready' || !base.media_id) throw new Error('Pick a photo for this shot first');
+  const model = getMediaModel(RECREATE_MODEL);
+  if (!model) throw new Error('FLUX.2 [dev] is not available');
+  const sec = shotSection(sp.doc, shot);
+  const present = sec ? presentCharacters(sec.elements, sp.doc.characters) : [];
+  const wantChars = new Set(choice.characterIds ?? present.map((p) => p.character?.id).filter(Boolean));
+  const wantProps = new Set(choice.propIds ?? propsInShot(sp.doc, shot).map((p) => p.id));
+  const refs: number[] = [base.media_id];
+  const castRows = sp.doc.characters.filter((c) => wantChars.has(c.id));
+  const cast = castRows.map((c) => {
+    const photo = refs.length < (model.maxRefs ?? 1) ? mainPhoto(sp.id, 'character', c.id, c.primaryRefId) : null;
+    if (photo?.media_id) refs.push(photo.media_id);
+    const look = c.appearance?.trim() || [c.age, c.gender, c.species || c.kind].filter(Boolean).join(' ') || 'as in the script';
+    return { name: c.name, look, wardrobe: c.wardrobe?.trim() || undefined, image: photo?.media_id ? refs.length : null };
+  });
+  const props = (sp.doc.props ?? [])
+    .filter((p) => wantProps.has(p.id))
+    .map((p) => {
+      const photo = refs.length < (model.maxRefs ?? 1) ? mainPhoto(sp.id, 'prop', p.id, p.primaryRefId) : null;
+      if (photo?.media_id) refs.push(photo.media_id);
+      return { name: p.name, look: p.description?.trim() || undefined, image: photo?.media_id ? refs.length : null };
+    });
+  const action = sec ? visualText(sec.elements) : '';
+  const lens = shot.lens ?? defaultLens(shot.type);
+  const prompt = recreatePrompt({
+    cast,
+    props,
+    moment: action ? firstMoment(action) : undefined,
+    lens: lensLook(lens, shot.lensType || sp.doc.settings.lensType),
+    notes: activeAdjustments(shot),
+    style: sp.doc.settings.style,
+  });
+  const jobId = enqueue(
+    'image',
+    {
+      catalogId: model.id,
+      prompt,
+      negative: NEGATIVE,
+      ratio: ratioFor(model, sp.doc.settings.ratio),
+      seed: Math.floor(Math.random() * 2_147_483_647),
+      enhance: false,
+      verifyAttempts: 1,
+      refMediaIds: refs,
+    },
+    { userId: sp.userId, heavy: true },
+  );
+  const row = store.addMedia(sp.id, 'reference', shot.id, { prompt, job_id: jobId, label: 'Recreated with AI' });
+  const meta = (() => {
+    try {
+      return JSON.parse(base.meta ?? '{}') as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  })();
+  const recreated = { from: base.id, characters: cast.map((c) => c.name), props: props.map((p) => p.name) };
+  store.updateMedia(row.id, { meta: JSON.stringify({ ...(meta.found ? { found: meta.found } : {}), recreated }) });
+  return { ...row, meta: JSON.stringify({ ...(meta.found ? { found: meta.found } : {}), recreated }) };
 }
 
 // ── props ──────────────────────────────────────────────────────────────────────

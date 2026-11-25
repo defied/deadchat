@@ -35,6 +35,8 @@ export interface CatalogJobParams {
   /** Fail the job unless an attempt passed the vision check's hard rules. */
   requireVerified?: boolean;
   imageMediaId?: number;
+  /** Reference images (media ids) for models that take several (maxRefs). */
+  refMediaIds?: number[];
 }
 
 /** Map legacy {model,width,height,steps,frames,fps} job params onto the catalog. */
@@ -111,6 +113,19 @@ async function runCatalogJob(job: Job, raw: Record<string, unknown>): Promise<vo
     throw new Error(`${model.label} needs a start image`);
   }
 
+  // Reference images (multi-reference editing).
+  const refImages: string[] = [];
+  if (p.refMediaIds?.length) {
+    if (!model.maxRefs) throw new Error(`${model.label} can't take reference images`);
+    stage('Uploading reference images');
+    for (const id of p.refMediaIds.slice(0, model.maxRefs)) {
+      const media = getMedia(id);
+      if (!media || media.type !== 'image') throw new Error('A reference image was not found');
+      if (job.user_id != null && media.user_id != null && media.user_id !== job.user_id) throw new Error('A reference image was not found');
+      refImages.push(await uploadInputImage(fs.readFileSync(getMediaPath(media.filename)), media.mime));
+    }
+  }
+
   // 3. Generate (+ verify loop for images).
   const attempts = kind === 'image' ? Math.min(4, Math.max(p.requireVerified ? 2 : 1, p.verifyAttempts ?? 1)) : 1;
   const history: Array<{ prompt: string; seed: number; verdict?: Verdict }> = [];
@@ -143,6 +158,7 @@ async function runCatalogJob(job: Job, raw: Record<string, unknown>): Promise<vo
       fast: p.fast,
       audio: p.audio,
       image: imageName,
+      refImages: refImages.length ? refImages : undefined,
     };
     const outputs =
       model.backend === 'cloudflare'
