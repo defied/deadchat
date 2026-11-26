@@ -5,7 +5,7 @@
 // by match, freedom of licence and length. The writer listens and picks.
 
 import db from '../../../db/connection';
-import { llmJson } from '../../influencers/llm';
+import { llmJson } from '../llm';
 import * as store from '../store';
 import { shotSection } from '../script';
 import type { Screenplay } from '../types';

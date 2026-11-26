@@ -14,6 +14,7 @@ const KEY_ENHANCE = 'media.enhance_default';
 const KEY_PEXELS = 'media.pexels_api_key';
 const KEY_UNSPLASH = 'media.unsplash_access_key';
 const KEY_SHOT_MODEL = 'media.shot_check_model';
+const KEY_SCREENPLAY_MODEL = 'media.screenplay_model';
 
 /** Cloudflare's free Workers AI allocation, reset 00:00 UTC. */
 export const CLOUDFLARE_FREE_NEURONS = 10_000;
@@ -61,6 +62,10 @@ export function getPhotoKeys(): { pexels: string | null; unsplash: string | null
 }
 
 /** The cinematography model for the shot finder's framing check, if one is set. */
+export function getScreenplayModel(): string | null {
+  return get(KEY_SCREENPLAY_MODEL) || process.env.SCREENPLAY_MODEL || null;
+}
+
 export function getShotCheckModel(): string | null {
   return get(KEY_SHOT_MODEL) || process.env.SHOT_CHECK_MODEL || null;
 }
@@ -106,6 +111,8 @@ export interface MediaSettings {
   unsplashSet: boolean;
   /** Ollama model that judges cinematography (shot size, framing, angle), e.g. ShotVL. Empty = off. */
   shotCheckModel: string | null;
+  /** Ollama model for the screenplay tools (summaries, searches, photo checks, mentor). Empty = the active chat model. */
+  screenplayModel: string | null;
 }
 
 export function getMediaSettings(): MediaSettings {
@@ -123,6 +130,7 @@ export function getMediaSettings(): MediaSettings {
     pexelsSet: !!getPhotoKeys().pexels,
     unsplashSet: !!getPhotoKeys().unsplash,
     shotCheckModel: getShotCheckModel(),
+    screenplayModel: getScreenplayModel(),
   };
 }
 
@@ -136,7 +144,9 @@ export function updateMediaSettings(patch: {
   pexelsKey?: string | null;
   unsplashKey?: string | null;
   shotCheckModel?: string | null;
+  screenplayModel?: string | null;
 }): MediaSettings {
+  if (patch.screenplayModel !== undefined) put(KEY_SCREENPLAY_MODEL, patch.screenplayModel?.trim() || null);
   if (patch.shotCheckModel !== undefined) put(KEY_SHOT_MODEL, patch.shotCheckModel?.trim() || null);
   if (patch.pexelsKey !== undefined) putSecret(KEY_PEXELS, patch.pexelsKey);
   if (patch.unsplashKey !== undefined) putSecret(KEY_UNSPLASH, patch.unsplashKey);

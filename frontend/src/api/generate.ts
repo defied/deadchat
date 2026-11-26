@@ -89,6 +89,7 @@ export interface MediaSettings {
   pexelsSet?: boolean;
   unsplashSet?: boolean;
   shotCheckModel?: string | null;
+  screenplayModel?: string | null;
 }
 
 export async function getMediaSettings(): Promise<MediaSettings> {
@@ -104,6 +105,7 @@ export async function updateMediaSettings(
     pexelsKey?: string | null;
     unsplashKey?: string | null;
     shotCheckModel?: string | null;
+    screenplayModel?: string | null;
   },
 ): Promise<MediaSettings> {
   const { data } = await client.put<MediaSettings>('/api/generate/settings', patch);

@@ -5,8 +5,8 @@
 // it with the film's characters and props.
 
 import db from '../../../db/connection';
-import { asString, llmJson } from '../../influencers/llm';
-import { getActiveModel, getModelCapabilities } from '../../chatModels';
+import { asString, llmJson, screenplayModel } from '../llm';
+import { getModelCapabilities } from '../../chatModels';
 import { getPhotoKeys, getShotCheckModel } from '../../media/settings';
 import { checkFraming } from './framing';
 import type { ShotSetup } from '../cinema';
@@ -568,7 +568,7 @@ export function scoreAnswers(items: string[], answers: string[]): { score: numbe
 
 /** Ask the vision model which checklist items a photo (its thumbnail) shows. */
 export async function checkImage(c: Pick<ImageCandidate, 'thumbUrl'>, items: string[]): Promise<ImageCheck> {
-  const model = getActiveModel();
+  const model = screenplayModel();
   if (visionOk?.model !== model) visionOk = { model, ok: (await getModelCapabilities(model).catch(() => [] as string[])).includes('vision') };
   if (!visionOk.ok) throw new Error(NO_VISION);
   const out = await llmJson<{ sees?: unknown; answers?: unknown }>(CHECK_SYSTEM, `Checklist:\n${items.map((x, i) => `${i + 1}. ${x}`).join('\n')}`, {

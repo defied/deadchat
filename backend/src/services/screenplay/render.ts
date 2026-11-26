@@ -12,10 +12,9 @@ import { getMediaModel, type MediaModel, type Ratio } from '../media/catalog';
 import { localModels } from '../influencers/media';
 import { getMediaSettings } from '../media/settings';
 import { describeImage } from '../media/enhance';
-import { asString, llmJson } from '../influencers/llm';
+import { asString, llmJson, screenplayModel } from './llm';
 import { activeAdjustments, adjustKey, appendAdjustments, castingPrompt, characterPrompt, firstMoment, propPrompt, recreatePrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
 import db from '../../db/connection';
-import { getActiveModel } from '../chatModels';
 import * as store from './store';
 import type { Character, Prop, Screenplay, ScreenplayMedia, Shot } from './types';
 import { presentCharacters, propsInShot, shotSection, visualText } from './script';
@@ -206,7 +205,7 @@ export function rewriteForAdjustments(basePrompt: string, notes: string[]): Prom
   const job = (async () => {
     let model = '';
     try {
-      model = getActiveModel();
+      model = screenplayModel();
       const out = await llmJson<{ prompt?: string }>(
         ADJUST_SYSTEM,
         `Prompt:\n${basePrompt}\n\nAdjustment notes:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}`,

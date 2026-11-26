@@ -4,7 +4,7 @@
 // terms as it goes. It never changes the shot list itself: the writer accepts
 // a suggestion or answers a question.
 
-import { llmJson, asString } from '../influencers/llm';
+import { llmJson, asString } from './llm';
 import { SETUP_FIELDS, cleanSetup, type SetupField } from './cinema';
 import { presentCharacters, shotSection, visualText } from './script';
 import { activeAdjustments } from './prompts';
@@ -76,7 +76,7 @@ export async function mentorTurn(sp: Screenplay, shot: Shot, message?: string): 
     `${mentorBrief(sp, shot)}\n\nConversation so far:\n${history || '(none: open the conversation)'}`,
     { temperature: 0.4 },
   );
-  const reply = asString(out.reply, 1200).trim() || 'Tell me more about how you picture this moment.';
+  let reply = asString(out.reply, 1200).trim();
   const fields = Object.keys(SETUP_FIELDS) as SetupField[];
   const suggestions = (Array.isArray(out.suggestions) ? out.suggestions : [])
     .map((x) => x as { field?: unknown; value?: unknown; why?: unknown })
@@ -90,7 +90,12 @@ export async function mentorTurn(sp: Screenplay, shot: Shot, message?: string): 
   const questions: MentorQuestion[] = (Array.isArray(out.questions) ? out.questions : [])
     .map((x) => x as { field?: unknown; question?: unknown; options?: unknown })
     .map((x) => {
-      const field = typeof x.field === 'string' && fields.includes(x.field as SetupField) ? (x.field as SetupField) : undefined;
+      const rawOptions = (Array.isArray(x.options) ? x.options : []).map((o) => asString(o, 80).trim()).filter(Boolean);
+      // A question whose answers are all values of one field is about that field.
+      const field =
+        typeof x.field === 'string' && fields.includes(x.field as SetupField)
+          ? (x.field as SetupField)
+          : fields.find((f) => rawOptions.length >= 2 && rawOptions.every((o) => cleanSetup({ [f]: o })?.[f]));
       let options = (Array.isArray(x.options) ? x.options : []).map((o) => asString(o, 80).trim()).filter(Boolean);
       // A question about a field answers with that field's values.
       if (field) options = options.map((o) => cleanSetup({ [field]: o })?.[field]).filter((o): o is string => !!o);
@@ -98,6 +103,11 @@ export async function mentorTurn(sp: Screenplay, shot: Shot, message?: string): 
     })
     .filter((q) => q.question && q.options.length >= 2 && !(q.field && shot.setup?.[q.field]))
     .slice(0, 2);
+  // A bare answer ("Medium Close Up") isn't mentoring: say the suggestions with their reasons.
+  if (reply.split(/\s+/).length < 8) {
+    const said = suggestions.map((sg) => `${SETUP_FIELDS[sg.field].label}: ${sg.value}. ${sg.why}`.trim());
+    reply = [reply && !suggestions.some((sg) => reply.toLowerCase().includes(sg.value.toLowerCase())) ? reply : '', ...said].filter(Boolean).join('\n') || 'Tell me how you picture this moment: what should the audience notice first?';
+  }
   const core = !!(shot.setup?.size && shot.setup.framing && shot.setup.angle);
   return {
     messages: [...messages, { from: 'mentor' as const, text: reply }].slice(-40),
