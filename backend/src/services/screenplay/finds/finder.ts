@@ -7,7 +7,8 @@
 import db from '../../../db/connection';
 import { asString, llmJson } from '../../influencers/llm';
 import { getActiveModel, getModelCapabilities } from '../../chatModels';
-import { getPhotoKeys } from '../../media/settings';
+import { getPhotoKeys, getShotCheckModel } from '../../media/settings';
+import { checkFraming } from './framing';
 import * as store from '../store';
 import { presentCharacters, shotSection, visualText } from '../script';
 import { activeAdjustments, firstMoment } from '../prompts';
@@ -344,6 +345,7 @@ export const deps = {
   keys: getPhotoKeys,
   checklist: (brief: string, notes: string[], names: string[]) => makeChecklist(brief, notes, names),
   checkImage: (c: ImageCandidate, items: string[]) => checkImage(c, items),
+  checkFraming: async (c: ImageCandidate, model: string, shotType: string) => checkFraming(model, await thumbB64(c), shotType),
 };
 
 async function run(id: number): Promise<void> {
@@ -416,6 +418,8 @@ async function run(id: number): Promise<void> {
   const picked: ImageCandidate[] = [];
   const rejected = [...(plan.rejected ?? [])];
   const turnedDown = [...(plan.turnedDown ?? [])];
+  const shotModel = prop ? null : getShotCheckModel();
+  let framingError: string | null = null;
   let checked = 0;
   let unchecked = !!plan.unchecked;
   const budget = Math.min(ranked.length, MAX_CHECKS);
@@ -430,6 +434,18 @@ async function run(id: number): Promise<void> {
       } catch (e) {
         if ((e as Error).message === NO_VISION) unchecked = true;
         else continue; // photo wouldn't load: skip it
+      }
+      // The shot type: a cinematography model checks the photo's framing, when one is set up.
+      if (c.check && c.check.score >= MIN_SCORE && shot?.type && shotModel) {
+        try {
+          const fr = await deps.checkFraming(c, shotModel, shot.type);
+          if (fr) {
+            c.check.framing = fr;
+            c.check.score = Math.max(0, Math.min(10, c.check.score + (fr.match === 'yes' ? 1 : fr.match === 'no' ? -2 : 0)));
+          }
+        } catch (e) {
+          framingError = (e as Error).message;
+        }
       }
       if (c.check && c.check.score < MIN_SCORE) {
         rejected.push(c.key);
@@ -461,9 +477,18 @@ async function run(id: number): Promise<void> {
       : f.candidates.length
         ? `No more matching photos${checked ? ` (looked at ${checked})` : ''}. Try other search words or an adjustment note.`
         : `No matching photos${checked ? ` (looked at ${checked})` : ''}. Try other search words or an adjustment note.`,
-    error: errors.length ? errors.join(' · ') : null,
+    error: [...errors, ...(framingError ? [`Framing check (${shotModel}): ${framingError}`] : [])].join(' · ') || null,
     finished_at: new Date().toISOString(),
   });
+}
+
+/** Download a photo's thumbnail as base64 (for the vision models). */
+async function thumbB64(c: Pick<ImageCandidate, 'thumbUrl'>): Promise<string> {
+  const r = await fetch(c.thumbUrl, { headers: { 'User-Agent': 'DeadChat/1.0 (self-hosted screenplay tool)' }, redirect: 'follow', signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`thumbnail ${r.status}`);
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (buf.length > 8 * 1024 * 1024) throw new Error('thumbnail too large');
+  return buf.toString('base64');
 }
 
 // ── the vision check ─────────────────────────────────────────────────────────
@@ -545,12 +570,8 @@ export async function checkImage(c: Pick<ImageCandidate, 'thumbUrl'>, items: str
   const model = getActiveModel();
   if (visionOk?.model !== model) visionOk = { model, ok: (await getModelCapabilities(model).catch(() => [] as string[])).includes('vision') };
   if (!visionOk.ok) throw new Error(NO_VISION);
-  const r = await fetch(c.thumbUrl, { headers: { 'User-Agent': 'DeadChat/1.0 (self-hosted screenplay tool)' }, redirect: 'follow', signal: AbortSignal.timeout(20_000) });
-  if (!r.ok) throw new Error(`thumbnail ${r.status}`);
-  const buf = Buffer.from(await r.arrayBuffer());
-  if (buf.length > 8 * 1024 * 1024) throw new Error('thumbnail too large');
   const out = await llmJson<{ sees?: unknown; answers?: unknown }>(CHECK_SYSTEM, `Checklist:\n${items.map((x, i) => `${i + 1}. ${x}`).join('\n')}`, {
-    images: [buf.toString('base64')],
+    images: [await thumbB64(c)],
     temperature: 0,
   });
   const answers = Array.isArray(out.answers) ? out.answers.map((a) => String(a)) : [];

@@ -29,7 +29,7 @@ export interface ImageCandidate {
   /** Unsplash asks to be told when a photo is used. */
   downloadPing?: string;
   /** The vision model's look at the photo, when it ran. */
-  check?: { score: number; sees: string; missing: string };
+  check?: { score: number; sees: string; missing: string; framing?: { seen: string; match: 'yes' | 'close' | 'no' } };
 }
 
 export interface SearchOpts {

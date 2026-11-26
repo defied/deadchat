@@ -1101,3 +1101,58 @@ test('the checklist drops a bare time of day and keeps three items', async () =>
     globalThis.fetch = realFetch;
   }
 });
+
+// ── framing check (cinematography model) ──
+
+test('framing: shot types map to film terms, and answers are read from letters or names', () => {
+  const framing = require('./finds/framing') as typeof import('./finds/framing');
+  assert.deepEqual(framing.expectedFor('Over-the-shoulder'), { framing: 'Over the shoulder' });
+  assert.deepEqual(framing.expectedFor('Medium close-up'), { size: 'Medium Close Up' });
+  assert.deepEqual(framing.expectedFor('Wide establishing'), { size: 'Extreme Wide' });
+  assert.deepEqual(framing.expectedFor('Low angle close-up'), { size: 'Close Up', angle: 'Low angle' });
+  assert.deepEqual(framing.expectedFor(''), {});
+  assert.equal(framing.parseChoice('B', framing.SIZES), 'Wide');
+  assert.equal(framing.parseChoice('(D) Medium', framing.SIZES), 'Medium');
+  assert.equal(framing.parseChoice('The answer is E.', framing.SIZES), 'Medium Close Up');
+  assert.equal(framing.parseChoice('It is a medium close up shot', framing.SIZES), 'Medium Close Up', 'longest name wins');
+  assert.equal(framing.parseChoice('no idea', framing.SIZES), null);
+});
+
+test('with a cinematography model set, matching framing adds a point and the wrong framing costs two', async () => {
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('media.shot_check_model', 'shotvl:7b')").run();
+  const d = doc();
+  d.shots[0].type = 'Over-the-shoulder';
+  d.shots[0].summary = 'Jane grips a knife.';
+  const sp = store.createScreenplay(1, 'Framing', d);
+  const real = { ...finder.deps };
+  try {
+    finder.deps.planFind = async (_b, notes) => ({ look: '', queries: ['woman knife'], notes });
+    finder.deps.checklist = async () => ['a woman', 'a knife'];
+    finder.deps.searchOpenverseImages = async (q, o) =>
+      o.page > 1 ? [] : [0, 1, 2].map((i) => ({
+        key: `openverse:f${i}`, source: 'openverse' as const, sourceName: 'Flickr', title: `woman knife ${i}`, creator: null,
+        license: { code: 'cc0' as const, name: 'CC0', url: null, commercial: true, derivatives: true, attribution: false, rank: 0 },
+        landingUrl: 'https://x', imageUrl: 'https://x/i.jpg', thumbUrl: `https://x/${i}.jpg`, width: 2000, height: 900, tags: ['woman', 'knife'], query: q, sourceScore: 1,
+      }));
+    finder.deps.searchPexels = async () => [];
+    finder.deps.searchUnsplash = async () => [];
+    finder.deps.checkImage = async () => ({ score: 7, sees: 'a woman holding a knife', missing: '' });
+    const models: string[] = [];
+    finder.deps.checkFraming = async (c, model, type) => {
+      models.push(`${model}|${type}`);
+      return c.key.endsWith('0') ? { seen: 'Over the shoulder', match: 'yes' as const } : c.key.endsWith('1') ? { seen: 'Single', match: 'no' as const } : null;
+    };
+    const f = finder.createFind(sp, 'sh1');
+    let x = f;
+    for (let i = 0; i < 200 && !['done', 'failed'].includes(x.status); i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      x = finder.getFind(f.id)!;
+    }
+    assert.equal(models[0], 'shotvl:7b|Over-the-shoulder');
+    assert.deepEqual(x.candidates.map((c) => [c.key, c.check!.score, c.check!.framing?.match ?? null]), [['openverse:f0', 8, 'yes'], ['openverse:f2', 7, null]]);
+    assert.deepEqual(x.plan.turnedDown!.map((c) => [c.key, c.check!.score]), [['openverse:f1', 5]], 'wrong framing drops below the bar');
+  } finally {
+    Object.assign(finder.deps, real);
+    db.prepare("DELETE FROM settings WHERE key = 'media.shot_check_model'").run();
+  }
+});
