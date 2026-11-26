@@ -13,13 +13,12 @@ import { localModels } from '../influencers/media';
 import { getMediaSettings } from '../media/settings';
 import { describeImage } from '../media/enhance';
 import { asString, llmJson } from '../influencers/llm';
-import { activeAdjustments, adjustKey, appendAdjustments, castingPrompt, characterPrompt, firstMoment, lensLook, propPrompt, recreatePrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
+import { activeAdjustments, adjustKey, appendAdjustments, castingPrompt, characterPrompt, firstMoment, propPrompt, recreatePrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
 import db from '../../db/connection';
 import { getActiveModel } from '../chatModels';
 import * as store from './store';
 import type { Character, Prop, Screenplay, ScreenplayMedia, Shot } from './types';
 import { presentCharacters, propsInShot, shotSection, visualText } from './script';
-import { defaultLens } from './staging';
 
 export const STABLE_MS = 6000;
 export const MUSIC_MODEL = 'ace-step-v1';
@@ -446,12 +445,12 @@ export function recreateFrame(sp: Screenplay, shot: Shot, baseRowId: number, cho
       return { name: p.name, look: p.description?.trim() || undefined, image: photo?.media_id ? refs.length : null };
     });
   const action = sec ? visualText(sec.elements) : '';
-  const lens = shot.lens ?? defaultLens(shot.type);
+  // No lens wording: the photo already has its own camera and depth, and
+  // asking for a different one makes the model redraw the background.
   const prompt = recreatePrompt({
     cast,
     props,
     moment: action ? firstMoment(action) : undefined,
-    lens: lensLook(lens, shot.lensType || sp.doc.settings.lensType),
     notes: activeAdjustments(shot),
     style: sp.doc.settings.style,
   });

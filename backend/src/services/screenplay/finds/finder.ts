@@ -91,11 +91,16 @@ export function shotBrief(sp: Screenplay, shot: Shot): string {
 }
 
 const PLAN_SYSTEM =
-  'You find reference photos for a storyboard frame in free stock photo libraries. Their search matches plain words in photo ' +
-  'titles and tags, so queries must be short and concrete: 2 to 4 everyday words naming what is visible (subject, action, place, light), ' +
-  'e.g. "man phone street", "lightning city skyline", "rainy window night". Never use character names, film jargon or camera terms. ' +
+  'You find reference photos for a storyboard frame in free stock photo libraries (Flickr, Wikimedia, Pexels). Their search matches ' +
+  'words in photo titles and tags, so write queries the way a photographer titles a photo: 3 or 4 plain words naming a SUBJECT and a ' +
+  'PLACE or SITUATION that are both visible, e.g. "young man smartphone street", "woman kitchen night", "lightning city skyline". ' +
+  'People are generic ("young man", "old woman", "girl", "couple"): no names, ages, numbers, hair or eye colour, and never a famous person. ' +
+  'Never a lone verb, adjective or emotion ("sneer", "lean", "angry"), never film or camera words ("shot", "close-up", "lens"). ' +
+  'Mix: two queries for the whole moment (subject in its place), one for the subject alone, one for the place alone. ' +
   'Follow the adjustment notes first: they override the script where they conflict. ' +
-  'Return {"look": "one sentence: the photo we want", "queries": ["4 queries, most specific first, the last one broad"]}.';
+  'Example. Shot: a young man in a hoodie sneers at his phone on a stormy city street. Queries: ["young man smartphone street", ' +
+  '"man phone city night", "young man hoodie smartphone", "stormy city street"]. ' +
+  'Return {"look": "one sentence: the photo we want, people described generically", "queries": ["4 queries"]}.';
 
 export async function planFind(brief: string, notes: string[], names: string[] = []): Promise<FindPlan> {
   const strip = (q: string) => names.reduce((s, n) => s.replace(new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ''), q).replace(/\s+/g, ' ').trim();
@@ -109,7 +114,7 @@ export async function planFind(brief: string, notes: string[], names: string[] =
       .map((q) => strip(String(q)).toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60))
       .filter((q) => q.split(' ').length >= 1 && q.length > 2);
     const unique = [...new Set(queries)].slice(0, 5);
-    const look = strip(typeof out.look === 'string' ? out.look : '').slice(0, 300);
+    const look = strip(typeof out.look === 'string' ? out.look : '').replace(/^[\s,;:.-]+/, '').slice(0, 300);
     if (unique.length) return { look, queries: unique, notes };
   } catch {
     /* fall back to words from the script */
@@ -147,14 +152,29 @@ export function ruleQueries(brief: string, notes: string[], names: string[] = []
 
 // ── ranking ──────────────────────────────────────────────────────────────────
 
-const tokens = (s: string) => new Set(s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2));
+const tokens = (s: string) => new Set(s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)));
+
+/** Rough stem, so "storm"/"stormy" and "phone"/"phones" match ("lightning"/"lighting" too, which is fine for photos). */
+const stem = (w: string) => w.slice(0, Math.min(w.length, w.length > 6 ? 5 : 4));
+
+/** Share of the query's words found in the photo's title and tags. */
+export function relevance(c: Pick<ImageCandidate, 'title' | 'tags' | 'query'>): number {
+  const want = [...tokens(c.query)].map(stem);
+  if (!want.length) return 0;
+  const have = new Set([...tokens(`${c.title} ${c.tags.join(' ')}`)].map(stem));
+  return want.filter((w) => have.has(w)).length / want.length;
+}
+
+/** Real, named public figures don't belong in a storyboard of invented people. */
+const PUBLIC_FIGURE = /\b(president|senator|governor|mayor|minister|prime minister|congress(?:man|woman)?|king|queen|prince|princess|pope|celebrity|actor|actress|rapper|singer)\b/i;
 
 const RATIO: Record<string, number> = { '21:9': 2.39, '16:9': 16 / 9, '4:3': 4 / 3, '1:1': 1, '9:16': 9 / 16 };
 
 export function scoreImage(c: ImageCandidate, plan: FindPlan, ratio: number): number {
-  const want = tokens(`${c.query} ${plan.look}`);
-  const have = tokens(`${c.title} ${c.tags.join(' ')}`);
-  const overlap = want.size ? [...want].filter((w) => have.has(w)).length / want.size : 0;
+  const want = [...tokens(plan.look)].map(stem);
+  const have = new Set([...tokens(`${c.title} ${c.tags.join(' ')}`)].map(stem));
+  const lookOverlap = want.length ? want.filter((w) => have.has(w)).length / want.length : 0;
+  const overlap = 0.7 * relevance(c) + 0.3 * Math.min(1, lookOverlap * 3);
   const aspect = c.width && c.height ? Math.max(0, 1 - Math.abs(Math.log((c.width / c.height) / ratio)) / 1.2) : 0.5;
   const size = c.width ? Math.min(1, c.width / 1600) : 0.5;
   return 0.35 * Math.min(1, overlap * 2) + 0.25 * c.sourceScore + 0.2 * aspect + 0.15 * size + 0.05 * (1 - c.license.rank / 10);
@@ -260,7 +280,9 @@ async function run(id: number): Promise<void> {
         }
         for (const c of r.value) {
           any = true;
-          if (!seen.has(c.key) && !found.has(c.key)) found.set(c.key, c);
+          // Off-topic matches (the library matched one word, or the description only) and public figures are dropped.
+          const keyed = c.source !== 'openverse' || relevance(c) >= 0.6;
+          if (keyed && !PUBLIC_FIGURE.test(c.title) && !seen.has(c.key) && !found.has(c.key)) found.set(c.key, c);
         }
       });
     }

@@ -379,7 +379,6 @@ export function recreatePrompt(o: {
   cast: RecreateCast[];
   props: RecreateProp[];
   moment?: string;
-  lens?: string;
   notes?: string[];
   style?: string;
 }): string {
@@ -389,15 +388,14 @@ export function recreatePrompt(o: {
   });
   const things = o.props.map((p) => (p.image ? `the ${p.name} looks exactly like the one in image ${p.image}${p.look ? ` (${p.look})` : ''}` : `the ${p.name}: ${p.look ?? p.name}`));
   return [
-    'Recreate image 1 as a cinematic film still: keep its camera angle, framing, composition, setting, background and lighting',
+    'Edit image 1, keeping it as it is: the same place, buildings, landscape, background, camera angle, framing, perspective and light. Do not move the camera or blur, crop or replace the background',
     people.length
-      ? `The people in the shot are ${people.join('; ')}. Replace the main person in image 1 with ${o.cast.length === 1 ? 'them' : 'them, one each'}, same position and pose; each appears exactly once, and anyone else in the background stays an unrelated stranger`
+      ? `Put ${o.cast.length === 1 ? 'this person' : 'these people'} into it: ${people.join('; ')}. If image 1 shows a main person, they take that person's place and pose; if not, place them naturally in the scene at a size that fits the camera's distance. Each appears exactly once; anyone else stays an unrelated stranger`
       : '',
     things.length ? `Props: ${things.join('; ')}. Place them naturally in the scene` : '',
-    o.moment ? `The moment: ${o.moment}` : '',
+    o.moment ? `What they are doing: ${o.moment}` : '',
     o.notes?.length ? `Also: ${o.notes.join('; ')}` : '',
-    o.lens ?? '',
-    o.style?.trim() || 'Photorealistic, natural film lighting, film grain',
+    o.style?.trim() || 'Photorealistic, the people lit to match the photo’s light',
     `No text, captions or watermarks${o.cast.length ? `; the names ${o.cast.map((c) => `"${c.name}"`).join(', ')} are never written anywhere` : ''}`,
   ]
     .filter(Boolean)
