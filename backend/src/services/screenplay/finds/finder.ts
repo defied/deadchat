@@ -148,12 +148,23 @@ export async function planFind(brief: string, notes: string[], names: string[] =
       `${brief || '(no script for this shot)'}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
       { temperature: 0.2 },
     );
-    const queries = onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source).slice(0, 4);
+    const queries = withMoment(onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source)).slice(0, 4);
     if (queries.length) return { look, queries, notes };
   } catch {
     /* fall back to words from the script */
   }
   return { look, queries: ruleQueries(brief, notes, names), notes };
+}
+
+/**
+ * When every search is a single thing ("phone", "new york city"), add one that
+ * puts the subject in its place: the first search with the last (both already
+ * from the script).
+ */
+export function withMoment(queries: string[]): string[] {
+  if (queries.length < 2 || queries[0].split(' ').length >= 3 || queries.slice(1).some((q) => q.includes(queries[0]))) return queries;
+  const combined = `${queries[0]} ${queries[queries.length - 1]}`.split(' ').slice(0, 4).join(' ');
+  return queries.includes(combined) ? queries : [combined, ...queries];
 }
 
 /** The writer's own search words, used exactly as typed (cleaned). */
@@ -311,6 +322,9 @@ async function run(id: number): Promise<void> {
   const ratio = prop ? 1 : (RATIO[sp.doc.settings.ratio ?? '21:9'] ?? 16 / 9);
   const opts = (page: number): SearchOpts => ({ page, wide: ratio > 1.2, keys: deps.keys() });
   const seen = new Set(f.candidates.map((c) => c.key));
+  // The same photo uploaded several times (same title and size) shows once.
+  const twin = (c: ImageCandidate) => `${c.sourceName}|${c.title.toLowerCase().replace(/\W+/g, ' ').trim()}|${c.width}x${c.height}`;
+  const twins = new Set(f.candidates.map(twin));
   const found = new Map<string, ImageCandidate>();
   const errors: string[] = [];
   let page = f.page;
@@ -331,7 +345,10 @@ async function run(id: number): Promise<void> {
           any = true;
           // Off-topic matches (the library matched one word, or the description only) and public figures are dropped.
           const keyed = c.source !== 'openverse' || relevance(c) >= 0.6;
-          if (keyed && !PUBLIC_FIGURE.test(c.title) && !seen.has(c.key) && !found.has(c.key)) found.set(c.key, c);
+          if (keyed && !PUBLIC_FIGURE.test(c.title) && !seen.has(c.key) && !found.has(c.key) && !twins.has(twin(c))) {
+            found.set(c.key, c);
+            twins.add(twin(c));
+          }
         }
       });
     }
