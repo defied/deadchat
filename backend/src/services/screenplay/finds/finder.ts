@@ -153,7 +153,7 @@ export async function planFind(brief: string, notes: string[], names: string[] =
       `${brief || '(no script for this shot)'}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
       { temperature: 0.2 },
     );
-    const queries = withMoment(onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source)).slice(0, 4);
+    const queries = withPerson(withMoment(onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source)), brief).slice(0, 4);
     if (queries.length) return { look, queries, notes };
   } catch {
     /* fall back to words from the script */
@@ -170,6 +170,22 @@ export function withMoment(queries: string[]): string[] {
   if (queries.length < 2 || queries[0].split(' ').length >= 3 || queries.slice(1).some((q) => q.includes(queries[0]))) return queries;
   const combined = `${queries[0]} ${queries[queries.length - 1]}`.split(' ').slice(0, 4).join(' ');
   return queries.includes(combined) ? queries : [combined, ...queries];
+}
+
+const PERSON_WORDS = /\b(man|men|woman|women|person|people|boy|girl|child|children|kid|kids|couple|crowd)\b/;
+
+/**
+ * Photo titles name who's in them ("man on phone"), not script verbs. When the
+ * shot has someone in it and the first searches don't say who, they start
+ * with "man", "woman" or "person" (from the character's gender in the profile).
+ */
+export function withPerson(queries: string[], brief: string): string[] {
+  const people = /^People[^:]*: (.*)$/m.exec(brief)?.[1];
+  if (!people) return queries;
+  const who = /= a (?:male|man)\b/i.test(people) ? 'man' : /= a (?:female|woman)\b/i.test(people) ? 'woman' : /= a person/.test(people) ? 'person' : null;
+  if (!who) return queries;
+  const out = queries.map((q, i) => (i < 2 && !PERSON_WORDS.test(q) ? `${who} ${q}`.split(' ').slice(0, 4).join(' ') : q));
+  return [...new Set(out)];
 }
 
 /** The writer's own search words, used exactly as typed (cleaned). */
