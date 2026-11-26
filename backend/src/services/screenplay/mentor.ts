@@ -8,6 +8,7 @@ import { llmJson, asString } from './llm';
 import { SETUP_FIELDS, cleanSetup, type SetupField } from './cinema';
 import { presentCharacters, shotSection, visualText } from './script';
 import { activeAdjustments } from './prompts';
+import { agentPrompt, defineAgent } from './agents';
 import type { MentorQuestion, MentorState, Screenplay, Shot } from './types';
 
 const GLOSSARY = `Shot size: Extreme Wide (the whole place, people tiny), Wide (a person head to toe with room around), Medium Wide (knees up), Medium (waist up), Medium Close Up (chest up), Close Up (the face), Extreme Close Up (one detail: eyes, hands, an object).
@@ -19,7 +20,7 @@ Lighting condition: Soft light, Hard light, High contrast, Low contrast, Backlig
 Composition: Centered, Balanced, Symmetrical, Left heavy, Right heavy, Short side (the subject faces the near edge: tension).
 Camera movement: Static, Pan, Tilt, Dolly in, Dolly out, Truck, Pedestal, Zoom in, Zoom out, Handheld, Arc, Crane.`;
 
-const SYSTEM =
+const SYSTEM_DEFAULT =
   'You are a friendly director of photography mentoring a screenwriter who is planning one storyboard shot. You get the scene heading, ' +
   'the script text they highlighted for this shot, its summary, who is in it, the shot list fields they have set so far, and your ' +
   'conversation. Help them set the shot up so the right reference images can be found, and teach them the craft as you go.\n' +
@@ -60,6 +61,14 @@ export function mentorBrief(sp: Screenplay, shot: Shot): string {
     .join('\n');
 }
 
+defineAgent({
+  id: 'mentor',
+  name: 'Shot mentor',
+  role: 'Helps you set up each shot: suggests size, framing, angle, lens and light with reasons, asks about what is open, and explains the terms.',
+  model: 'screenplay',
+  prompt: SYSTEM_DEFAULT,
+});
+
 export const deps = { llmJson };
 
 /** One mentor turn: the writer's message (if any) and the mentor's answer, added to the conversation. */
@@ -72,7 +81,7 @@ export async function mentorTurn(sp: Screenplay, shot: Shot, message?: string): 
     .map((m) => `${m.from === 'writer' ? 'Writer' : 'You'}: ${m.text}`)
     .join('\n');
   const out = await deps.llmJson<{ reply?: unknown; suggestions?: unknown; questions?: unknown; ready?: unknown }>(
-    SYSTEM,
+    agentPrompt('mentor'),
     `${mentorBrief(sp, shot)}\n\nConversation so far:\n${history || '(none: open the conversation)'}`,
     { temperature: 0.4 },
   );

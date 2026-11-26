@@ -6,6 +6,7 @@
 
 import db from '../../../db/connection';
 import { llmJson } from '../llm';
+import { agentPrompt, defineAgent, withAgentPrompts } from '../agents';
 import * as store from '../store';
 import { shotSection } from '../script';
 import type { Screenplay } from '../types';
@@ -87,13 +88,21 @@ export function scopeText(sp: Screenplay, scope: string): { label: string; text:
   return { label: 'Your request', text: '' };
 }
 
-const PLAN_SYSTEM =
+const PLAN_DEFAULT =
   'You are a sound researcher for a film. From the request and the script excerpt, list the separate sounds a sound ' +
   'designer would gather: background ambience, sound effects, foley (body movement, handled objects) and music. ' +
   'Follow the request first; use the script only to understand it, or to choose sounds when the request is empty. ' +
   'Return {"wants":[{"want":"short plain description, e.g. heavy rain on a window at night","kind":"ambience|effect|foley|music",' +
   '"queries":["2 to 4 short library search phrases, 1-3 words each, most specific first, e.g. rain window, heavy rain, rain glass"]}]}. ' +
   'At most 8 wants, no duplicates, no dialogue or voices of named characters.';
+
+defineAgent({
+  id: 'sound',
+  name: 'Sound researcher',
+  role: 'Turns your sound request (or the script) into the sounds to gather and the library searches for each.',
+  model: 'screenplay',
+  prompt: PLAN_DEFAULT,
+});
 
 interface Planned {
   wants?: Array<{ want?: string; kind?: string; queries?: string[] }>;
@@ -102,7 +111,7 @@ interface Planned {
 export async function planWants(request: string, context: string): Promise<Array<Pick<Want, 'want' | 'kind' | 'queries'>>> {
   const kinds: WantKind[] = ['ambience', 'effect', 'foley', 'music'];
   try {
-    const out = await llmJson<Planned>(PLAN_SYSTEM, `Request: ${request || '(none: choose from the script)'}\n\nScript excerpt:\n${context || '(none)'}`, { temperature: 0.2 });
+    const out = await llmJson<Planned>(agentPrompt('sound'), `Request: ${request || '(none: choose from the script)'}\n\nScript excerpt:\n${context || '(none)'}`, { temperature: 0.2 });
     const wants = (out.wants ?? [])
       .map((w) => ({
         want: String(w.want ?? '').trim().slice(0, 160),
@@ -190,7 +199,7 @@ async function run(id: number): Promise<void> {
   if (!sp) throw new Error('The screenplay was deleted');
   save(id, { status: 'planning', progress: 'Working out what to look for…' });
   const ctx = scopeText(sp, h.scope);
-  const planned = await deps.planWants(h.request, ctx.text);
+  const planned = await withAgentPrompts(sp.doc.agentPrompts, () => deps.planWants(h.request, ctx.text));
   if (!planned.length) throw new Error('Nothing to look for. Describe the sounds you want.');
   const wants: Want[] = planned.map((w, i) => ({ id: `w${i + 1}`, ...w, candidates: [], errors: [] }));
   save(id, { status: 'searching', wants, progress: `Looking for ${wants.length} sound${wants.length === 1 ? '' : 's'}…` });

@@ -1388,3 +1388,30 @@ test('photos are judged on what their search was for: setting and mood searches 
     Object.assign(finder.deps, real);
   }
 });
+
+// ── film agents ──
+
+test('film agents: every agent is listed with editable instructions and a fixed output format; a screenplay’s own instructions are used', async () => {
+  const agents = require('./agents') as typeof import('./agents');
+  const list = agents.listAgents();
+  assert.deepEqual(list.map((a) => a.id).sort(), ['adjuster', 'casting', 'checker', 'checklist', 'describer', 'mentor', 'researcher', 'sound', 'summarizer']);
+  for (const a of list) {
+    assert.ok(a.instructions.length > 40, a.id);
+    assert.match(a.format, /^(Return|Propose ONE look)/, `${a.id} keeps its output format`);
+    assert.doesNotMatch(a.instructions, /Return \{/, `${a.id} instructions hold no format`);
+  }
+  const summarize = require('./summarize') as typeof import('./summarize');
+  const real = summarize.deps.llmJson;
+  try {
+    let system = '';
+    summarize.deps.llmJson = (async (sys: string) => ((system = sys), { summary: 'A woman waits at a counter.' })) as typeof real;
+    await agents.withAgentPrompts({ summarizer: 'Write it like a noir narrator.' }, () => summarize.summarizeShot('', 'JANE waits.'));
+    assert.match(system, /^Write it like a noir narrator\.\nReturn \{"summary"/, 'own instructions + the fixed format');
+    await summarize.summarizeShot('', 'JANE waits.');
+    assert.match(system, /^You summarise one storyboard shot/, 'default outside the screenplay');
+  } finally {
+    summarize.deps.llmJson = real;
+  }
+  const clean = cleanDoc({ ...doc(), agentPrompts: { summarizer: 'Mine', bogus: 'x', mentor: '  ' } });
+  assert.deepEqual(clean.agentPrompts, { summarizer: 'Mine' });
+});

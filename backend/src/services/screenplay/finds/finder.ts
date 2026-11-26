@@ -9,6 +9,7 @@ import { asString, llmJson, screenplayModel, withWaitListener } from '../llm';
 import { getModelCapabilities } from '../../chatModels';
 import { getPhotoKeys, getShotCheckModel } from '../../media/settings';
 import { checkFraming } from './framing';
+import { agentPrompt, defineAgent, withAgentPrompts } from '../agents';
 import type { ShotSetup } from '../cinema';
 import * as store from '../store';
 import { presentCharacters, shotSection, visualText } from '../script';
@@ -149,7 +150,7 @@ const OPTIONAL_LIST = ' People are optional for this shot: leave people out of t
 const TIME_ONLY = /^(day|daytime|night|nighttime|dawn|dusk|morning|evening|afternoon|sunset|sunrise|midday|noon)$/i;
 const WHO = /\b(man|men|woman|women|person|people|boy|girl|child|children|kid|kids|couple|crowd|guy|lady)\b/i;
 
-const PLAN_SYSTEM =
+const PLAN_DEFAULT =
   "You are a film director's reference researcher building a mood board for one shot. You search free stock photo libraries, which " +
   'match words in photo titles and tags, so write each search the way a photographer titles a photo: 2 to 4 everyday words, generic ' +
   'and photographable, not story-specific. Give four searches, one from each angle:\n' +
@@ -161,6 +162,14 @@ const PLAN_SYSTEM =
   "Name a real place or landmark only when the script needs that exact place. Don't add story things (objects, events, people) that " +
   'the script, notes or vision do not suggest. Adjustment notes come first. ' +
   'Return {"queries": [{"q": "...", "angle": "subject|setting|mood|camera", "why": "why, under 12 words"}]}.';
+
+defineAgent({
+  id: 'researcher',
+  name: 'Reference researcher',
+  role: 'Turns a shot into photo-library searches for its mood board: subject, setting, mood and light, camera view.',
+  model: 'screenplay',
+  prompt: PLAN_DEFAULT,
+});
 
 /** Generic words a query may use even when the script doesn't (people and places in general). */
 const GENERIC = new Set('man men woman women person people boy girl child children kid kids couple crowd young old street room'.split(' '));
@@ -195,7 +204,7 @@ export async function planFind(brief: string, notes: string[], names: string[] =
   const source = strip(`${brief}\n${notes.join('\n')}`);
   try {
     const out = await llmJson<{ queries?: unknown }>(
-      PLAN_SYSTEM + (peopleOptional(brief) ? OPTIONAL_PLAN : ''),
+      agentPrompt('researcher', peopleOptional(brief) ? OPTIONAL_PLAN : ''),
       `${brief || '(no script for this shot)'}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
       { temperature: 0.4 },
     );
@@ -383,9 +392,12 @@ export function kick(): void {
       for (;;) {
         const row = db.prepare("SELECT id FROM screenplay_shot_finds WHERE status = 'queued' ORDER BY id LIMIT 1").get() as { id: number } | undefined;
         if (!row) break;
-        await withWaitListener(
-          (why) => save(row.id, { progress: why }),
-          () => run(row.id),
+        const owner = store.getScreenplay((getFind(row.id)?.screenplay_id ?? 0))?.doc.agentPrompts;
+        await withAgentPrompts(owner, () =>
+          withWaitListener(
+            (why) => save(row.id, { progress: why }),
+            () => run(row.id),
+          ),
         ).catch((e) => save(row.id, { status: 'failed', error: (e as Error).message, finished_at: new Date().toISOString() }));
       }
     } finally {
@@ -577,17 +589,25 @@ export interface ImageCheck {
   missing: string;
 }
 
-const LIST_SYSTEM =
+const LIST_DEFAULT =
   'You turn one storyboard shot into a short checklist of what a reference photo must show. Give 2 to 4 items, most important first: ' +
   'who (as "a man", "a woman", "a person", "a dog"…, never a name), what they are doing or holding, then where. Each item is 2 to 5 plain ' +
   'words, using only what the shot description says: add nothing of your own. Leave out weather, time of day, clothing and mood unless ' +
   'the adjustment notes ask for them. Mark each item\'s kind: "who", "action", "object" or "place". ' +
   'Return {"items": [{"text": "...", "kind": "who|action|object|place"}]}.';
 
+defineAgent({
+  id: 'checklist',
+  name: 'Photo checklist',
+  role: 'Lists the two or three things a reference photo must show for a shot (who, doing what, where).',
+  model: 'screenplay',
+  prompt: LIST_DEFAULT,
+});
+
 /** The text model's checklist for a shot, kept to the shot's own words (names removed). */
 export async function makeChecklist(brief: string, notes: string[], names: string[] = [], kindsOut?: string[]): Promise<string[]> {
   const out = await llmJson<{ items?: unknown }>(
-    LIST_SYSTEM + (peopleOptional(brief) ? OPTIONAL_LIST : ''),
+    agentPrompt('checklist', peopleOptional(brief) ? OPTIONAL_LIST : ''),
     `${brief}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
     { temperature: 0 },
   );
@@ -617,11 +637,19 @@ export async function makeChecklist(brief: string, notes: string[], names: strin
   return kept.map((k) => k.text);
 }
 
-const CHECK_SYSTEM =
+const CHECK_DEFAULT =
   'You look at a photo for a film storyboard. First say briefly what the photo actually shows. Then, for each checklist item, answer ' +
   '"yes" if the photo clearly shows it, "partly" if it shows something close (e.g. a man holding a phone for "a man scrolling a phone"; ' +
   'a city street for "outside an apartment building"), or "no". Judge only what is visible; any person of the right kind counts. ' +
   'Return {"sees": "under 15 words", "answers": ["yes|partly|no", … one per item, in order]}.';
+
+defineAgent({
+  id: 'checker',
+  name: 'Photo checker',
+  role: 'Looks at each found photo and answers yes, partly or no for every checklist item; the app scores the photo from that.',
+  model: 'vision',
+  prompt: CHECK_DEFAULT,
+});
 
 let visionOk: { model: string; ok: boolean } | null = null;
 
@@ -648,7 +676,7 @@ export async function checkImage(c: Pick<ImageCandidate, 'thumbUrl'>, items: str
   const model = screenplayModel();
   if (visionOk?.model !== model) visionOk = { model, ok: (await getModelCapabilities(model).catch(() => [] as string[])).includes('vision') };
   if (!visionOk.ok) throw new Error(NO_VISION);
-  const out = await llmJson<{ sees?: unknown; answers?: unknown }>(CHECK_SYSTEM, `Checklist:\n${items.map((x, i) => `${i + 1}. ${x}`).join('\n')}`, {
+  const out = await llmJson<{ sees?: unknown; answers?: unknown }>(agentPrompt('checker'), `Checklist:\n${items.map((x, i) => `${i + 1}. ${x}`).join('\n')}`, {
     images: [await thumbB64(c)],
     temperature: 0,
   });

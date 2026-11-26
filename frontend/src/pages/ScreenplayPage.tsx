@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   Loader2,
   Package,
+  Bot,
   Pause,
   Play,
   Presentation,
@@ -35,6 +36,7 @@ import { Alert, Field, Loading, Modal, RouteTabs, errorMessage } from '../compon
 import { ScriptEditor, type EditorApi } from '../components/screenplay/ScriptEditor';
 import { CharactersTab } from '../components/screenplay/CharactersTab';
 import { PropsTab } from '../components/screenplay/PropsTab';
+import { FilmAgentsTab } from '../components/screenplay/FilmAgentsTab';
 import { BackgroundProvider } from '../components/screenplay/background';
 import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
@@ -186,6 +188,7 @@ export function ScreenplayPage() {
           { to: `/screenplays/${id}/references`, label: 'References', icon: <ImageIcon size={14} /> },
           { to: `/screenplays/${id}/sound`, label: 'Sound', icon: <AudioLines size={14} /> },
           { to: `/screenplays/${id}/pitch`, label: 'Pitch', icon: <Presentation size={14} /> },
+          { to: `/screenplays/${id}/agents`, label: 'Film agents', icon: <Bot size={14} /> },
         ]}
       />
 
@@ -283,6 +286,7 @@ export function ScreenplayPage() {
           />
         </>
       )}
+      {tab === 'agents' && <FilmAgentsTab doc={doc} update={s.update} />}
       {tab === 'props' && <PropsTab screenplayId={id} doc={doc} detail={s.detail} update={s.update} flush={s.flush} setDetail={s.setDetail} />}
       {tab === 'characters' && <CharactersTab screenplayId={id} doc={doc} detail={s.detail} update={s.update} flush={s.flush} setDetail={s.setDetail} />}
       {tab === 'plan' && (

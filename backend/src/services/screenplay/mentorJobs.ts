@@ -6,6 +6,7 @@ import db from '../../db/connection';
 import * as store from './store';
 import { withWaitListener } from './llm';
 import { mentorTurn } from './mentor';
+import { withAgentPrompts } from './agents';
 import type { MentorState } from './types';
 
 export interface MentorJob {
@@ -81,9 +82,11 @@ async function run(id: number): Promise<void> {
   const shot = sp.doc.shots.find((s) => s.id === job.shot_id);
   if (!shot) throw new Error('That shot no longer exists');
   save(id, { status: 'running', progress: 'The mentor is reading the shot…' });
-  const result = await withWaitListener(
-    (why) => save(id, { progress: why }),
-    () => mentorTurn(sp, shot, job.message ?? undefined),
+  const result = await withAgentPrompts(sp.doc.agentPrompts, () =>
+    withWaitListener(
+      (why) => save(id, { progress: why }),
+      () => mentorTurn(sp, shot, job.message ?? undefined),
+    ),
   );
   save(id, { status: 'done', progress: '', result: JSON.stringify(result), finished_at: new Date().toISOString() });
 }

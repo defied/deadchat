@@ -13,6 +13,7 @@ import { localModels } from '../influencers/media';
 import { getMediaSettings } from '../media/settings';
 import { describeImage } from '../media/enhance';
 import { asString, llmJson, screenplayModel } from './llm';
+import { agentParts, agentPrompt, defineAgent, withAgentPrompts } from './agents';
 import { activeAdjustments, adjustKey, appendAdjustments, castingPrompt, characterPrompt, firstMoment, propPrompt, recreatePrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
 import db from '../../db/connection';
 import * as store from './store';
@@ -185,7 +186,7 @@ export function withAdjustments(plan: ShotPlan): ShotPlan {
   };
 }
 
-const ADJUST_SYSTEM =
+const ADJUST_DEFAULT =
   'You revise image-generation prompts for storyboard frames. You get the prompt built from the screenplay and the ' +
   'director\'s adjustment notes. Rewrite the prompt so the image follows every note: change, add or remove details as ' +
   'the notes say, and where a note conflicts with the prompt, the note wins. Keep everything the notes do not touch: ' +
@@ -194,6 +195,14 @@ const ADJUST_SYSTEM =
   '(write "a low camera angle", not "make the camera lower"); image models ignore negation, so for "remove X" or "no X" ' +
   'leave X out and describe what is there instead. Start with "Cinematic film still" and the shot type, end with ' +
   '"No text, captions, subtitles or watermarks." Under 220 words. Return {"prompt": "..."}.';
+
+defineAgent({
+  id: 'adjuster',
+  name: 'Frame adjuster',
+  role: 'Rewrites an AI frame prompt so the drawing follows the shot\'s adjustment notes.',
+  model: 'screenplay',
+  prompt: ADJUST_DEFAULT,
+});
 
 const rewriting = new Map<string, Promise<void>>();
 
@@ -207,7 +216,7 @@ export function rewriteForAdjustments(basePrompt: string, notes: string[]): Prom
     try {
       model = screenplayModel();
       const out = await llmJson<{ prompt?: string }>(
-        ADJUST_SYSTEM,
+        agentPrompt('adjuster'),
         `Prompt:\n${basePrompt}\n\nAdjustment notes:\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}`,
         { temperature: 0.2 },
       );
@@ -308,7 +317,7 @@ export function reconcile(screenplayId: number, now = Date.now(), force = false)
       if (!now_ && !stable(`${sp.id}:${shot.id}:frame`, plan.hash!, now)) again = true;
       else {
         supersede(frame);
-        void rewriteForAdjustments(plan.basePrompt!, plan.adjustments!).then(() => scheduleReconcile(sp.id, 0));
+        void withAgentPrompts(sp.doc.agentPrompts, () => rewriteForAdjustments(plan.basePrompt!, plan.adjustments!)).then(() => scheduleReconcile(sp.id, 0));
       }
     } else if (plan.prompt) {
       if (!now_ && !stable(`${sp.id}:${shot.id}:frame`, plan.hash!, now)) again = true;
@@ -519,6 +528,30 @@ export function castingBrief(c: Character): string {
     .join('\n');
 }
 
+defineAgent({
+  id: 'casting',
+  name: 'Casting director',
+  role: 'Proposes four different looks for a character that keep everything you wrote about them.',
+  model: 'screenplay',
+  prompt:
+    'You are a casting director for an invented film character. ' +
+    'Every trait the brief states is fixed: keep the same hair colour, eye colour, height, age, gender, species and named features, word for word. ' +
+    'Invent concrete details only for what it leaves open: face shape, features, skin, hairstyle within the stated hair, build within the stated build, distinguishing marks. ' +
+    "Physical traits only: no wardrobe, personality or story, and do not use the character's name. Never describe or resemble a real person. " +
+    'Propose ONE look for the character as {"label": "a few words about the face, e.g. narrow fox-like face, freckles", "appearance": "one paragraph"}.',
+});
+
+defineAgent({
+  id: 'describer',
+  name: 'Character describer',
+  role: "Turns your rough notes about a character's looks into a clear description for the image model.",
+  model: 'screenplay',
+  prompt:
+    'You write the visual description of an invented film character for an image model: one paragraph of concrete physical traits only ' +
+    '(species or body, face, hair, skin or surface, build, height, distinguishing features). No wardrobe, no personality, no story. ' +
+    'Never describe or resemble a real person. Return {"appearance": "..."}.',
+});
+
 export const castingDeps = { llmJson };
 
 /**
@@ -538,14 +571,11 @@ export async function castingLooks(c: Character, count = 4): Promise<CastingLook
     let look: CastingLook | null = null;
     for (let attempt = 0; attempt < 2 && !look; attempt++) {
       try {
+        const { instructions, format } = agentParts('casting');
         const out = await castingDeps.llmJson<{ label?: unknown; appearance?: unknown }>(
-          'You are a casting director for an invented film character. Propose ONE look for the character as ' +
-            '{"label": "a few words about the face, e.g. narrow fox-like face, freckles", "appearance": "one paragraph"}. ' +
-            'Every trait the brief states is fixed: keep the same hair colour, eye colour, height, age, gender, species and named features, word for word. ' +
-            'Invent concrete details only for what it leaves open: face shape, features, skin, hairstyle within the stated hair, build within the stated build, distinguishing marks. ' +
-            `This look: ${angle}.` +
+          `${instructions} This look: ${angle}.` +
             (looks.length ? ` It must look clearly different from these already proposed: ${looks.map((l) => l.label).join('; ')}.` : '') +
-            ' Physical traits only: no wardrobe, personality or story, and do not use the character\'s name. Never describe or resemble a real person.',
+            ` ${format}`,
           brief,
           { temperature: 0.9 },
         );
@@ -601,9 +631,7 @@ export async function castCharacter(sp: Screenplay, c: Character, count = 4): Pr
 /** Turn rough notes into a concise visual description for the image model. */
 export async function refineAppearance(c: Character, notes: string): Promise<string> {
   const out = await llmJson<{ appearance?: string }>(
-    'You write the visual description of an invented film character for an image model. Return {"appearance": "..."}: ' +
-      'one paragraph of concrete physical traits only (species or body, face, hair, skin or surface, build, height, ' +
-      'distinguishing features). No wardrobe, no personality, no story. Never describe or resemble a real person.',
+    agentPrompt('describer'),
     `Character: ${c.name}${c.kind ? ` (${c.kind}${c.species ? `, ${c.species}` : ''})` : ''}${c.age ? `, age ${c.age}` : ''}` +
       `${c.gender ? `, ${c.gender}` : ''}\nCurrent description: ${c.appearance || '(none)'}\nWriter's notes: ${notes}`,
   );
