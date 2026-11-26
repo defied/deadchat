@@ -526,3 +526,8 @@ kbd {
 .sp-frame-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .sp-frame-actions .btn { display: inline-flex; align-items: center; gap: 5px; }
 @media (max-width: 900px) { .sp-recreate { grid-template-columns: 1fr; } }
+.sp-words { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sp-word { display: inline-flex; align-items: center; gap: 2px; padding-right: 3px; cursor: default; }
+.sp-word .icon-btn { width: 16px; height: 16px; padding: 0; min-width: 0; }
+.sp-word-add { display: inline-flex; align-items: center; gap: 3px; color: var(--color-text-dim); }
+.sp-word-add input { width: 150px; padding: 2px 6px; font-size: 12px; }

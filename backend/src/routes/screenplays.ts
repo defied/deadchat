@@ -10,7 +10,7 @@ import os from 'os';
 import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
-import { createFind, findMore, getFind, keepFound, latestFind, propTarget } from '../services/screenplay/finds/finder';
+import { createFind, findMore, getFind, keepFound, latestFind, ownQueries, propTarget } from '../services/screenplay/finds/finder';
 import { queueLines, voiceTarget } from '../services/screenplay/voices';
 import { suggestShots } from '../services/screenplay/suggestShots';
 import { getLatestCharacterAsset, listCharacters as listStudioCharacters } from '../services/characters';
@@ -467,7 +467,7 @@ router.post('/:id/shots/:shotId/finds', owned, (req, res) =>
     const s = sp(res);
     const shotId = id(req.params.shotId);
     if (!s.doc.shots.some((x) => x.id === shotId)) throw new Error('That shot no longer exists. Save and try again.');
-    return { find: createFind(s, shotId) };
+    return { find: createFind(s, shotId, ownQueries(req.body?.queries)) };
   }),
 );
 
@@ -506,7 +506,7 @@ router.post('/:id/props/:pid/finds', owned, (req, res) =>
     const s = sp(res);
     const p = propOf(s, req.params.pid);
     if (!p.name.trim()) throw new Error('Name the prop first');
-    return { find: createFind(s, propTarget(p.id)) };
+    return { find: createFind(s, propTarget(p.id), ownQueries(req.body?.queries)) };
   }),
 );
 

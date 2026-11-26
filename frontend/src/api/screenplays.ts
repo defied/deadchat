@@ -523,13 +523,14 @@ export interface ShotFind {
   shot_id: string;
   status: 'queued' | 'planning' | 'searching' | 'done' | 'failed';
   progress: string;
-  plan: { look: string; queries: string[]; notes: string[] };
+  plan: { look: string; queries: string[]; notes: string[]; own?: boolean };
   candidates: ImageCandidate[];
   error: string | null;
 }
 
-export async function startFind(id: number, shotId: string): Promise<ShotFind> {
-  const { data } = await client.post<{ find: ShotFind }>(`/api/screenplays/${id}/shots/${shotId}/finds`, {});
+/** New search for a shot. With `queries`, exactly those words are searched (nothing is planned). */
+export async function startFind(id: number, shotId: string, queries?: string[]): Promise<ShotFind> {
+  const { data } = await client.post<{ find: ShotFind }>(`/api/screenplays/${id}/shots/${shotId}/finds`, queries ? { queries } : {});
   return data.find;
 }
 
@@ -585,8 +586,8 @@ export async function drawProp(id: number, propId: string): Promise<Detail> {
   return data;
 }
 
-export async function startPropFind(id: number, propId: string): Promise<ShotFind> {
-  const { data } = await client.post<{ find: ShotFind }>(`/api/screenplays/${id}/props/${propId}/finds`, {});
+export async function startPropFind(id: number, propId: string, queries?: string[]): Promise<ShotFind> {
+  const { data } = await client.post<{ find: ShotFind }>(`/api/screenplays/${id}/props/${propId}/finds`, queries ? { queries } : {});
   return data.find;
 }
 
