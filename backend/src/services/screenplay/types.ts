@@ -174,6 +174,8 @@ export interface ScreenplayDoc {
   shots: Shot[];
   characters: Character[];
   props?: Prop[];
+  /** The writer's own instructions for film agents, by agent id (Film agents tab). */
+  agentPrompts?: Record<string, string>;
   /** Set plans keyed by scene-heading element id. */
   plans: Record<string, SetPlan>;
   settings: ScreenplaySettings;

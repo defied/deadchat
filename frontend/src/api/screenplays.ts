@@ -145,6 +145,8 @@ export interface ScreenplayDoc {
   shots: Shot[];
   characters: Character[];
   props?: Prop[];
+  /** The writer's own instructions for film agents, by agent id. */
+  agentPrompts?: Record<string, string>;
   plans: Record<string, SetPlan>;
   settings: ScreenplaySettings;
   titlePage?: TitlePage;
@@ -689,4 +691,20 @@ export interface ActiveFind {
 export async function activeFinds(id: number): Promise<ActiveFind[]> {
   const { data } = await client.get<{ finds: ActiveFind[] }>(`/api/screenplays/${id}/finds/active`);
   return data.finds;
+}
+
+// ── film agents ──────────────────────────────────────────────────────────────
+
+export interface FilmAgent {
+  id: string;
+  name: string;
+  role: string;
+  model: 'screenplay' | 'vision';
+  instructions: string;
+  format: string;
+}
+
+export async function listFilmAgents(): Promise<FilmAgent[]> {
+  const { data } = await client.get<{ agents: FilmAgent[] }>('/api/screenplays/agents');
+  return data.agents;
 }

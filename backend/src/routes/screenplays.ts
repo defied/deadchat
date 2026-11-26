@@ -11,6 +11,7 @@ import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
 import { summarizeShot } from '../services/screenplay/summarize';
+import { AGENT_IDS, enterAgentPrompts, listAgents } from '../services/screenplay/agents';
 import { createMentorJob, getMentorJob, markApplied, openMentorJobs } from '../services/screenplay/mentorJobs';
 import { SETUP_FIELDS, cleanSetup, type SetupField } from '../services/screenplay/cinema';
 import type { MentorState } from '../services/screenplay/types';
@@ -61,6 +62,8 @@ function owned(req: Request, res: Response, next: NextFunction): void {
     return;
   }
   res.locals.sp = sp;
+  // This screenplay's own film-agent instructions apply for the rest of the request.
+  enterAgentPrompts(sp.doc.agentPrompts);
   next();
 }
 
@@ -238,12 +241,18 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     description: str(p?.description, 1500),
     primaryRefId: num(p?.primaryRefId, 1, Number.MAX_SAFE_INTEGER),
   })).filter((p) => p.id);
+  const agentPrompts = Object.fromEntries(
+    Object.entries(d.agentPrompts && typeof d.agentPrompts === 'object' ? (d.agentPrompts as Record<string, unknown>) : {})
+      .filter(([k, v]) => AGENT_IDS().includes(k) && typeof v === 'string' && v.trim())
+      .map(([k, v]) => [k, (v as string).slice(0, 8000)]),
+  );
   return {
     ...(pitch ? { pitch } : {}),
     elements: elements.length ? elements : base.elements,
     shots,
     characters,
     ...(props.length ? { props } : {}),
+    ...(Object.keys(agentPrompts).length ? { agentPrompts } : {}),
     plans,
     settings: {
       imageModel: str(s.imageModel, 80),
@@ -313,6 +322,9 @@ function detail(s: Screenplay) {
 // ── routes ───────────────────────────────────────────────────────────────────
 
 router.get('/', (req, res) => wrap(res, () => ({ screenplays: store.listScreenplays(req.user!.id) })));
+
+// The film agents and their default instructions (the Film agents tab).
+router.get('/agents', (_req, res) => wrap(res, () => ({ agents: listAgents() })));
 
 router.post('/', (req, res) =>
   wrap(res, () => {

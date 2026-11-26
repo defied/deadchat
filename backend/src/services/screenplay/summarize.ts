@@ -4,13 +4,22 @@
 
 import { llmJson, asString } from './llm';
 import { parseHeading } from './script';
+import { agentPrompt, defineAgent } from './agents';
 
-const SYSTEM =
+const SYSTEM_DEFAULT =
   'You summarise one storyboard shot for a film crew. You get the scene heading and the exact script text the writer highlighted ' +
   'for this shot. In one or two short present-tense sentences, say what the camera sees: who is there, what they are doing, ' +
   'and where (from the heading). Use ONLY what the highlighted text and heading say: add no objects, actions, weather, mood, ' +
   'clothing or details of your own, and leave out dialogue, sounds and thoughts. Keep the characters\' names as written. ' +
   'Return {"summary": "..."}.';
+
+defineAgent({
+  id: 'summarizer',
+  name: 'Shot summarizer',
+  role: 'Writes "In this shot" from the text you highlight: who is there, what they do, where.',
+  model: 'screenplay',
+  prompt: SYSTEM_DEFAULT,
+});
 
 export const deps = { llmJson };
 
@@ -45,7 +54,7 @@ export async function summarizeShot(heading: string, excerpt: string, names: str
   let masked = text;
   cast.forEach((n, i) => (masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}])${esc(n)}(?![\\p{L}\\p{N}])`, 'giu'), tags[i])));
   try {
-    const out = await deps.llmJson<{ summary?: unknown }>(SYSTEM, `Scene heading: ${where || '(none)'}\nHighlighted text:\n${masked}`, { temperature: 0.1 });
+    const out = await deps.llmJson<{ summary?: unknown }>(agentPrompt('summarizer'), `Scene heading: ${where || '(none)'}\nHighlighted text:\n${masked}`, { temperature: 0.1 });
     let summary = asString(out.summary, 600).replace(/^["']|["']$/g, '').trim();
     tags.forEach((t, i) => (summary = summary.replace(new RegExp(`\\b${t}\\b`, 'g'), cast[i])));
     // Anything named that the script didn't name means the model made it up: use the highlight instead.
