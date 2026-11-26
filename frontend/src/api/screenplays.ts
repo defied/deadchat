@@ -536,7 +536,7 @@ export interface ShotFind {
   shot_id: string;
   status: 'queued' | 'planning' | 'searching' | 'done' | 'failed';
   progress: string;
-  plan: { look: string; queries: string[]; notes: string[]; own?: boolean; unchecked?: boolean; turnedDown?: ImageCandidate[]; peopleOptional?: boolean; checklist?: string[] };
+  plan: { look: string; queries: string[]; why?: string[]; notes: string[]; own?: boolean; unchecked?: boolean; turnedDown?: ImageCandidate[]; peopleOptional?: boolean; checklist?: string[] };
   candidates: ImageCandidate[];
   error: string | null;
 }

@@ -1319,3 +1319,42 @@ test('mentor turns run as background jobs, one per shot at a time, and wait to b
     Object.assign(gate.deps, realGate);
   }
 });
+
+test('reference researcher: reads the shot list and the director’s vision, writes generic searches from four angles, drops repeats and names', async () => {
+  const d = doc();
+  d.shots[0].summary = 'Jane grips a knife at the kitchen counter.';
+  d.shots[0].setup = { size: 'Close Up', lightType: 'Practical light' };
+  d.pitch = { vision: { tone: 'Claustrophobic, quiet dread', look: 'Sodium-lit, grainy, warm shadows' } };
+  const sp = store.createScreenplay(1, 'Researcher', d);
+  const brief = finder.shotBrief(sp, sp.doc.shots[0]);
+  assert.match(brief, /Shot list: size Close Up, lightType Practical light/);
+  assert.match(brief, /Director's vision: tone: Claustrophobic, quiet dread; look: Sodium-lit, grainy, warm shadows/);
+  const realFetch = globalThis.fetch;
+  let system = '';
+  try {
+    globalThis.fetch = (async (_u: unknown, init?: RequestInit) => {
+      system = JSON.parse(String(init?.body)).messages[0].content;
+      return new Response(
+        JSON.stringify({
+          message: {
+            content: JSON.stringify({
+              queries: [
+                { q: 'Woman holding kitchen knife', why: 'subject and action' },
+                { q: 'kitchen at night lamp', why: 'setting' },
+                { q: 'woman holding knife kitchen', why: 'repeat' },
+                { q: 'Jane dark moody kitchen', why: 'mood from the vision' },
+                { q: 'close up hand knife', why: 'camera view' },
+              ],
+            }),
+          },
+        }),
+      );
+    }) as typeof fetch;
+    const plan = await finder.planFind(brief, [], ['Jane']);
+    assert.match(system, /reference researcher/);
+    assert.deepEqual(plan.queries, ['woman holding kitchen knife', 'kitchen at night lamp', 'dark moody kitchen', 'close up hand knife']);
+    assert.deepEqual(plan.why, ['subject and action', 'setting', 'mood from the vision', 'camera view']);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
