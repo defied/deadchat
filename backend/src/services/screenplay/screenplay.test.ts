@@ -22,6 +22,7 @@ const render = require('./render') as typeof import('./render');
 const { cleanDoc } = require('../../routes/screenplays') as typeof import('../../routes/screenplays');
 const voices = require('./voices') as typeof import('./voices');
 const suggest = require('./suggestShots') as typeof import('./suggestShots');
+const finder = require('./finds/finder') as typeof import('./finds/finder');
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 import type { ScreenplayDoc, PlanItem } from './types';
@@ -224,40 +225,48 @@ function jobs() {
   return db.prepare('SELECT id, type, status, params FROM jobs ORDER BY id').all() as Array<{ id: number; type: string; status: string; params: string }>;
 }
 
-test('renders wait for the description to settle, then re-render only what changed', () => {
-  db.prepare("INSERT INTO settings (key, value) VALUES ('media.default_image_model', 'z-image-turbo')").run();
+test('frames draw only when asked; music cues still render once the description settles', () => {
+  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('media.default_image_model', 'z-image-turbo')").run();
   const sp = store.createScreenplay(1, 'Test', doc());
   const t0 = 1_000_000;
 
-  // First pass only notes the hashes; nothing is queued until they hold for STABLE_MS.
+  // Music waits for STABLE_MS, then renders; no frame is drawn by itself.
   assert.equal(render.reconcile(sp.id, t0), true);
   assert.equal(jobs().length, 0);
   render.reconcile(sp.id, t0 + render.STABLE_MS);
   const first = jobs();
-  assert.deepEqual(first.map((j) => j.type).sort(), ['audio', 'image', 'image']);
-  const audio = JSON.parse(first.find((j) => j.type === 'audio')!.params);
+  assert.deepEqual(first.map((j) => j.type), ['audio']);
+  const audio = JSON.parse(first[0].params);
   assert.deepEqual([audio.catalogId, audio.duration], ['ace-step-v1', 20]);
-  const img = JSON.parse(first.find((j) => j.type === 'image')!.params);
+  assert.equal(render.planAll(store.getScreenplay(sp.id)!).get('sh1')!.stale, false, 'an undrawn shot is not "out of date"');
+
+  // "Draw with AI": renders straight away.
+  render.refreshShots(sp.id, ['sh1', 'sh2']);
+  const drawn = jobs().slice(1);
+  assert.deepEqual(drawn.map((j) => j.type), ['image', 'image']);
+  const img = JSON.parse(drawn[0].params);
   assert.deepEqual([img.catalogId, img.ratio, img.enhance], ['z-image-turbo', '21:9', false]);
 
   // Nothing changed: nothing new.
   render.reconcile(sp.id, t0 + 3 * render.STABLE_MS);
   assert.equal(jobs().length, 3);
 
-  // Revise shot 2's action: its queued render is cancelled and replaced; shot 1 is untouched.
+  // Revising shot 2's action doesn't redraw it; it's marked out of date.
   const d = store.getScreenplay(sp.id)!.doc;
   d.elements[7].text = 'The door bursts open. TOM staggers in.';
   const saved = store.saveScreenplay(sp.id, 1, { doc: d });
   render.reconcile(sp.id, t0 + 10 * render.STABLE_MS);
   render.reconcile(sp.id, t0 + 11 * render.STABLE_MS);
+  assert.equal(jobs().length, 3);
+  assert.equal(render.planAll(store.getScreenplay(sp.id)!).get('sh2')!.stale, true);
+
+  // Refresh redraws it with the same seed, so the picture changes only where the words did.
+  render.refreshShots(sp.id, ['sh2']);
   const after = jobs();
   assert.equal(after.length, 4);
+  assert.match(JSON.parse(after[3].params).prompt, /staggers in/);
   const sh2Rows = store.listMedia(sp.id, 'frame').filter((r) => r.target === 'sh2');
   assert.deepEqual(sh2Rows.map((r) => r.status), ['superseded', 'pending']);
-  assert.equal(after.find((j) => j.id === sh2Rows[0].job_id)!.status, 'canceled');
-  assert.match(JSON.parse(after[3].params).prompt, /staggers in/);
-
-  // Same seed for the revision, so the picture changes only where the words did.
   assert.equal(JSON.parse(after[3].params).seed, JSON.parse(after.find((j) => j.id === sh2Rows[0].job_id)!.params).seed);
 
   // Deleting a shot stops its pending work.
@@ -310,9 +319,8 @@ test('adjustment notes are applied by the AI before rendering, cached, and re-ap
     await new Promise((r) => setTimeout(r, 30));
   };
   try {
-    // First renders happen by themselves.
-    render.reconcile(sp.id, t0 - 2 * render.STABLE_MS);
-    render.reconcile(sp.id, t0 - render.STABLE_MS);
+    // First frames: drawn when asked.
+    render.refreshShots(sp.id, ['sh1', 'sh2']);
     const before = imageJobs().length;
     const d = store.getScreenplay(sp.id)!.doc;
     d.shots[0].adjustments = [{ id: 'n1', text: 'warmer, golden light' }];
@@ -378,7 +386,7 @@ test('cleanDoc keeps adjustment notes and placeholder profiles, dropping junk', 
   assert.equal(cleanDoc({ elements: [{ id: 'a1', type: 'action', text: 'x' }], shots: [{ id: 's', anchorId: 'a1', locked: true }, { id: 't', anchorId: 'a1', locked: 1 }] }).shots.map((x) => x.locked).join(), 'true,');
 });
 
-test('only a change to a shot’s own script block re-renders by itself; the rest waits for refresh', () => {
+test('once drawn, nothing redraws by itself: script, shot box and character changes all wait for refresh', () => {
   const sp = store.createScreenplay(1, 'Gates', doc());
   const t0 = 90_000_000;
   const count = () => jobs().length;
@@ -395,56 +403,34 @@ test('only a change to a shot’s own script block re-renders by itself; the res
   };
   const base = count();
   go(t0);
+  assert.equal(count() - base, 1, 'only the music cue renders by itself');
+  render.refreshShots(sp.id, 'all');
+  assert.equal(count() - base, 1, '"Render now" never draws a shot that has no frame');
+  render.refreshShots(sp.id, ['sh1', 'sh2']);
   const first = count();
-  assert.equal(first - base, 3, 'two frames and a music cue render the first time');
-  const frameRow = store.latestMedia(sp.id, 'frame', 'sh1')!;
-  assert.ok(frameRow.block_hash);
+  assert.equal(first - base, 3, 'two frames when asked');
 
-  // Shot box: lens and type wait; the shot says it's out of date.
   edit((d) => (d.shots[0].lens = 85));
-  go(t0 + 10 * render.STABLE_MS);
-  assert.equal(count(), first);
-  assert.equal(plan('sh1').stale, true);
-  assert.equal(plan('sh2').stale, false);
-
-  // A character's description changes shot 1 and 2's prompts; still no render.
   edit((d) => (d.characters[0].appearance = 'woman in her fifties, long white hair'));
-  go(t0 + 20 * render.STABLE_MS);
-  assert.equal(count(), first);
-  assert.equal(plan('sh1').stale, true);
-
-  // Music description: waits too.
   edit((d) => (d.shots[1].music = 'warm strings, hopeful'));
-  go(t0 + 30 * render.STABLE_MS);
-  assert.equal(count(), first);
-  assert.equal(plan('sh2').musicStale, true);
-
-  // Editing shot 2's script block re-renders shot 2 (with everything pending), not shot 1.
   edit((d) => (d.elements[7].text = 'The door bursts open. TOM staggers in.'));
   go(t0 + 40 * render.STABLE_MS);
-  const after = jobs().slice(first);
-  assert.deepEqual(after.map((j) => j.type), ['image']);
-  assert.match(JSON.parse(after[0].params).prompt, /staggers in/);
+  assert.equal(count(), first);
   assert.equal(plan('sh1').stale, true);
-  assert.equal(plan('sh2').musicStale, true, 'music is a shot-box field: still waits');
+  assert.equal(plan('sh2').stale, true);
+  assert.equal(plan('sh2').musicStale, true);
 
-  // Refresh shot 1: renders now, with the new lens and description, without waiting to settle.
+  // Refresh shot 1: renders now, with the new lens and description.
   render.refreshShots(sp.id, ['sh1']);
-  const r1 = jobs().slice(first + 1);
+  const r1 = jobs().slice(first);
   assert.equal(r1.length, 1);
   assert.match(JSON.parse(r1[0].params).prompt, /85mm|long white hair/);
   assert.equal(plan('sh1').stale, false);
 
-  // Render now refreshes everything waiting (the music cue).
+  // Render now refreshes everything waiting.
   render.refreshShots(sp.id, 'all');
-  assert.deepEqual(jobs().slice(first + 2).map((j) => j.type), ['audio']);
+  assert.deepEqual(jobs().slice(first + 1).map((j) => j.type).sort(), ['audio', 'image']);
   assert.equal(plan('sh2').musicStale, false);
-
-  // Frames from before this change (no block hash) wait for a refresh instead of re-rendering.
-  db.prepare("UPDATE screenplay_media SET block_hash = NULL WHERE screenplay_id = ?").run(sp.id);
-  edit((d) => (d.shots[0].lens = 35));
-  go(t0 + 60 * render.STABLE_MS);
-  assert.equal(plan('sh1').stale, true);
 });
 
 test('a locked shot never re-renders, whatever changes; unlocking brings back the usual rules', () => {
@@ -461,6 +447,7 @@ test('a locked shot never re-renders, whatever changes; unlocking brings back th
     v = store.saveScreenplay(sp.id, v, { doc: d }).version;
   };
   go(t0);
+  render.refreshShots(sp.id, ['sh1', 'sh2']);
   // Pretend the first renders finished.
   for (const r of store.listMedia(sp.id)) if (r.status === 'pending') store.setStatus(r.id, 'ready');
   const base = jobs().length;
@@ -482,9 +469,12 @@ test('a locked shot never re-renders, whatever changes; unlocking brings back th
   assert.equal(plans.get('sh1')!.stale, false);
   assert.equal(plans.get('sh2')!.musicStale, false);
 
-  // Unlock shot 1: its script block changed, so it re-renders by itself.
+  // Unlock shot 1: out of date, and redraws on refresh.
   edit((d) => (d.shots[0].locked = undefined));
   go(t0 + 20 * render.STABLE_MS);
+  assert.equal(jobs().length, base);
+  assert.equal(render.planAll(store.getScreenplay(sp.id)!).get('sh1')!.stale, true);
+  render.refreshShots(sp.id, ['sh1']);
   const after = jobs().slice(base);
   assert.equal(after.length, 1);
   assert.match(JSON.parse(after[0].params).prompt, /drops the knife/);
@@ -590,8 +580,7 @@ test('a shot using a chosen image as its frame never renders one', () => {
   d.shots[0].frameImage = 42;
   store.saveScreenplay(sp.id, 1, { doc: d });
   const base = jobs().length;
-  render.reconcile(sp.id, 200_000_000);
-  render.reconcile(sp.id, 200_000_000 + render.STABLE_MS);
+  render.refreshShots(sp.id, ['sh1', 'sh2']);
   const made = jobs().slice(base).filter((j) => j.type === 'image').map((j) => JSON.parse(j.params).prompt as string);
   assert.equal(made.length, 1, 'only shot 2 renders');
   assert.doesNotMatch(made[0], /gripping a knife/);
@@ -698,4 +687,105 @@ test('casting asks for each look in turn, keeps the brief, and falls back to the
   const head = prompts.castingPrompt({ ...c, appearance: 'Wiry and freckled' });
   assert.match(head, /^Casting headshot: Wiry and freckled\. tight head-and-shoulders close-up/);
   assert.doesNotMatch(head, /hoodie|sneakers/, 'no costume in a casting headshot');
+});
+
+// ── shot finder ──
+
+test('the shot brief describes people by look, and queries never carry names', async () => {
+  const sp = store.createScreenplay(1, 'Finder brief', doc());
+  const brief = finder.shotBrief(sp, sp.doc.shots[0]);
+  assert.match(brief, /Shot type: Wide establishing/);
+  assert.match(brief, /Setting: Interior, Jane's kitchen, night/);
+  assert.match(brief, /Moment: Rain hammers the window\./);
+  assert.match(brief, /Jane = a person \(woman in her forties/);
+  const q = finder.ruleQueries(brief, ['no knife, a mug instead'], ['Jane', 'Tom']);
+  assert.ok(q.length >= 2);
+  assert.ok(q.every((x) => !/jane|tom/i.test(x)), q.join(' | '));
+  assert.ok(q.some((x) => /kitchen/.test(x)));
+  assert.ok(q.some((x) => /mug/.test(x)), 'adjustment notes become searches');
+});
+
+test('a find proposes ten varied photos, find more adds ten new ones, and a pick is kept with its licence', async () => {
+  const sp = store.createScreenplay(1, 'Finder', doc());
+  const real = { ...finder.deps };
+  const photo = (q: string, page: number, i: number, src: 'openverse' | 'pexels' = 'openverse') => ({
+    key: `${src}:${q}-${page}-${i}`,
+    source: src,
+    sourceName: src === 'pexels' ? 'Pexels' : 'Flickr',
+    title: `${q} photo ${i}`,
+    creator: 'Someone',
+    license: { code: 'by' as const, name: 'CC BY 2.0', url: 'https://creativecommons.org/licenses/by/2.0/', commercial: true, derivatives: true, attribution: true, rank: 1 },
+    landingUrl: `https://example.org/${q}/${i}`,
+    imageUrl: `https://images.example.org/${q}-${page}-${i}.jpg`,
+    thumbUrl: `https://images.example.org/t/${q}-${page}-${i}.jpg`,
+    width: 2000,
+    height: i % 2 ? 840 : 2000,
+    tags: q.split(' '),
+    query: q,
+    sourceScore: 1 - i / 20,
+  });
+  const realFetch = globalThis.fetch;
+  try {
+    const planned: string[] = [];
+    finder.deps.planFind = async (brief, notes) => {
+      planned.push(brief + '|' + notes.join(','));
+      return { look: 'a woman at a kitchen counter at night, rain on the window', queries: ['woman kitchen night', 'rain window night', 'kitchen counter knife'], notes };
+    };
+    finder.deps.searchOpenverseImages = async (q, o) => (o.page > 2 ? [] : Array.from({ length: 8 }, (_, i) => photo(q, o.page, i)));
+    finder.deps.searchPexels = async () => {
+      throw new Error('api.pexels.com answered 401');
+    };
+    finder.deps.searchUnsplash = async () => [];
+    finder.deps.keys = () => ({ pexels: 'k', unsplash: null });
+
+    const d = store.getScreenplay(sp.id)!.doc;
+    d.shots[0].adjustments = [{ id: 'n1', text: 'warmer light' }, { id: 'n2', text: 'off note', off: true }];
+    store.saveScreenplay(sp.id, 1, { doc: d });
+    const f = finder.createFind(store.getScreenplay(sp.id)!, 'sh1');
+    const wait = async (id: number) => {
+      for (let i = 0; i < 100; i++) {
+        const x = finder.getFind(id)!;
+        if (x.status === 'done' || x.status === 'failed') return x;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      throw new Error('timeout');
+    };
+    const done = await wait(f.id);
+    assert.equal(done.status, 'done');
+    assert.match(planned[0], /\|warmer light$/, 'only notes that are on');
+    assert.equal(done.candidates.length, 10);
+    const perQuery = new Map<string, number>();
+    for (const c of done.candidates) perQuery.set(c.query, (perQuery.get(c.query) ?? 0) + 1);
+    assert.ok([...perQuery.values()].every((n) => n <= 4), 'no more than four from one search');
+    assert.match(done.error!, /Pexels: api.pexels.com answered 401/, 'a failing library is reported, not fatal');
+
+    const more = await wait(finder.findMore(done).id);
+    assert.equal(more.candidates.length, 20);
+    assert.equal(new Set(more.candidates.map((c) => c.key)).size, 20, 'find more never repeats a photo');
+    assert.equal(planned.length, 1, 'find more reuses the plan');
+
+    const dry = await wait(finder.findMore(more).id);
+    assert.ok(dry.candidates.length >= 20);
+
+    globalThis.fetch = (async () => new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } })) as typeof fetch;
+    const pick = done.candidates[0];
+    let saved = 0;
+    const rowId = await finder.keepFound(store.getScreenplay(sp.id)!, more, pick.key, (bytes, mime) => {
+      saved++;
+      assert.equal(mime, 'image/jpeg');
+      return Number(db.prepare("INSERT INTO media (user_id, type, filename, mime, size_bytes) VALUES (1, 'image', 'x.jpg', 'image/jpeg', ?)").run(bytes.length).lastInsertRowid);
+    });
+    const row = store.getMedia(rowId)!;
+    assert.deepEqual([row.role, row.target, row.status], ['reference', 'sh1', 'ready']);
+    const meta = JSON.parse(row.meta!);
+    assert.equal(meta.found.license.name, 'CC BY 2.0');
+    assert.equal(meta.found.landingUrl, pick.landingUrl);
+    assert.equal(row.caption, null, 'found photos are not captioned into prompts');
+    assert.equal(await finder.keepFound(store.getScreenplay(sp.id)!, more, pick.key, () => 0), rowId, 'keeping twice reuses the row');
+    assert.equal(saved, 1);
+    await assert.rejects(finder.keepFound(store.getScreenplay(sp.id)!, more, 'openverse:nope', () => 0), /isn’t in this search/);
+  } finally {
+    Object.assign(finder.deps, real);
+    globalThis.fetch = realFetch;
+  }
 });

@@ -86,6 +86,8 @@ export interface MediaSettings {
   cloudflareSet: boolean;
   cloudflareAccountId: string | null;
   cloudflareUsage: { day: string; neurons: number; remaining: number };
+  pexelsSet?: boolean;
+  unsplashSet?: boolean;
 }
 
 export async function getMediaSettings(): Promise<MediaSettings> {
@@ -98,6 +100,8 @@ export async function updateMediaSettings(
     apiKey?: string | null;
     cloudflareAccountId?: string | null;
     cloudflareToken?: string | null;
+    pexelsKey?: string | null;
+    unsplashKey?: string | null;
   },
 ): Promise<MediaSettings> {
   const { data } = await client.put<MediaSettings>('/api/generate/settings', patch);

@@ -106,11 +106,11 @@ export function planAll(sp: Screenplay): Map<string, ShotPlan> {
   return plans;
 }
 
-// ── what re-renders by itself ────────────────────────────────────────────────
-// A frame re-renders by itself only when the text of its script block changes
-// (or it has never rendered). Anything else that changes the picture (shot
-// type, lens, adjustment notes, characters, set plan, references, style) and
-// any change to the music cue waits until the writer presses refresh.
+// ── what renders by itself ───────────────────────────────────────────────────
+// Frames never draw by themselves: a shot's frame is a photo the writer finds
+// and picks, or one the AI draws when the writer asks (refresh / "draw with
+// AI"). Once drawn, any change waits for refresh. Music cues still render by
+// themselves the first time, then wait for refresh.
 
 /** Hashes the writer approved with refresh, per screenplay:shot:role. */
 const approved = new Map<string, string>();
@@ -125,8 +125,8 @@ function frameGate(spId: number, shotId: string, plan: ShotPlan, locked = false)
   const frame = store.latestMedia(spId, 'frame', shotId);
   if (frame?.hash === plan.hash) return 'current';
   if (approved.get(`${spId}:${shotId}:frame`) === plan.hash) return 'approved';
-  if (!frame) return 'auto';
-  if (frame.block_hash != null && frame.block_hash !== plan.blockHash) return 'auto';
+  // Never drawn (or the last try was dropped): only when asked.
+  if (!frame || frame.status === 'superseded') return 'none';
   return 'stale';
 }
 
@@ -147,7 +147,11 @@ export function refreshShots(spId: number, shotIds: string[] | 'all'): void {
   for (const shot of sp.doc.shots) {
     if ((shotIds !== 'all' && !shotIds.includes(shot.id)) || shot.locked) continue;
     const plan = plans.get(shot.id)!;
-    if (plan.hash) approved.set(`${spId}:${shot.id}:frame`, plan.hash);
+    // "All" brings drawn frames up to date; it never draws a shot that has none
+    // (those get a photo from the finder, or "Draw with AI" one at a time).
+    const drawn = store.latestMedia(spId, 'frame', shot.id);
+    const hasFrame = !!drawn && drawn.status !== 'superseded';
+    if (plan.hash && (shotIds !== 'all' || hasFrame)) approved.set(`${spId}:${shot.id}:frame`, plan.hash);
     const music = planMusic(shot);
     if (music.hash) approved.set(`${spId}:${shot.id}:music`, music.hash);
   }

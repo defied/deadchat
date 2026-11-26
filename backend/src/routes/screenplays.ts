@@ -10,6 +10,7 @@ import os from 'os';
 import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
+import { createFind, findMore, getFind, keepFound, latestFind } from '../services/screenplay/finds/finder';
 import { queueLines, voiceTarget } from '../services/screenplay/voices';
 import { suggestShots } from '../services/screenplay/suggestShots';
 import { getLatestCharacterAsset, listCharacters as listStudioCharacters } from '../services/characters';
@@ -439,6 +440,41 @@ router.post('/:id/lines', owned, (req, res) =>
     const shotIds = Array.isArray(req.body?.shotIds) ? req.body.shotIds.map((x: unknown) => id(x)).filter(Boolean) : undefined;
     const result = queueLines(s, req.user!.id, shotIds, oneOf(req.body?.language, ['en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'ja', 'hu', 'ko', 'hi'] as const) ?? 'en');
     return { ...detail(store.getScreenplay(s.id)!), lines: result };
+  }),
+);
+
+// ── shot finder: photos from free libraries ──────────────────────────────────
+
+function findOf(s: Screenplay, fid: unknown) {
+  const f = getFind(Number(fid));
+  if (!f || f.screenplay_id !== s.id) throw new Error('Search not found');
+  return f;
+}
+
+router.post('/:id/shots/:shotId/finds', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const shotId = id(req.params.shotId);
+    if (!s.doc.shots.some((x) => x.id === shotId)) throw new Error('That shot no longer exists. Save and try again.');
+    return { find: createFind(s, shotId) };
+  }),
+);
+
+router.get('/:id/shots/:shotId/finds/latest', owned, (req, res) => wrap(res, () => ({ find: latestFind(sp(res).id, id(req.params.shotId)) })));
+
+router.get('/:id/finds/:fid', owned, (req, res) => wrap(res, () => ({ find: findOf(sp(res), req.params.fid) })));
+
+router.post('/:id/finds/:fid/more', owned, (req, res) => wrap(res, () => ({ find: findMore(findOf(sp(res), req.params.fid)) })));
+
+// Keep a photo the finder proposed, as an image of the shot it was found for.
+router.post('/:id/finds/:fid/keep', owned, (req, res) =>
+  wrap(res, async () => {
+    const s = sp(res);
+    const f = findOf(s, req.params.fid);
+    const rowId = await keepFound(s, f, String(req.body?.key ?? ''), (bytes, mime, filename) =>
+      saveMedia({ userId: s.userId, type: 'image', bytes, mime, originalFilename: filename, prompt: 'Screenplay shot photo' }).id,
+    );
+    return { ...detail(store.getScreenplay(s.id)!), added: rowId };
   }),
 );
 

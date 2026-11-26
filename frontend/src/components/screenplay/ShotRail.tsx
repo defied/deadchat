@@ -6,11 +6,13 @@ import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'reac
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, Search, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
-import { LENS_TYPES, isVoiceRow, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
+import { LENS_TYPES, foundMeta, isVoiceRow, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
 import { useScreenplayActions } from './actions';
 import { Modal } from '../ui';
 import { SHOT_TYPES, newId, timecode } from './format';
 import { MusicButton, SpImage } from './media';
+import { AdjustmentNotes } from './AdjustmentNotes';
+import { ShotFinder } from './ShotFinder';
 
 const LENSES = [14, 18, 24, 35, 50, 85, 100, 135];
 const GAP = 12;
@@ -105,8 +107,8 @@ export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFo
         <div className="sp-rail-empty">
           <Clapperboard size={18} />
           <p>
-            Hover a scene heading or action line and click <strong>Shot</strong> to pin a storyboard shot to it. Pick a shot type
-            and DeadChat renders an example frame from what you wrote. It re-renders when you revise that part of the script; changes to the shot itself wait for its refresh button.
+            Hover a scene heading or action line and click <strong>Shot</strong> to pin a storyboard shot to it. Then <strong>Find a shot</strong> to
+            pick a matching photo for its frame (and recreate it with your cast and props), or draw one from scratch with AI.
           </p>
         </div>
       )}
@@ -161,6 +163,7 @@ function ShotCard({
   onRefresh: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [finding, setFinding] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const refresh = async () => {
@@ -187,6 +190,7 @@ function ShotCard({
   const outOfDate = !locked && (!!plan?.stale || !!plan?.musicStale);
   const staleWhat = plan?.stale && plan?.musicStale ? 'frame and music' : plan?.stale ? 'frame' : 'music';
   const failed = latest?.status === 'failed' && !ownRow ? latest.error : null;
+  const found = foundMeta(ownRow);
 
   let note: string | null = null;
   if (plan?.blocked) note = plan.blocked;
@@ -205,6 +209,9 @@ function ShotCard({
         {cueReady?.media_id && <MusicButton key={cueReady.media_id} mediaId={cueReady.media_id} label={cue?.status === 'pending' ? 'Play the previous cue (new one rendering)' : 'Play music cue'} />}
         {cue?.status === 'pending' && <Loader2 size={12} className="spin" aria-label="Music updating" />}
         <span className="sp-grow" />
+        <button className="icon-btn" title="Find a shot: photos that match this part of the script" onClick={() => setFinding(true)}>
+          <Search size={14} />
+        </button>
         <button className="icon-btn" title="Set plan: camera, cast and lights" onClick={onPlan}>
           <LayoutGrid size={14} />
         </button>
@@ -223,7 +230,7 @@ function ShotCard({
         )}
         <button
           className="icon-btn"
-          title="Re-roll: render a different take"
+          title={rendered ? 'Draw a new take with AI' : 'Draw this shot with AI'}
           onClick={() => {
             onPatch({ take: (shot.take ?? 0) + 1 }, 'take');
             void refresh();
@@ -237,8 +244,27 @@ function ShotCard({
         </button>
       </div>
 
+      {!ready?.media_id && !pending ? (
+        <div className="sp-frame sp-frame-start">
+          <span>{plan?.blocked ?? 'No frame yet'}</span>
+          <div>
+            <button className="btn btn-sm btn-primary" onClick={() => setFinding(true)}>
+              <Search size={13} /> Find a shot
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => void refresh()}
+              disabled={!!plan?.waiting || !!plan?.blocked || refreshing || locked}
+              title={plan?.waiting ?? 'Draw this frame from scratch with the image model'}
+            >
+              {refreshing ? <Loader2 size={13} className="spin" /> : <Dices size={13} />} Draw with AI
+            </button>
+          </div>
+          {plan?.waiting && <small>{plan.waiting}</small>}
+        </div>
+      ) : (
       <button className="sp-frame" onClick={() => ready?.media_id && setOpen(true)} disabled={!ready?.media_id}>
-        {ready?.media_id ? <SpImage mediaId={ready.media_id} alt={`Shot ${number}`} /> : <div className="sp-frame-empty">{note ?? (pending ? '' : 'No frame yet')}</div>}
+        {ready?.media_id ? <SpImage mediaId={ready.media_id} alt={`Shot ${number}`} /> : <div className="sp-frame-empty">{note ?? ''}</div>}
         {pending && !locked && (
           <span className="sp-frame-status">
             <Loader2 size={12} className="spin" /> {ready ? 'Updating to match the script…' : 'Rendering…'}
@@ -249,14 +275,23 @@ function ShotCard({
             <Lock size={11} /> Locked
           </span>
         )}
-        {!pending && !locked && plan?.adjusting && ready && (
+        {!pending && !locked && plan?.adjusting && ready && !ownRow && (
           <span className="sp-frame-status">
             <Loader2 size={12} className="spin" /> Applying adjustment notes…
           </span>
         )}
       </button>
+      )}
+      {found && (
+        <div className="sp-found-credit" title={found.title}>
+          <a href={found.landingUrl} target="_blank" rel="noreferrer">{found.title}</a>
+          <span>
+            {found.creator ? ` · ${found.creator}` : ''} · {found.sourceName} · {found.license.name}
+          </span>
+        </div>
+      )}
       {plan?.blocked && <div className="sp-shot-warn"><AlertTriangle size={12} /> {plan.blocked}</div>}
-      {outOfDate && !pending && !refreshing && (
+      {outOfDate && !pending && !refreshing && !ownRow && (
         <button className="sp-stale" onClick={refresh}>
           <RefreshCw size={11} /> Shot settings changed. Refresh to update the {staleWhat}.
         </button>
@@ -318,6 +353,7 @@ function ShotCard({
           <textarea rows={1} value={shot.notes ?? ''} placeholder="Blocking, movement, VFX… (for you; not used for the frame)" onChange={(e) => onPatch({ notes: e.target.value }, 'notes')} />
         </label>
       </div>
+      {finding && <ShotFinder shot={shot} number={number} detail={detail} onPatch={onPatch} onClose={() => setFinding(false)} />}
       {open && ready?.media_id && (
         <Modal title={`Shot ${number}${shot.type ? ` · ${shot.type}` : ''}`} onClose={() => setOpen(false)} width={1100}>
           <div className="sp-frame-large">
@@ -336,63 +372,6 @@ function ShotCard({
             </details>
           )}
         </Modal>
-      )}
-    </div>
-  );
-}
-
-/**
- * Fine-tuning notes for a shot's frame ("warmer light", "lower the camera").
- * The AI applies the ones that are on to the image prompt a few seconds after
- * they stop changing; adding, editing, switching off or removing one re-renders.
- */
-function AdjustmentNotes({ shot, plan, onChange }: { shot: Shot; plan?: ShotPlanView; onChange: (a: Adjustment[]) => void }) {
-  const notes = shot.adjustments ?? [];
-  const [draft, setDraft] = useState('');
-  const set = (id: string, patch: Partial<Adjustment>) => onChange(notes.map((n) => (n.id === id ? { ...n, ...patch } : n)));
-  const add = () => {
-    const text = draft.trim();
-    if (!text) return;
-    onChange([...notes, { id: newId('adj'), text }]);
-    setDraft('');
-  };
-  const on = notes.filter((n) => !n.off && n.text.trim()).length;
-  return (
-    <div className="sp-adj wide">
-      <span className="sp-adj-head">
-        <SlidersHorizontal size={11} /> Adjustment notes
-        {on > 0 && <span className="sp-adj-count">{on} applied</span>}
-        {plan?.adjusting && <Loader2 size={11} className="spin" aria-label="Applying notes" />}
-      </span>
-      {notes.map((n) => (
-        <div key={n.id} className={`sp-adj-row ${n.off ? 'off' : ''}`}>
-          <input type="checkbox" checked={!n.off} onChange={(e) => set(n.id, { off: e.target.checked ? undefined : true })} title={n.off ? 'Apply this note' : 'Stop applying this note (keeps it)'} />
-          <textarea rows={1} value={n.text} onChange={(e) => set(n.id, { text: e.target.value })} aria-label="Adjustment note" />
-          <button className="icon-btn" title="Remove note" onClick={() => onChange(notes.filter((x) => x.id !== n.id))}>
-            <X size={12} />
-          </button>
-        </div>
-      ))}
-      <div className="sp-adj-row add">
-        <Plus size={12} />
-        <input
-          value={draft}
-          placeholder="e.g. warmer light, lower camera, no car in the background"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              add();
-            }
-          }}
-          onBlur={add}
-          aria-label="New adjustment note"
-        />
-      </div>
-      {plan?.adjustNote && (
-        <div className="sp-shot-warn">
-          <AlertTriangle size={12} /> {plan.adjustNote}
-        </div>
       )}
     </div>
   );

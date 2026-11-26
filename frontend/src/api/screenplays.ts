@@ -480,3 +480,83 @@ export async function suggestShots(id: number, sceneId: string, density: 'fewer'
   const { data } = await client.post<{ shots: SuggestedShot[]; source: 'ai' | 'rules' }>(`/api/screenplays/${id}/shots/suggest`, { sceneId, density }, { timeout: 200_000 });
   return data;
 }
+
+// ── shot finder ──────────────────────────────────────────────────────────────
+
+export interface FoundLicense {
+  code: string;
+  name: string;
+  url: string | null;
+  commercial: boolean;
+  derivatives: boolean;
+  attribution: boolean;
+}
+
+export interface ImageCandidate {
+  key: string;
+  source: 'openverse' | 'pexels' | 'unsplash';
+  sourceName: string;
+  title: string;
+  creator: string | null;
+  license: FoundLicense;
+  landingUrl: string;
+  imageUrl: string;
+  thumbUrl: string;
+  width: number | null;
+  height: number | null;
+  query: string;
+}
+
+export interface ShotFind {
+  id: number;
+  shot_id: string;
+  status: 'queued' | 'planning' | 'searching' | 'done' | 'failed';
+  progress: string;
+  plan: { look: string; queries: string[]; notes: string[] };
+  candidates: ImageCandidate[];
+  error: string | null;
+}
+
+export async function startFind(id: number, shotId: string): Promise<ShotFind> {
+  const { data } = await client.post<{ find: ShotFind }>(`/api/screenplays/${id}/shots/${shotId}/finds`, {});
+  return data.find;
+}
+
+export async function latestFind(id: number, shotId: string): Promise<ShotFind | null> {
+  const { data } = await client.get<{ find: ShotFind | null }>(`/api/screenplays/${id}/shots/${shotId}/finds/latest`);
+  return data.find;
+}
+
+export async function getFind(id: number, findId: number): Promise<ShotFind> {
+  const { data } = await client.get<{ find: ShotFind }>(`/api/screenplays/${id}/finds/${findId}`);
+  return data.find;
+}
+
+export async function findMore(id: number, findId: number): Promise<ShotFind> {
+  const { data } = await client.post<{ find: ShotFind }>(`/api/screenplays/${id}/finds/${findId}/more`, {});
+  return data.find;
+}
+
+export async function keepFound(id: number, findId: number, key: string): Promise<Detail & { added: number }> {
+  const { data } = await client.post<Detail & { added: number }>(`/api/screenplays/${id}/finds/${findId}/keep`, { key });
+  return data;
+}
+
+/** Source details of a photo kept from the shot finder. */
+export interface FoundMeta {
+  key: string;
+  sourceName: string;
+  title: string;
+  creator: string | null;
+  landingUrl: string;
+  license: FoundLicense;
+}
+
+export function foundMeta(m: ScreenplayMedia | undefined | null): FoundMeta | null {
+  if (!m?.meta) return null;
+  try {
+    return (JSON.parse(m.meta) as { found?: FoundMeta }).found ?? null;
+  } catch {
+    return null;
+  }
+}

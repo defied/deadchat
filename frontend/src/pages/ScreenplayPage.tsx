@@ -246,7 +246,7 @@ export function ScreenplayPage() {
             <button
               className="btn btn-sm"
               disabled={!!doc.settings.paused}
-              title="Render every out-of-date shot now, including ones waiting for a refresh"
+              title="Redraw every out-of-date AI frame and music cue now. Shots without a frame stay empty: find a shot or draw it with AI."
               onClick={async () => {
                 try {
                   await s.flush();
@@ -256,7 +256,7 @@ export function ScreenplayPage() {
                 }
               }}
             >
-              <Zap size={14} /> Render now
+              <Zap size={14} /> Update all
             </button>
           </div>
           <ScriptEditor

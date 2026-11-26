@@ -407,7 +407,7 @@ export function SetPlan({ doc, detail, update, sceneId, focusShot, onScene }: Pr
           ) : (
             <p className="field-hint sp-plan-help">
               Drag to move, drag the small dot to turn, scroll to zoom, drag the floor to pan. Each grid square is one metre. Moving a
-              camera, a character or a light re-renders that shot’s frame to match.
+              camera, a character or a light changes how AI draws that shot’s frame (press its refresh to redraw).
             </p>
           )}
         </aside>

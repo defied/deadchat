@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Cloud, Cpu, Gift, KeyRound } from 'lucide-react';
+import { Check, Cloud, Cpu, Gift, Images, KeyRound } from 'lucide-react';
 import { getCatalog, getMediaSettings, updateMediaSettings, type MediaSettings } from '../../api/generate';
 import { Alert, Field, Loading, Section, errorMessage } from '../ui';
 
@@ -73,6 +73,7 @@ export function MediaPanel() {
       </Section>
 
       <CloudflareSection settings={settings} saving={saving} onSave={save} />
+      <PhotoLibrariesSection settings={settings} saving={saving} onSave={save} />
 
       <Section title="Defaults" hint="Used by agents, Studio portraits and older API clients that don't name a model.">
         <div className="card opt-row">
@@ -218,6 +219,62 @@ function CloudflareSection({
             </button>
           )}
         </div>
+      </div>
+    </Section>
+  );
+}
+
+/** Optional free keys that add Pexels and Unsplash to the screenplay shot finder (Openverse needs none). */
+function PhotoLibrariesSection({
+  settings,
+  saving,
+  onSave,
+}: {
+  settings: MediaSettings;
+  saving: boolean;
+  onSave: (patch: Parameters<typeof updateMediaSettings>[0], msg: string) => Promise<void>;
+}) {
+  const [pexels, setPexels] = useState('');
+  const [unsplash, setUnsplash] = useState('');
+  const row = (
+    label: string,
+    set: boolean | undefined,
+    value: string,
+    onChange: (v: string) => void,
+    field: 'pexelsKey' | 'unsplashKey',
+    name: string,
+  ) => (
+    <div className="opt-row" style={{ alignItems: 'flex-end' }}>
+      <Field label={set ? `${label} (set — paste to replace)` : `${label} (not set)`}>
+        <input type="password" value={value} onChange={(e) => onChange(e.target.value)} autoComplete="off" placeholder={set ? '••••••••' : 'Paste the key'} />
+      </Field>
+      <div style={{ display: 'flex', gap: 8, paddingBottom: 2 }}>
+        <button className="btn btn-primary" disabled={saving || value.trim().length < 10} onClick={() => onSave({ [field]: value.trim() }, `${name} added to the shot finder.`).then(() => onChange(''))}>
+          Save
+        </button>
+        {set && (
+          <button className="btn btn-danger" disabled={saving} onClick={() => onSave({ [field]: null }, `${name} removed from the shot finder.`)}>
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+  return (
+    <Section
+      title={<><Images size={14} /> Photo libraries for the shot finder</>}
+      hint={
+        <>
+          The screenplay shot finder always searches Openverse (openly licensed photos from Flickr, Wikimedia Commons and others; no key
+          needed). Free keys add Pexels and Unsplash, which have more polished, cinematic photos: get one at{' '}
+          <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">pexels.com/api</a> and an Access Key at{' '}
+          <a href="https://unsplash.com/developers" target="_blank" rel="noreferrer">unsplash.com/developers</a>. Keys are stored encrypted.
+        </>
+      }
+    >
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {row('Pexels API key', settings.pexelsSet, pexels, setPexels, 'pexelsKey', 'Pexels')}
+        {row('Unsplash Access Key', settings.unsplashSet, unsplash, setUnsplash, 'unsplashKey', 'Unsplash')}
       </div>
     </Section>
   );
