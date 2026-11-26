@@ -327,6 +327,14 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
     for (let i = cur.index; i >= 0; i--) if (elsRef.current[i].type === 'scene') { heading = elsRef.current[i].text; break; }
     update((d) => ({ ...d, shots: sortShots([...d.shots, { id, anchorId: el.id, excerpt } as Shot], d.elements) }));
     setSel(null);
+    // Show the new shot: bring its card into view (it may be off to the side or below) and flash it.
+    window.setTimeout(() => {
+      const card = document.querySelector<HTMLElement>(`[data-shot-id="${id}"]`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      card.classList.add('sp-shot-new');
+      window.setTimeout(() => card.classList.remove('sp-shot-new'), 1800);
+    }, 120);
     // The agent writes what's in the shot; the writer can edit it.
     void summarizeShot(screenplayId, heading, excerpt)
       .then((summary) => update((d) => ({ ...d, shots: d.shots.map((s) => (s.id === id && !s.summary ? { ...s, summary } : s)) }), `shot:${id}:summary`))
@@ -512,15 +520,19 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
           />
         ))}
         {sel && (
-          <button
-            className="sp-shot-from-sel"
-            style={{ top: sel.top }}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => addShotFromSelection()}
-            title="Make a storyboard shot of the highlighted text"
-          >
-            <Clapperboard size={13} /> Shot from highlight
-          </button>
+          // The wrapper does the positioning: a button's own transform is
+          // replaced while it's pressed (button:active scales it), which made
+          // it jump away from the cursor before the click finished.
+          <div className="sp-shot-from-sel-at" style={{ top: sel.top }}>
+            <button
+              className="sp-shot-from-sel"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => addShotFromSelection()}
+              title="Make a storyboard shot of the highlighted text"
+            >
+              <Clapperboard size={13} /> Shot from highlight
+            </button>
+          </div>
         )}
         {suggest && suggestPos && (
           <ul className="sp-suggest" style={suggestPos} role="listbox">

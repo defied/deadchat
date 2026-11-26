@@ -224,7 +224,7 @@ function ShotCard({
   else if (plan?.adjusting && !shot.locked) note = 'Applying adjustment notes…';
 
   return (
-    <div className={`sp-shot ${pending ? 'busy' : ''} ${locked ? 'locked' : ''}`}>
+    <div className={`sp-shot ${pending ? 'busy' : ''} ${locked ? 'locked' : ''}`} data-shot-id={shot.id}>
       <div className="sp-shot-head">
         <button className="sp-shot-no" onClick={onFocus} title="Go to this part of the script">
           Shot {number}
