@@ -538,7 +538,7 @@ defineAgent({
     'Every trait the brief states is fixed: keep the same hair colour, eye colour, height, age, gender, species and named features, word for word. ' +
     'Invent concrete details only for what it leaves open: face shape, features, skin, hairstyle within the stated hair, build within the stated build, distinguishing marks. ' +
     "Physical traits only: no wardrobe, personality or story, and do not use the character's name. Never describe or resemble a real person. " +
-    'Propose ONE look for the character as {"label": "a few words about the face, e.g. narrow fox-like face, freckles", "appearance": "one paragraph"}.',
+    'Propose ONE look for the character as {"label": "a few words about the face", "appearance": "one paragraph"}.',
 });
 
 defineAgent({
