@@ -1033,3 +1033,10 @@ test('the vision check keeps only photos that show the shot, best first, and nev
     Object.assign(finder.deps, real);
   }
 });
+
+test('searches for a shot with someone in it say who', () => {
+  const brief = 'Setting: Exterior, street, day\nMoment: X exits an apartment building.\nPeople (never use their names): X = a male person';
+  assert.deepEqual(finder.withPerson(['exits apartment', 'scrolls phone', 'apartment building'], brief), ['man exits apartment', 'man scrolls phone', 'apartment building']);
+  assert.deepEqual(finder.withPerson(['woman kitchen', 'kitchen'], brief.replace('male', 'female')), ['woman kitchen'], 'already says who; the repeat is dropped');
+  assert.deepEqual(finder.withPerson(['kitchen'], 'Setting: Interior, kitchen'), ['kitchen'], 'nobody in the shot: unchanged');
+});
