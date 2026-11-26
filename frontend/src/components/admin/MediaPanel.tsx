@@ -236,6 +236,7 @@ function PhotoLibrariesSection({
 }) {
   const [pexels, setPexels] = useState('');
   const [shotModel, setShotModel] = useState(settings.shotCheckModel ?? '');
+  const [spModel, setSpModel] = useState(settings.screenplayModel ?? '');
   const [unsplash, setUnsplash] = useState('');
   const row = (
     label: string,
@@ -276,6 +277,16 @@ function PhotoLibrariesSection({
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {row('Pexels API key', settings.pexelsSet, pexels, setPexels, 'pexelsKey', 'Pexels')}
         {row('Unsplash Access Key', settings.unsplashSet, unsplash, setUnsplash, 'unsplashKey', 'Unsplash')}
+        <div className="opt-row" style={{ alignItems: 'flex-end' }}>
+          <Field label="Screenplay model (Ollama)" hint="Runs the screenplay tools: shot summaries, the shot mentor, photo searches and photo checks. Needs vision. Empty = the active chat model.">
+            <input value={spModel} onChange={(e) => setSpModel(e.target.value)} placeholder="e.g. qwen3.8:27b" autoComplete="off" />
+          </Field>
+          <div style={{ display: 'flex', gap: 8, paddingBottom: 2 }}>
+            <button className="btn btn-primary" disabled={saving || spModel.trim() === (settings.screenplayModel ?? '')} onClick={() => onSave({ screenplayModel: spModel.trim() || null }, spModel.trim() ? `Screenplay tools now use ${spModel.trim()}.` : 'Screenplay tools use the active chat model.')}>
+              Save
+            </button>
+          </div>
+        </div>
         <div className="opt-row" style={{ alignItems: 'flex-end' }}>
           <Field label="Cinematography model (Ollama)" hint="Checks each found photo's shot size, framing and camera angle against the shot type, e.g. ShotVL. Leave empty to skip.">
             <input value={shotModel} onChange={(e) => setShotModel(e.target.value)} placeholder="e.g. shotvl:7b" autoComplete="off" />

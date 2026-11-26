@@ -2,7 +2,7 @@
 // the camera sees, from the highlighted text only. The writer can edit it;
 // it drives the photo search and anything the AI draws.
 
-import { llmJson, asString } from '../influencers/llm';
+import { llmJson, asString } from './llm';
 import { parseHeading } from './script';
 
 const SYSTEM =

@@ -3,7 +3,7 @@
 // is never changed. If the model isn't available, a simple rule-based
 // breakdown is used instead.
 
-import { llmJson } from '../influencers/llm';
+import { llmJson } from './llm';
 import type { Screenplay, ScriptElement } from './types';
 
 export const SHOT_TYPES = [

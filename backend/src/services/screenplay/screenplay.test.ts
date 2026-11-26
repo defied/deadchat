@@ -1240,3 +1240,23 @@ test('framing check follows the shot list when there is one', () => {
   const framing = require('./finds/framing') as typeof import('./finds/framing');
   assert.deepEqual(framing.expectedFor('Wide', { size: 'Close Up', lightType: 'Moonlight', movement: 'Pan' }), { size: 'Close Up', lightType: 'Moonlight' });
 });
+
+test('mentor: a bare reply becomes the suggestions with reasons; a question answered in one field\'s values is about that field', async () => {
+  const mentor = require('./mentor') as typeof import('./mentor');
+  const d = doc();
+  d.shots[0] = { id: 'sh1', anchorId: 'a1', excerpt: 'JANE grips a knife.' };
+  const sp = store.createScreenplay(1, 'Mentor2', d);
+  const real = mentor.deps.llmJson;
+  try {
+    mentor.deps.llmJson = (async () => ({
+      reply: 'Medium Close Up',
+      suggestions: [{ field: 'size', value: 'Medium Close Up', why: 'It keeps her face and the knife together.' }],
+      questions: [{ question: 'How big in frame?', options: ['Close Up', 'Medium', 'Wide'] }],
+    })) as typeof real;
+    const m = await mentor.mentorTurn(sp, sp.doc.shots[0]);
+    assert.equal(m.messages.at(-1)!.text, 'Shot size: Medium Close Up. It keeps her face and the knife together.');
+    assert.deepEqual(m.questions, [{ field: 'size', question: 'How big in frame?', options: ['Close Up', 'Medium', 'Wide'] }]);
+  } finally {
+    mentor.deps.llmJson = real;
+  }
+});
