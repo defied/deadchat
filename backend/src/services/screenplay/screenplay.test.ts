@@ -1415,3 +1415,36 @@ test('film agents: every agent is listed with editable instructions and a fixed 
   const clean = cleanDoc({ ...doc(), agentPrompts: { summarizer: 'Mine', bogus: 'x', mentor: '  ' } });
   assert.deepEqual(clean.agentPrompts, { summarizer: 'Mine' });
 });
+
+test('setting and mood photos with no place on the checklist are judged on their own search words, and skip the framing check', async () => {
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('media.shot_check_model', 'shotvl:7b')").run();
+  const d = doc();
+  d.shots[0].summary = 'Jane grips a knife.';
+  d.shots[0].setup = { size: 'Close Up' };
+  const sp = store.createScreenplay(1, 'Angles2', d);
+  const real = { ...finder.deps };
+  try {
+    finder.deps.planFind = async (_b, notes) => ({ look: '', queries: ['woman knife', 'storm sky city'], angles: ['subject', 'setting'], notes });
+    finder.deps.checklist = async (_b, _n, _names, kinds) => (kinds?.push('who', 'action'), ['a woman', 'gripping a knife']);
+    finder.deps.searchOpenverseImages = async (q, o) =>
+      o.page > 1 ? [] : [{
+        key: `openverse:${q}`, source: 'openverse' as const, sourceName: 'Flickr', title: q, creator: null,
+        license: { code: 'cc0' as const, name: 'CC0', url: null, commercial: true, derivatives: true, attribution: false, rank: 0 },
+        landingUrl: 'https://x', imageUrl: 'https://x/i.jpg', thumbUrl: 'https://x/t.jpg', width: 2000, height: 900, tags: q.split(' '), query: q, sourceScore: 1,
+      }];
+    finder.deps.searchPexels = async () => [];
+    finder.deps.searchUnsplash = async () => [];
+    const judged = new Map<string, string[]>();
+    const framed: string[] = [];
+    finder.deps.checkImage = async (c, items) => (judged.set(c.query, items), { score: 8, sees: 'x', missing: '' });
+    finder.deps.checkFraming = async (c) => (framed.push(c.query), { seen: 'Wide', match: 'no' as const });
+    const f = finder.createFind(sp, 'sh1');
+    for (let i = 0; i < 200 && !['done', 'failed'].includes(finder.getFind(f.id)!.status); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.deepEqual(judged.get('storm sky city'), ['storm sky city']);
+    assert.deepEqual(framed, ['woman knife'], 'only the subject photo gets the framing check');
+    assert.ok(finder.getFind(f.id)!.candidates.some((c) => c.query === 'storm sky city'));
+  } finally {
+    Object.assign(finder.deps, real);
+    db.prepare("DELETE FROM settings WHERE key = 'media.shot_check_model'").run();
+  }
+});

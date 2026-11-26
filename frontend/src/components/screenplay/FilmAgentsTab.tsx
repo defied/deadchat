@@ -12,7 +12,10 @@ export function FilmAgentsTab({ doc, update }: { doc: ScreenplayDoc; update: (fn
   const [agents, setAgents] = useState<FilmAgent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    api.listFilmAgents().then(setAgents, (e) => setError(msg(e)));
+    // In the order you meet them while working.
+    const order = ['summarizer', 'mentor', 'researcher', 'checklist', 'checker', 'adjuster', 'casting', 'describer', 'sound'];
+    const rank = (id: string) => (order.indexOf(id) + 1 || 99);
+    api.listFilmAgents().then((a) => setAgents([...a].sort((x, y) => rank(x.id) - rank(y.id))), (e) => setError(msg(e)));
   }, []);
 
   const set = (a: FilmAgent, text: string) =>
