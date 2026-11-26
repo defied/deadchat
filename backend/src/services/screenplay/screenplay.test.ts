@@ -1260,3 +1260,62 @@ test('mentor: a bare reply becomes the suggestions with reasons; a question answ
     mentor.deps.llmJson = real;
   }
 });
+
+// ── background tasks + GPU gate ──
+
+test('GPU gate: a loaded model goes straight away; an unloaded one waits for the running render, then holds back new renders', async () => {
+  const gate = require('./gpuGate') as typeof import('./gpuGate');
+  const real = { ...gate.deps };
+  try {
+    let renders = { running: 1, queued: 2 };
+    const waits: string[] = [];
+    gate.deps.loaded = async () => ['shotvl:7b'];
+    gate.deps.renders = () => renders;
+    gate.deps.sleep = async () => {
+      renders = { running: 0, queued: 2 };
+    };
+    assert.equal(await gate.withGpu('shotvl:7b', async () => 'fast', (w) => waits.push(w)), 'fast');
+    assert.equal(waits.length, 0, 'loaded: no wait');
+    renders = { running: 1, queued: 2 };
+    let heldInside = false;
+    const out = await gate.withGpu('qwen3.8:27b', async () => ((heldInside = gate.gpuHeld()), 'after'), (w) => waits.push(w));
+    assert.equal(out, 'after');
+    assert.equal(waits.length, 1);
+    assert.match(waits[0], /Queued: waiting for the image render \(and 2 more\) to finish before loading qwen3\.8:27b/);
+    assert.equal(heldInside, true, 'new renders are held back while it runs');
+    assert.equal(gate.gpuHeld(), false);
+  } finally {
+    Object.assign(gate.deps, real);
+  }
+});
+
+test('mentor turns run as background jobs, one per shot at a time, and wait to be applied', async () => {
+  const jobs2 = require('./mentorJobs') as typeof import('./mentorJobs');
+  const mentor = require('./mentor') as typeof import('./mentor');
+  const gate = require('./gpuGate') as typeof import('./gpuGate');
+  const d = doc();
+  d.shots[0] = { id: 'sh1', anchorId: 'a1', excerpt: 'JANE grips a knife.' };
+  const sp = store.createScreenplay(1, 'MentorJobs', d);
+  const real = mentor.deps.llmJson;
+  const realGate = { ...gate.deps };
+  try {
+    gate.deps.loaded = async () => [];
+    gate.deps.renders = () => ({ running: 0, queued: 0 });
+    mentor.deps.llmJson = (async () => ({ reply: 'A Close Up on the hand puts the tension right in front of us. What do we see first?' })) as typeof real;
+    const j = jobs2.createMentorJob(sp.id, 'sh1', 'Hi');
+    assert.equal(jobs2.createMentorJob(sp.id, 'sh1', 'again').id, j.id, 'one at a time per shot');
+    let x = j;
+    for (let i = 0; i < 200 && !['done', 'failed'].includes(x.status); i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      x = jobs2.getMentorJob(j.id)!;
+    }
+    assert.equal(x.status, 'done', x.error ?? '');
+    assert.deepEqual(x.result!.messages.map((m) => m.from), ['writer', 'mentor']);
+    assert.deepEqual(jobs2.openMentorJobs(sp.id).map((o) => o.id), [j.id]);
+    jobs2.markApplied(j.id);
+    assert.deepEqual(jobs2.openMentorJobs(sp.id), []);
+  } finally {
+    mentor.deps.llmJson = real;
+    Object.assign(gate.deps, realGate);
+  }
+});

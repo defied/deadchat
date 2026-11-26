@@ -50,6 +50,12 @@ export function enqueue(
 
 // Claim the next queued job, enforcing that no other heavy job is running.
 // Returns null if nothing is available or a heavy job is already in flight.
+/** Something outside the queue is using the GPU (a screenplay AI call): hold back heavy jobs. */
+let gpuBusyElsewhere: () => boolean = () => false;
+export function setGpuBusyCheck(fn: () => boolean): void {
+  gpuBusyElsewhere = fn;
+}
+
 export function claimNext(): Job | null {
   return db.transaction((): Job | null => {
     // Check if any heavy job is running
@@ -58,9 +64,9 @@ export function claimNext(): Job | null {
     ).get();
     if (running) return null;
 
-    // Find the highest-priority queued job
+    // Find the highest-priority queued job (light ones only while the GPU is busy elsewhere)
     const next = db.prepare(
-      `SELECT * FROM jobs WHERE status = 'queued' ORDER BY priority DESC, id ASC LIMIT 1`
+      `SELECT * FROM jobs WHERE status = 'queued' ${gpuBusyElsewhere() ? 'AND heavy = 0' : ''} ORDER BY priority DESC, id ASC LIMIT 1`
     ).get() as Job | undefined;
     if (!next) return null;
 

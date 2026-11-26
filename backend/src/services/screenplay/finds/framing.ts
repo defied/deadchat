@@ -3,6 +3,8 @@
 // finder compares that with the shot type the writer picked.
 
 import { getOllamaUrl } from '../../appSettings';
+import { withGpu } from '../gpuGate';
+import { currentWaitListener } from '../llm';
 
 import { ANGLES, COMPOSITIONS, FRAMINGS, LENS_SIZES, LIGHT_CONDITIONS, LIGHT_TYPES, SIZES, type ShotSetup } from '../cinema';
 
@@ -49,12 +51,15 @@ export interface Framing {
 async function ask(model: string, imageB64: string, question: string, options: readonly string[]): Promise<string | null> {
   const letters = options.map((_, i) => String.fromCharCode(65 + i));
   const prompt = `${question}\nOptions:\n${options.map((o, i) => `${letters[i]}. ${o}`).join('\n')}\nAnswer with the option's letter only.`;
-  const r = await fetch(`${getOllamaUrl()}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(120_000),
-    body: JSON.stringify({ model, stream: false, keep_alive: '60s', options: { temperature: 0 }, messages: [{ role: 'user', content: prompt, images: [imageB64] }] }),
-  });
+  const r = await withGpu(model, () =>
+    fetch(`${getOllamaUrl()}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(120_000),
+      body: JSON.stringify({ model, stream: false, keep_alive: '60s', options: { temperature: 0 }, messages: [{ role: 'user', content: prompt, images: [imageB64] }] }),
+    }),
+    currentWaitListener(),
+  );
   if (!r.ok) throw new Error(`${model}: ${r.status} ${(await r.text()).slice(0, 160)}`);
   const text = ((await r.json()) as { message?: { content?: string } }).message?.content ?? '';
   return parseChoice(text, options);

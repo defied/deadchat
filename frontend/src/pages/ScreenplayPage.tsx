@@ -35,6 +35,7 @@ import { Alert, Field, Loading, Modal, RouteTabs, errorMessage } from '../compon
 import { ScriptEditor, type EditorApi } from '../components/screenplay/ScriptEditor';
 import { CharactersTab } from '../components/screenplay/CharactersTab';
 import { PropsTab } from '../components/screenplay/PropsTab';
+import { BackgroundProvider } from '../components/screenplay/background';
 import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
 import { PitchTab } from '../components/screenplay/PitchTab';
@@ -118,6 +119,7 @@ export function ScreenplayPage() {
 
   return (
     <ScreenplayActionsContext.Provider value={actions}>
+    <BackgroundProvider screenplayId={id} doc={doc} update={s.update} flush={s.flush} onOpenScript={() => tab !== 'script' && navigate(`/screenplays/${id}/script`)}>
     <div className="page sp-page-shell">
       <div className="sp-header">
         <Link to="/screenplays" className="icon-btn" title="All screenplays">
@@ -312,6 +314,7 @@ export function ScreenplayPage() {
       {settingsOpen && <SettingsModal doc={doc} title={s.title} update={s.update} onClose={() => setSettingsOpen(false)} />}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
     </div>
+    </BackgroundProvider>
     </ScreenplayActionsContext.Provider>
   );
 }

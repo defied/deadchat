@@ -5,13 +5,12 @@
 // picks it.
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, Dices, GraduationCap, Loader2, Search, Send } from 'lucide-react';
-import * as api from '../../api/screenplays';
-import type { MentorState, Shot } from '../../api/screenplays';
+import { AlertTriangle, Check, Dices, GraduationCap, Loader2, Minimize2, Search, Send } from 'lucide-react';
+import type { Shot } from '../../api/screenplays';
 import { Modal } from '../ui';
-import { useScreenplayActions } from './actions';
 import { SETUP_FIELDS, typeFromSetup, type SetupField, type ShotSetup } from './cinema';
 import { msg } from './ShotFinder';
+import { useBackground } from './background';
 
 const FIELDS = Object.keys(SETUP_FIELDS) as SetupField[];
 const CORE: SetupField[] = ['size', 'framing', 'angle'];
@@ -31,8 +30,11 @@ export function ShotSetupDialog({
   onFind: () => void;
   onGenerate: () => void;
 }) {
-  const { screenplayId, flush } = useScreenplayActions();
-  const [busy, setBusy] = useState(false);
+  const bg = useBackground();
+  const job = bg?.mentorFor(shot.id);
+  const [starting, setStarting] = useState(false);
+  const busy = starting || !!job;
+  const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const mentor = shot.mentor;
@@ -41,19 +43,26 @@ export function ShotSetupDialog({
   latest.current = shot;
   const chatEnd = useRef<HTMLDivElement | null>(null);
 
+  // Mentor turns run in the background: closing or minimising this window
+  // doesn't stop them, and the answer lands on the shot when it's ready.
   const talk = async (message?: string) => {
-    setBusy(true);
+    if (!bg) return;
+    setStarting(true);
     setError(null);
+    setPending(message ?? null);
     try {
-      await flush();
-      const m: MentorState = await api.mentorTurn(screenplayId, shot.id, message);
-      onPatch({ mentor: m }, 'mentor');
+      await bg.startMentor(shot.id, message);
     } catch (e) {
       setError(msg(e));
+      setPending(null);
     } finally {
-      setBusy(false);
+      setStarting(false);
     }
   };
+  // The writer's message shows until the mentor's answer (which includes it) arrives.
+  useEffect(() => {
+    if (!busy) setPending(null);
+  }, [busy]);
 
   // The mentor opens the conversation.
   const opened = useRef(false);
@@ -65,7 +74,7 @@ export function ShotSetupDialog({
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ block: 'end' });
-  }, [mentor?.messages.length, busy]);
+  }, [mentor?.messages.length, busy, pending]);
 
   const setField = (field: SetupField, value: string | undefined) => {
     const next: ShotSetup = { ...(latest.current.setup ?? {}) };
@@ -106,6 +115,11 @@ export function ShotSetupDialog({
             )}
           </span>
           <span className="sp-grow" />
+          {busy && (
+            <button className="btn" onClick={onClose} title="Keep working: the mentor's answer will be waiting on this shot">
+              <Minimize2 size={14} /> Run in background
+            </button>
+          )}
           <button className="btn" onClick={onGenerate} title="Draw this frame with AI from the shot list">
             <Dices size={14} /> Generate with AI
           </button>
@@ -181,9 +195,15 @@ export function ShotSetupDialog({
                   </div>
                 </div>
               ))}
+            {pending && busy && <div className="sp-setup-msg writer">{pending}</div>}
             {busy && (
               <div className="sp-setup-msg mentor thinking">
-                <Loader2 size={13} className="spin" /> Thinking…
+                <Loader2 size={13} className="spin" /> {job?.progress || 'Thinking…'}
+              </div>
+            )}
+            {job?.status === 'failed' && (
+              <div className="sp-shot-warn">
+                <AlertTriangle size={12} /> {job.error}
               </div>
             )}
             <div ref={chatEnd} />

@@ -175,8 +175,15 @@ function ShotCard({
     const open = (e: Event) => {
       if ((e as CustomEvent<string>).detail === shot.id) setSettingUp(true);
     };
+    const find = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === shot.id) setFinding(true);
+    };
     window.addEventListener('sp-setup-shot', open);
-    return () => window.removeEventListener('sp-setup-shot', open);
+    window.addEventListener('sp-open-finder', find);
+    return () => {
+      window.removeEventListener('sp-setup-shot', open);
+      window.removeEventListener('sp-open-finder', find);
+    };
   }, [shot.id]);
   const { screenplayId } = useScreenplayActions();
   const [summarizing, setSummarizing] = useState(false);

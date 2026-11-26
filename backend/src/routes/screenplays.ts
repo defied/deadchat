@@ -11,10 +11,10 @@ import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
 import { summarizeShot } from '../services/screenplay/summarize';
-import { mentorTurn } from '../services/screenplay/mentor';
+import { createMentorJob, getMentorJob, markApplied, openMentorJobs } from '../services/screenplay/mentorJobs';
 import { SETUP_FIELDS, cleanSetup, type SetupField } from '../services/screenplay/cinema';
 import type { MentorState } from '../services/screenplay/types';
-import { createFind, findMore, getFind, keepFound, latestFind, ownQueries, propTarget } from '../services/screenplay/finds/finder';
+import { activeFinds, createFind, findMore, getFind, keepFound, latestFind, ownQueries, propTarget } from '../services/screenplay/finds/finder';
 import { queueLines, voiceTarget } from '../services/screenplay/voices';
 import { suggestShots } from '../services/screenplay/suggestShots';
 import { getLatestCharacterAsset, listCharacters as listStudioCharacters } from '../services/characters';
@@ -518,14 +518,37 @@ router.post('/:id/shots/summary', owned, (req, res) =>
 );
 
 // The shot mentor: one turn of the conversation about how to set up this shot.
+// Runs in the background: returns the job; poll it, then apply its result to the shot.
 router.post('/:id/shots/:shotId/mentor', owned, (req, res) =>
-  wrap(res, async () => {
+  wrap(res, () => {
     const s = sp(res);
     const shot = s.doc.shots.find((x) => x.id === id(req.params.shotId));
     if (!shot) throw new Error('That shot no longer exists. Save and try again.');
-    return { mentor: await mentorTurn(s, shot, str(req.body?.message, 1000) ?? undefined) };
+    return { job: createMentorJob(s.id, shot.id, str(req.body?.message, 1000) ?? undefined) };
   }),
 );
+
+router.get('/:id/mentor-jobs', owned, (_req, res) => wrap(res, () => ({ jobs: openMentorJobs(sp(res).id) })));
+
+router.get('/:id/mentor-jobs/:jid', owned, (req, res) =>
+  wrap(res, () => {
+    const j = getMentorJob(Number(req.params.jid));
+    if (!j || j.screenplay_id !== sp(res).id) throw new Error('Not found');
+    return { job: j };
+  }),
+);
+
+router.post('/:id/mentor-jobs/:jid/applied', owned, (req, res) =>
+  wrap(res, () => {
+    const j = getMentorJob(Number(req.params.jid));
+    if (!j || j.screenplay_id !== sp(res).id) throw new Error('Not found');
+    markApplied(j.id);
+    return { ok: true };
+  }),
+);
+
+// Searches still running or finished recently, for the background tasks tray.
+router.get('/:id/finds/active', owned, (_req, res) => wrap(res, () => ({ finds: activeFinds(sp(res).id) })));
 
 // Recreate a shot's picked photo with the film's characters and props (FLUX.2 multi-reference).
 router.get('/:id/shots/:shotId/recreate', owned, (req, res) =>
