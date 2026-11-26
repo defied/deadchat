@@ -137,6 +137,7 @@ export function ShotFinder({
                 {pick.check ? (
                   <strong title={`Shows: ${pick.check.sees}`}>
                     {pick.check.score}/10 · {pick.check.missing ? `Missing: ${pick.check.missing}` : 'Shows everything asked for'}
+                    {pick.check.framing ? ` · ${pick.check.framing.seen}${pick.check.framing.match === 'yes' ? ' ✓' : pick.check.framing.match === 'no' ? ' (not the shot type)' : ''}` : ''}
                   </strong>
                 ) : (
                   <strong title={pick.title}>{pick.title}</strong>
@@ -259,7 +260,11 @@ export function Tile({ c, selected, isFrame, onSelect }: { c: ImageCandidate; se
     <button
       className={`sp-find-tile ${selected ? 'on' : ''}`}
       onClick={onSelect}
-      title={c.check ? `Shows: ${c.check.sees}${c.check.missing ? `\nMissing: ${c.check.missing}` : ''}` : `${c.title}${c.creator ? ` · ${c.creator}` : ''}`}
+      title={
+        c.check
+          ? `Shows: ${c.check.sees}${c.check.missing ? `\nMissing: ${c.check.missing}` : ''}${c.check.framing ? `\nFraming: ${c.check.framing.seen} (${c.check.framing.match === 'yes' ? 'matches the shot type' : c.check.framing.match === 'close' ? 'close to the shot type' : 'not the shot type'})` : ''}`
+          : `${c.title}${c.creator ? ` · ${c.creator}` : ''}`
+      }
       aria-pressed={selected}
     >
       <img src={c.thumbUrl} alt={c.title} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />

@@ -13,6 +13,7 @@ const KEY_DEFAULT_VIDEO = 'media.default_video_model';
 const KEY_ENHANCE = 'media.enhance_default';
 const KEY_PEXELS = 'media.pexels_api_key';
 const KEY_UNSPLASH = 'media.unsplash_access_key';
+const KEY_SHOT_MODEL = 'media.shot_check_model';
 
 /** Cloudflare's free Workers AI allocation, reset 00:00 UTC. */
 export const CLOUDFLARE_FREE_NEURONS = 10_000;
@@ -59,6 +60,11 @@ export function getPhotoKeys(): { pexels: string | null; unsplash: string | null
   return { pexels: getSecret(KEY_PEXELS, 'PEXELS_API_KEY'), unsplash: getSecret(KEY_UNSPLASH, 'UNSPLASH_ACCESS_KEY') };
 }
 
+/** The cinematography model for the shot finder's framing check, if one is set. */
+export function getShotCheckModel(): string | null {
+  return get(KEY_SHOT_MODEL) || process.env.SHOT_CHECK_MODEL || null;
+}
+
 export function getCloudflareCredentials(): { accountId: string; token: string } | null {
   const accountId = get(KEY_CF_ACCOUNT) || process.env.CLOUDFLARE_ACCOUNT_ID || '';
   const token = getSecret(KEY_CF_TOKEN, 'CLOUDFLARE_API_TOKEN');
@@ -98,6 +104,8 @@ export interface MediaSettings {
   enhanceByDefault: boolean;
   pexelsSet: boolean;
   unsplashSet: boolean;
+  /** Ollama model that judges cinematography (shot size, framing, angle), e.g. ShotVL. Empty = off. */
+  shotCheckModel: string | null;
 }
 
 export function getMediaSettings(): MediaSettings {
@@ -114,6 +122,7 @@ export function getMediaSettings(): MediaSettings {
     enhanceByDefault: get(KEY_ENHANCE) !== '0',
     pexelsSet: !!getPhotoKeys().pexels,
     unsplashSet: !!getPhotoKeys().unsplash,
+    shotCheckModel: getShotCheckModel(),
   };
 }
 
@@ -126,7 +135,9 @@ export function updateMediaSettings(patch: {
   enhanceByDefault?: boolean;
   pexelsKey?: string | null;
   unsplashKey?: string | null;
+  shotCheckModel?: string | null;
 }): MediaSettings {
+  if (patch.shotCheckModel !== undefined) put(KEY_SHOT_MODEL, patch.shotCheckModel?.trim() || null);
   if (patch.pexelsKey !== undefined) putSecret(KEY_PEXELS, patch.pexelsKey);
   if (patch.unsplashKey !== undefined) putSecret(KEY_UNSPLASH, patch.unsplashKey);
   if (patch.apiKey !== undefined) setComfyApiKey(patch.apiKey);

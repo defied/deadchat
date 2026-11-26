@@ -107,6 +107,7 @@ router.put('/settings', adminOnly, (req: Request, res: Response): void => {
     cloudflareAccountId: b.cloudflareAccountId === undefined ? undefined : (b.cloudflareAccountId as string | null) || null,
     cloudflareToken: b.cloudflareToken === undefined ? undefined : (b.cloudflareToken as string | null) || null,
     pexelsKey: b.pexelsKey === undefined ? undefined : typeof b.pexelsKey === 'string' && b.pexelsKey.trim() ? b.pexelsKey.trim().slice(0, 200) : null,
+    shotCheckModel: b.shotCheckModel === undefined ? undefined : typeof b.shotCheckModel === 'string' && b.shotCheckModel.trim() ? b.shotCheckModel.trim().slice(0, 120) : null,
     unsplashKey: b.unsplashKey === undefined ? undefined : typeof b.unsplashKey === 'string' && b.unsplashKey.trim() ? b.unsplashKey.trim().slice(0, 200) : null,
   });
   invalidateAvailability();

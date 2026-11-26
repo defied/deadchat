@@ -523,7 +523,7 @@ export interface ImageCandidate {
   height: number | null;
   query: string;
   /** The vision model's look at the photo: 0–10, what it shows, what's missing. */
-  check?: { score: number; sees: string; missing: string };
+  check?: { score: number; sees: string; missing: string; framing?: { seen: string; match: 'yes' | 'close' | 'no' } };
 }
 
 export interface ShotFind {
