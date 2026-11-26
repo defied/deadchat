@@ -1089,3 +1089,15 @@ test('people optional: the brief says so, and searches and checklists leave peop
   }
   assert.equal(cleanDoc({ elements: [{ id: 'a1', type: 'action', text: 'x' }], shots: [{ id: 's', anchorId: 'a1', peopleOptional: true }] }).shots[0].peopleOptional, true);
 });
+
+test('the checklist drops a bare time of day and keeps three items', async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ message: { content: JSON.stringify({ items: ['scrolling on phone', 'apartment building', 'day', 'city skyline'] }) } }))) as typeof fetch;
+    const brief = 'Setting: Exterior, city skyline, day\nMoment: X exits an apartment building, scrolling on his phone.';
+    assert.deepEqual(await finder.makeChecklist(brief, []), ['scrolling on phone', 'apartment building', 'city skyline']);
+    assert.deepEqual(await finder.makeChecklist(brief, ['day']), ['scrolling on phone', 'apartment building', 'day'], 'unless a note asks for it');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
