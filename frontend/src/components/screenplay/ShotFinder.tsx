@@ -133,7 +133,13 @@ export function ShotFinder({
           <div className="sp-find-credit">
             {pick ? (
               <>
-                <strong title={pick.title}>{pick.title}</strong>
+                {pick.check ? (
+                  <strong title={`Shows: ${pick.check.sees}`}>
+                    {pick.check.score}/10 · {pick.check.missing ? `Missing: ${pick.check.missing}` : 'Shows everything asked for'}
+                  </strong>
+                ) : (
+                  <strong title={pick.title}>{pick.title}</strong>
+                )}
                 <span>
                   {pick.creator ? `${pick.creator} · ` : ''}
                   {pick.sourceName} ·{' '}
@@ -204,6 +210,7 @@ export function ShotFinder({
             {running || !find ? (
               <>
                 <Loader2 size={16} className="spin" /> {find?.progress || 'Starting…'}
+                <span className="field-hint">Each photo is looked at to check it matches, so this can take a minute or two.</span>
               </>
             ) : (
               find.progress || 'No photos yet.'
@@ -232,10 +239,15 @@ export function Tile({ c, selected, isFrame, onSelect }: { c: ImageCandidate; se
   const [broken, setBroken] = useState(false);
   if (broken) return null;
   return (
-    <button className={`sp-find-tile ${selected ? 'on' : ''}`} onClick={onSelect} title={`${c.title}${c.creator ? ` · ${c.creator}` : ''}`} aria-pressed={selected}>
+    <button
+      className={`sp-find-tile ${selected ? 'on' : ''}`}
+      onClick={onSelect}
+      title={c.check ? `Shows: ${c.check.sees}${c.check.missing ? `\nMissing: ${c.check.missing}` : ''}` : `${c.title}${c.creator ? ` · ${c.creator}` : ''}`}
+      aria-pressed={selected}
+    >
       <img src={c.thumbUrl} alt={c.title} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
       <span className="sp-find-tile-meta">
-        {c.sourceName} · {c.license.name}
+        {c.check ? <b className={`sp-find-score s${Math.min(10, Math.max(0, c.check.score))}`}>{c.check.score}/10</b> : null} {c.sourceName} · {c.license.name}
       </span>
       {selected && (
         <span className="sp-find-tick">

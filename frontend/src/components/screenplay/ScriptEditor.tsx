@@ -6,6 +6,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Clapperboard } from 'lucide-react';
 import type { Character, Detail, ElementType, ScreenplayDoc, ScriptElement, Shot } from '../../api/screenplays';
+import { summarizeShot } from '../../api/screenplays';
 import {
   ELEMENTS,
   ENTER_NEXT,
@@ -22,6 +23,7 @@ import {
   pageStarts,
   sceneNumbers,
   shotBlocks,
+  sortShots,
   syncPlaceholders,
   titleCase,
 } from './format';
@@ -44,7 +46,8 @@ interface Props {
 
 export interface EditorApi {
   setType: (t: ElementType) => void;
-  addShot: () => void;
+  /** Make a shot from the highlighted script text; false when nothing is highlighted. */
+  addShot: () => boolean;
   focusElement: (id: string) => void;
 }
 
@@ -62,7 +65,7 @@ const Row = memo(function Row({
   onText,
   onKey,
   onFocus,
-  onAddShot,
+  onSelectText,
   register,
 }: {
   el: ScriptElement;
@@ -77,7 +80,7 @@ const Row = memo(function Row({
   onText: (index: number, text: string, caret: number) => void;
   onKey: (e: KeyboardEvent<HTMLTextAreaElement>, index: number) => void;
   onFocus: (index: number) => void;
-  onAddShot: (index: number) => void;
+  onSelectText: (index: number, node: HTMLTextAreaElement) => void;
   register: (id: string, node: HTMLTextAreaElement | null) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -111,12 +114,10 @@ const Row = memo(function Row({
           onChange={(e) => onText(index, e.target.value, e.target.selectionStart)}
           onKeyDown={(e) => onKey(e, index)}
           onFocus={() => onFocus(index)}
+          onSelect={(e) => canShot && onSelectText(index, e.currentTarget)}
+          onBlur={(e) => onSelectText(index, e.currentTarget)}
         />
-        {canShot && !hasShot && (
-          <button className="sp-addshot" title="Add a storyboard shot here" onClick={() => onAddShot(index)} tabIndex={-1}>
-            <Clapperboard size={13} /> Shot
-          </button>
-        )}
+        {hasShot && <Clapperboard size={11} className="sp-row-shotmark" aria-hidden />}
       </div>
     </>
   );
@@ -303,26 +304,39 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
     [update],
   );
 
-  const addShotAt = useCallback(
-    (index: number) => {
-      const el = elsRef.current[index];
-      if (!el) return;
-      update((d) => {
-        if (d.shots.some((s) => s.anchorId === el.id)) return d;
-        // Keep shots in script order.
-        const order = new Map(d.elements.map((e, i) => [e.id, i]));
-        const shots = [...d.shots, { id: newId('sh'), anchorId: el.id } as Shot].sort(
-          (a, b) => (order.get(a.anchorId) ?? 0) - (order.get(b.anchorId) ?? 0),
-        );
-        return { ...d, shots };
-      });
-    },
-    [update],
-  );
+  // Shots are made from highlighted script text: the highlight is the shot.
+  const [sel, setSel] = useState<{ index: number; start: number; end: number; top: number } | null>(null);
+  const onSelectText = useCallback((index: number, node: HTMLTextAreaElement) => {
+    const page = pageRef.current;
+    const { selectionStart: start, selectionEnd: end } = node;
+    if (document.activeElement !== node || end <= start || !node.value.slice(start, end).trim() || !page) {
+      setSel((cur) => (cur?.index === index ? null : cur));
+      return;
+    }
+    setSel({ index, start, end, top: node.getBoundingClientRect().top - page.getBoundingClientRect().top });
+  }, []);
+
+  const addShotFromSelection = useCallback((): boolean => {
+    const cur = sel;
+    const el = cur ? elsRef.current[cur.index] : null;
+    if (!cur || !el) return false;
+    const excerpt = el.text.slice(cur.start, cur.end).trim();
+    if (!excerpt) return false;
+    const id = newId('sh');
+    let heading = '';
+    for (let i = cur.index; i >= 0; i--) if (elsRef.current[i].type === 'scene') { heading = elsRef.current[i].text; break; }
+    update((d) => ({ ...d, shots: sortShots([...d.shots, { id, anchorId: el.id, excerpt } as Shot], d.elements) }));
+    setSel(null);
+    // The agent writes what's in the shot; the writer can edit it.
+    void summarizeShot(screenplayId, heading, excerpt)
+      .then((summary) => update((d) => ({ ...d, shots: d.shots.map((s) => (s.id === id && !s.summary ? { ...s, summary } : s)) }), `shot:${id}:summary`))
+      .catch(() => update((d) => ({ ...d, shots: d.shots.map((s) => (s.id === id && !s.summary ? { ...s, summary: excerpt } : s)) }), `shot:${id}:summary`));
+    return true;
+  }, [sel, update, screenplayId]);
 
   apiRef.current = {
     setType: (t) => setType(current, t),
-    addShot: () => addShotAt(current),
+    addShot: addShotFromSelection,
     focusElement: (id) => focusEl(id, 'end'),
   };
 
@@ -493,10 +507,21 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
             onText={onText}
             onKey={onKey}
             onFocus={onFocus}
-            onAddShot={addShotAt}
+            onSelectText={onSelectText}
             register={register}
           />
         ))}
+        {sel && (
+          <button
+            className="sp-shot-from-sel"
+            style={{ top: sel.top }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => addShotFromSelection()}
+            title="Make a storyboard shot of the highlighted text"
+          >
+            <Clapperboard size={13} /> Shot from highlight
+          </button>
+        )}
         {suggest && suggestPos && (
           <ul className="sp-suggest" style={suggestPos} role="listbox">
             {suggest.items.map((s, i) => (

@@ -21,6 +21,10 @@ export interface Shot {
   id: string;
   anchorId: string;
   type?: string;
+  /** The script text the writer highlighted for this shot. */
+  excerpt?: string;
+  /** What's in the shot, in a sentence (the agent's, editable). */
+  summary?: string;
   seconds?: number;
   lens?: number;
   lensType?: string;
@@ -516,6 +520,8 @@ export interface ImageCandidate {
   width: number | null;
   height: number | null;
   query: string;
+  /** The vision model's look at the photo: 0–10, what it shows, what's missing. */
+  check?: { score: number; sees: string; missing: string };
 }
 
 export interface ShotFind {
@@ -620,4 +626,10 @@ export function recreatedFrom(m: ScreenplayMedia | undefined | null): { from: nu
   } catch {
     return null;
   }
+}
+
+/** The agent's one- or two-sentence summary of a highlighted shot. */
+export async function summarizeShot(id: number, heading: string, excerpt: string): Promise<string> {
+  const { data } = await client.post<{ summary: string }>(`/api/screenplays/${id}/shots/summary`, { heading, excerpt });
+  return data.summary;
 }

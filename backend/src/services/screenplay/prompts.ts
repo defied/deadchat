@@ -243,9 +243,10 @@ export function planShot(
 ): ShotPlan {
   const section = shotSection(doc, shot);
   if (!section) return { waiting: 'This shot’s script line was deleted', characters: [] };
-  const blockHash = hashOf(section.scene?.text ?? '', section.elements.map((e) => [e.type, e.text]));
+  const blockHash = hashOf(section.scene?.text ?? '', section.elements.map((e) => [e.type, e.text]), shot.summary ?? '');
   if (!shot.type?.trim()) return { waiting: 'Pick a shot type to render', characters: [], blockHash };
-  const action = visualText(section.elements);
+  // The shot's summary (what's in it), when there is one; else its script text.
+  const action = shot.summary?.trim() || visualText(section.elements);
   const h = section.heading;
   if (!action && !h?.location) return { waiting: 'Describe the scene in the script to render', characters: [], blockHash };
 

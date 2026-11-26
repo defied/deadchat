@@ -5,7 +5,8 @@
 // it with the film's characters and props.
 
 import db from '../../../db/connection';
-import { llmJson } from '../../influencers/llm';
+import { asString, llmJson } from '../../influencers/llm';
+import { getActiveModel, getModelCapabilities } from '../../chatModels';
 import { getPhotoKeys } from '../../media/settings';
 import * as store from '../store';
 import { presentCharacters, shotSection, visualText } from '../script';
@@ -19,6 +20,10 @@ export interface FindPlan {
   queries: string[];
   /** The writer typed these searches: used exactly, nothing planned. */
   own?: boolean;
+  /** Photos the vision check turned down (not checked again). */
+  rejected?: string[];
+  /** The vision check couldn't run (no vision model): photos are unchecked. */
+  unchecked?: boolean;
   /** The adjustment notes the search followed. */
   notes: string[];
 }
@@ -87,7 +92,7 @@ export function shotBrief(sp: Screenplay, shot: Shot): string {
   });
   return [
     h ? `Setting: ${[h.setting, h.location, h.time].filter(Boolean).join(', ')}` : sec.scene?.text ? `Setting: ${sec.scene.text}` : '',
-    action ? `Moment: ${firstMoment(action, 40)}` : '',
+    shot.summary?.trim() ? `Moment: ${shot.summary.trim()}` : action ? `Moment: ${firstMoment(action, 40)}` : '',
     people.length ? `People (never use their names): ${people.join('; ')}` : '',
   ]
     .filter(Boolean)
@@ -298,7 +303,7 @@ export function resumeFinds(): void {
 }
 
 /** Injected in tests. */
-export const deps = { planFind, searchOpenverseImages, searchPexels, searchUnsplash, keys: getPhotoKeys };
+export const deps = { planFind, searchOpenverseImages, searchPexels, searchUnsplash, keys: getPhotoKeys, checkImage: (c: ImageCandidate, wanted: string) => checkImage(c, wanted) };
 
 async function run(id: number): Promise<void> {
   const f = getFind(id)!;
@@ -321,7 +326,7 @@ async function run(id: number): Promise<void> {
   // Props: any shape (the object matters, not the framing). Shots: the film's frame.
   const ratio = prop ? 1 : (RATIO[sp.doc.settings.ratio ?? '21:9'] ?? 16 / 9);
   const opts = (page: number): SearchOpts => ({ page, wide: ratio > 1.2, keys: deps.keys() });
-  const seen = new Set(f.candidates.map((c) => c.key));
+  const seen = new Set([...f.candidates.map((c) => c.key), ...(plan.rejected ?? [])]);
   // The same photo uploaded several times (same title and size) shows once.
   const twin = (c: ImageCandidate) => `${c.sourceName}|${c.title.toLowerCase().replace(/\W+/g, ' ').trim()}|${c.width}x${c.height}`;
   const twins = new Set(f.candidates.map(twin));
@@ -354,29 +359,100 @@ async function run(id: number): Promise<void> {
     }
     if (!any) break;
   }
-  // Best first, but no more than four from one search so the ten stay varied.
+  // Best first by the words; then the vision model looks at each photo and
+  // keeps those that really show the shot (no more than four from one search).
   const ranked = [...found.values()].sort((a, b) => scoreImage(b, plan, ratio) - scoreImage(a, plan, ratio));
+  const wanted = prop ? `A photo of ${prop.name}${prop.description?.trim() ? `: ${prop.description.trim()}` : ''}` : lookOf(shotBrief(sp, shot!), activeAdjustments(shot!)) || plan.queries.join(', ');
   const perQuery = new Map<string, number>();
   const picked: ImageCandidate[] = [];
+  const rejected = [...(plan.rejected ?? [])];
+  let checked = 0;
+  let unchecked = !!plan.unchecked;
+  const budget = Math.min(ranked.length, MAX_CHECKS);
   for (const c of ranked) {
-    if (picked.length >= PER_ROUND) break;
-    const n = perQuery.get(c.query) ?? 0;
-    if (n >= 4) continue;
-    perQuery.set(c.query, n + 1);
+    if (picked.length >= PER_ROUND || checked >= MAX_CHECKS) break;
+    if ((perQuery.get(c.query) ?? 0) >= 4) continue;
+    if (!unchecked) {
+      checked++;
+      save(id, { status: 'searching', progress: `Looking at photo ${checked} of up to ${budget} (${picked.length} match${picked.length === 1 ? 'es' : ''} so far)…` });
+      try {
+        c.check = await deps.checkImage(c, wanted);
+      } catch (e) {
+        if ((e as Error).message === NO_VISION) unchecked = true;
+        else continue; // photo wouldn't load: skip it
+      }
+      if (c.check && c.check.score < MIN_SCORE) {
+        rejected.push(c.key);
+        continue;
+      }
+    }
+    perQuery.set(c.query, (perQuery.get(c.query) ?? 0) + 1);
     picked.push(c);
   }
-  for (const c of ranked) if (picked.length < PER_ROUND && !picked.includes(c)) picked.push(c);
+  if (unchecked) for (const c of ranked) if (picked.length < PER_ROUND && !picked.includes(c) && !rejected.includes(c.key)) picked.push(c);
+  if (!unchecked) picked.sort((a, b) => (b.check?.score ?? 0) - (a.check?.score ?? 0));
 
   const candidates = [...f.candidates, ...picked];
   if (!picked.length && !f.candidates.length && errors.length) throw new Error(errors.join(' · '));
+  const matched = unchecked ? `${candidates.length} photos (not checked: the chat model can’t see images)` : `${candidates.length} photo${candidates.length === 1 ? '' : 's'} that match`;
   save(id, {
     status: 'done',
     candidates,
     page,
-    progress: picked.length ? `${candidates.length} photos` : f.candidates.length ? 'No more photos for these searches. Try an adjustment note and search again.' : 'No photos found. Try an adjustment note and search again.',
+    plan: { ...plan, rejected: rejected.slice(-400), unchecked: unchecked || undefined },
+    progress: picked.length
+      ? `${matched}${checked ? ` · looked at ${checked} this time` : ''}`
+      : f.candidates.length
+        ? `No more matching photos${checked ? ` (looked at ${checked})` : ''}. Try other search words or an adjustment note.`
+        : `No matching photos${checked ? ` (looked at ${checked})` : ''}. Try other search words or an adjustment note.`,
     error: errors.length ? errors.join(' · ') : null,
     finished_at: new Date().toISOString(),
   });
+}
+
+// ── the vision check ─────────────────────────────────────────────────────────
+
+/** Photos scoring below this (0–10) aren't shown. */
+export const MIN_SCORE = 6;
+/** Photos looked at per round, at most. */
+const MAX_CHECKS = 30;
+const NO_VISION = 'no-vision';
+
+export interface ImageCheck {
+  /** 0–10: how well the photo shows what's wanted. */
+  score: number;
+  /** What's in the photo, briefly. */
+  sees: string;
+  /** What the shot needs that the photo lacks ('' when nothing). */
+  missing: string;
+}
+
+const CHECK_SYSTEM =
+  'You check photos for a film storyboard. You get what the shot needs and a photo. Look carefully at what is actually in the photo, ' +
+  'then score from 0 to 10 how well it could stand in for the shot: the right kind of subject doing the right thing in the right kind of ' +
+  'place, as described. Names in the description are characters: any person of the right kind counts. 10 = shows all of it; ' +
+  '7 = the main subject and action, minor differences; 5 = only the place or only the subject; 2 = loosely related; 0 = unrelated. ' +
+  'Be strict: a photo that merely shares a word with the description scores low. ' +
+  'Return {"score": n, "sees": "what the photo shows, under 15 words", "missing": "what the shot needs that the photo lacks, under 12 words, or empty"}.';
+
+let visionOk: { model: string; ok: boolean } | null = null;
+
+/** Ask the vision model how well a photo (its thumbnail) shows what's wanted. */
+export async function checkImage(c: Pick<ImageCandidate, 'thumbUrl'>, wanted: string): Promise<ImageCheck> {
+  const model = getActiveModel();
+  if (visionOk?.model !== model) visionOk = { model, ok: (await getModelCapabilities(model).catch(() => [] as string[])).includes('vision') };
+  if (!visionOk.ok) throw new Error(NO_VISION);
+  const r = await fetch(c.thumbUrl, { headers: { 'User-Agent': 'DeadChat/1.0 (self-hosted screenplay tool)' }, redirect: 'follow', signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`thumbnail ${r.status}`);
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (buf.length > 8 * 1024 * 1024) throw new Error('thumbnail too large');
+  const out = await llmJson<{ score?: unknown; sees?: unknown; missing?: unknown }>(CHECK_SYSTEM, `The shot needs: ${wanted}`, {
+    images: [buf.toString('base64')],
+    temperature: 0,
+  });
+  const score = Math.max(0, Math.min(10, Number(out.score)));
+  if (!Number.isFinite(score)) throw new Error('no score');
+  return { score: Math.round(score), sees: asString(out.sees, 160), missing: asString(out.missing, 120) };
 }
 
 // ── keeping a pick ───────────────────────────────────────────────────────────

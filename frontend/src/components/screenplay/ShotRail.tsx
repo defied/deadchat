@@ -6,10 +6,10 @@ import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'reac
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, Search, Sparkles, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
-import { LENS_TYPES, foundMeta, isVoiceRow, recreatedFrom, soundMeta, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
+import { LENS_TYPES, foundMeta, isVoiceRow, recreatedFrom, soundMeta, summarizeShot, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
 import { useScreenplayActions } from './actions';
 import { Modal } from '../ui';
-import { SHOT_TYPES, newId, timecode } from './format';
+import { SHOT_TYPES, newId, sortShots, timecode } from './format';
 import { MusicButton, SpImage } from './media';
 import { AdjustmentNotes } from './AdjustmentNotes';
 import { ShotFinder } from './ShotFinder';
@@ -41,8 +41,8 @@ export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFo
 
   const order = useMemo(() => new Map(doc.elements.map((e, i) => [e.id, i])), [doc.elements]);
   const shots = useMemo(
-    () => doc.shots.filter((s) => order.has(s.anchorId)).sort((a, b) => order.get(a.anchorId)! - order.get(b.anchorId)!),
-    [doc.shots, order],
+    () => sortShots(doc.shots.filter((s) => order.has(s.anchorId)), doc.elements),
+    [doc.shots, doc.elements, order],
   );
   const starts = useMemo(() => {
     let t = 0;
@@ -108,8 +108,8 @@ export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFo
         <div className="sp-rail-empty">
           <Clapperboard size={18} />
           <p>
-            Hover a scene heading or action line and click <strong>Shot</strong> to pin a storyboard shot to it. Then <strong>Find a shot</strong> to
-            pick a matching photo for its frame (and recreate it with your cast and props), or draw one from scratch with AI.
+            Highlight the part of the script a shot shows and click <strong>Shot from highlight</strong>. The agent sums up what’s in it; adjust that,
+            then <strong>Find a shot</strong> to pick a matching photo for its frame (and recreate it with your cast and props), or draw one with AI.
           </p>
         </div>
       )}
@@ -135,6 +135,7 @@ export function ShotRail({ doc, detail, update, nodes, pageRef, onOpenPlan, onFo
             onPlan={() => onOpenPlan(sceneOf(s.anchorId), s.id)}
             onFocus={() => onFocusAnchor(s.anchorId)}
             onRefresh={() => onRefresh(s.id)}
+            heading={doc.elements.find((e) => e.id === sceneOf(s.anchorId))?.text ?? ''}
           />
         </div>
       ))}
@@ -152,7 +153,9 @@ function ShotCard({
   onPlan,
   onFocus,
   onRefresh,
+  heading,
 }: {
+  heading: string;
   shot: Shot;
   number: number;
   start: number;
@@ -165,6 +168,19 @@ function ShotCard({
 }) {
   const [open, setOpen] = useState(false);
   const [finding, setFinding] = useState(false);
+  const { screenplayId } = useScreenplayActions();
+  const [summarizing, setSummarizing] = useState(false);
+  const resummarize = async () => {
+    if (!shot.excerpt) return;
+    setSummarizing(true);
+    try {
+      onPatch({ summary: await summarizeShot(screenplayId, heading, shot.excerpt) }, 'summary');
+    } catch {
+      /* keep what's there */
+    } finally {
+      setSummarizing(false);
+    }
+  };
   const [recreating, setRecreating] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -254,6 +270,25 @@ function ShotCard({
         </button>
       </div>
 
+      <div className="sp-shot-summary" title={shot.excerpt ? `Highlighted: “${shot.excerpt}”` : undefined}>
+        <span className="sp-adj-head">
+          In this shot
+          {(summarizing || (shot.excerpt && shot.summary === undefined)) && <Loader2 size={11} className="spin" aria-label="Summarizing" />}
+          <span className="sp-grow" />
+          {shot.excerpt && (
+            <button className="icon-btn" title="Summarize the highlighted text again" onClick={() => void resummarize()} disabled={summarizing}>
+              <RefreshCw size={11} />
+            </button>
+          )}
+        </span>
+        <textarea
+          rows={2}
+          value={shot.summary ?? ''}
+          placeholder={shot.excerpt ? 'Summarizing the highlighted text…' : 'What the camera sees, e.g. “Jane grips a knife at the kitchen counter.”'}
+          onChange={(e) => onPatch({ summary: e.target.value }, 'summary')}
+          aria-label="What's in this shot"
+        />
+      </div>
       {!ready?.media_id && !pending && !recreatePending ? (
         <div className="sp-frame sp-frame-start">
           <span>{plan?.blocked ?? 'No frame yet'}</span>

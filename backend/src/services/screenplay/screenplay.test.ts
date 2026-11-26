@@ -940,3 +940,96 @@ test('single-thing searches get one that puts the subject in its place', () => {
   assert.deepEqual(finder.withMoment(['man phone street', 'street']), ['man phone street', 'street']);
   assert.deepEqual(finder.withMoment(['phone']), ['phone']);
 });
+
+// ── highlighted shots ──
+
+test('a highlighted shot covers only its highlight; its summary drives the search and the drawing', async () => {
+  const d = doc();
+  d.elements[1].text = 'Rain hammers the window. JANE stands at the counter, gripping a knife. Lightning flashes outside.';
+  d.shots = [{ id: 'sh1', anchorId: 'a1', type: 'Close-up', excerpt: 'JANE stands at the counter, gripping a knife.' }, { id: 'sh2', anchorId: 'a2', type: 'Medium' }];
+  const sec = script.shotSection(d, d.shots[0])!;
+  assert.deepEqual(sec.elements.map((e) => e.text), ['JANE stands at the counter, gripping a knife.']);
+  const plan = prompts.planShot(d, d.shots[0]);
+  assert.doesNotMatch(plan.prompt!, /Rain|Lightning/, 'nothing outside the highlight');
+  d.shots[0].summary = 'Jane grips a knife at the kitchen counter.';
+  assert.match(prompts.planShot(d, d.shots[0]).prompt!, /A single moment: Jane grips a knife at the kitchen counter\./);
+  assert.notEqual(prompts.planShot(d, d.shots[0]).blockHash, plan.blockHash, 'editing the summary changes the shot');
+  const sp = store.createScreenplay(1, 'Highlight', d);
+  assert.match(finder.shotBrief(sp, sp.doc.shots[0]), /Moment: Jane grips a knife at the kitchen counter\./);
+
+  const summarize = require('./summarize') as typeof import('./summarize');
+  const real = summarize.deps.llmJson;
+  try {
+    let asked = '';
+    summarize.deps.llmJson = (async (_s: string, user: string) => ((asked = user), { summary: 'Jane stands at the counter gripping a knife.' })) as typeof real;
+    assert.equal(await summarize.summarizeShot("INT. JANE'S KITCHEN - NIGHT", 'JANE stands at the counter, gripping a knife.'), 'Jane stands at the counter gripping a knife.');
+    assert.match(asked, /Scene heading: Interior, Jane's kitchen, night\nHighlighted text:\nJANE stands/);
+    summarize.deps.llmJson = (async () => {
+      throw new Error('offline');
+    }) as typeof real;
+    assert.equal(await summarize.summarizeShot('', '  JANE   waits. '), 'JANE waits.', 'without a model the highlight is the summary');
+    await assert.rejects(summarize.summarizeShot('', ' '), /Highlight/);
+  } finally {
+    summarize.deps.llmJson = real;
+  }
+});
+
+test('the vision check keeps only photos that show the shot, best first, and never looks at a turned-down photo twice', async () => {
+  const d = doc();
+  d.shots[0].summary = 'Jane grips a knife at the kitchen counter.';
+  const sp = store.createScreenplay(1, 'Checked', d);
+  const real = { ...finder.deps };
+  try {
+    const looked: string[] = [];
+    let wantedSeen = '';
+    finder.deps.planFind = async (_b, notes) => ({ look: '', queries: ['woman kitchen knife', 'kitchen'], notes });
+    finder.deps.searchOpenverseImages = async (q, o) =>
+      o.page > 2
+        ? []
+        : Array.from({ length: 6 }, (_, i) => ({
+            key: `openverse:${q}-${o.page}-${i}`, source: 'openverse' as const, sourceName: 'Flickr', title: `${q} ${i}`, creator: null,
+            license: { code: 'cc0' as const, name: 'CC0', url: null, commercial: true, derivatives: true, attribution: false, rank: 0 },
+            landingUrl: 'https://x', imageUrl: 'https://x/i.jpg', thumbUrl: `https://x/${q}-${o.page}-${i}.jpg`, width: 2000, height: 900, tags: q.split(' '), query: q, sourceScore: 1 - i / 6,
+          }));
+    finder.deps.searchPexels = async () => [];
+    finder.deps.searchUnsplash = async () => [];
+    // Even-numbered photos match (score 8 or 9), odd ones don't (3).
+    finder.deps.checkImage = async (c, wanted) => {
+      wantedSeen = wanted;
+      looked.push(c.key);
+      const i = Number(c.key.split('-').pop());
+      return i % 2 ? { score: 3, sees: 'a car park', missing: 'the woman and the knife' } : { score: 8 + (i % 4 === 0 ? 1 : 0), sees: 'a woman with a knife', missing: '' };
+    };
+    const wait = async (fid: number) => {
+      for (let i = 0; i < 200; i++) {
+        const x = finder.getFind(fid)!;
+        if (x.status === 'done' || x.status === 'failed') return x;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      throw new Error('timeout');
+    };
+    const f = await wait(finder.createFind(sp, 'sh1').id);
+    assert.match(wantedSeen, /^Jane grips a knife at the kitchen counter\./, 'photos are judged against the shot’s summary');
+    assert.ok(f.candidates.length > 0 && f.candidates.every((c) => c.check!.score >= finder.MIN_SCORE), 'only matches are shown');
+    const scores = f.candidates.map((c) => c.check!.score);
+    assert.deepEqual(scores, [...scores].sort((a, b) => b - a), 'best first');
+    assert.match(f.progress, /photos? that match · looked at \d+ this time/);
+    assert.ok(f.plan.rejected!.length > 0);
+    const before = looked.length;
+    const more = await wait(finder.findMore(f).id);
+    const again = looked.slice(before);
+    assert.ok(again.every((k) => !f.plan.rejected!.includes(k) && !f.candidates.some((c) => c.key === k)), 'turned-down and shown photos aren’t looked at again');
+    assert.ok(more.candidates.length >= f.candidates.length);
+
+    // No vision model: photos are shown unchecked, and the writer is told.
+    finder.deps.checkImage = async () => {
+      throw new Error('no-vision');
+    };
+    const u = await wait(finder.createFind(sp, 'sh1').id);
+    assert.equal(u.candidates.length, 10);
+    assert.equal(u.plan.unchecked, true);
+    assert.match(u.progress, /not checked/);
+  } finally {
+    Object.assign(finder.deps, real);
+  }
+});

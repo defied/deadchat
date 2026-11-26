@@ -10,6 +10,7 @@ import os from 'os';
 import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
+import { summarizeShot } from '../services/screenplay/summarize';
 import { createFind, findMore, getFind, keepFound, latestFind, ownQueries, propTarget } from '../services/screenplay/finds/finder';
 import { queueLines, voiceTarget } from '../services/screenplay/voices';
 import { suggestShots } from '../services/screenplay/suggestShots';
@@ -137,6 +138,8 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     id: id(s?.id),
     anchorId: id(s?.anchorId),
     type: str(s?.type, 120),
+    excerpt: str(s?.excerpt, 4000),
+    summary: str(s?.summary, 1000),
     seconds: num(s?.seconds, 0, 3600),
     lens: num(s?.lens, 8, 800),
     lensType: oneOf(s?.lensType, LENS_TYPE_IDS),
@@ -472,6 +475,15 @@ router.post('/:id/shots/:shotId/finds', owned, (req, res) =>
 );
 
 router.get('/:id/shots/:shotId/finds/latest', owned, (req, res) => wrap(res, () => ({ find: latestFind(sp(res).id, id(req.params.shotId)) })));
+
+// The agent's summary of a highlighted shot (the writer can edit it).
+router.post('/:id/shots/summary', owned, (req, res) =>
+  wrap(res, async () => {
+    const excerpt = (str(req.body?.excerpt, 4000) ?? '').trim();
+    const heading = (str(req.body?.heading, 400) ?? '').trim();
+    return { summary: await summarizeShot(heading, excerpt) };
+  }),
+);
 
 // Recreate a shot's picked photo with the film's characters and props (FLUX.2 multi-reference).
 router.get('/:id/shots/:shotId/recreate', owned, (req, res) =>
