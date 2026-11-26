@@ -32,6 +32,10 @@ export interface FindPlan {
   unchecked?: boolean;
   /** The search was made with people optional. */
   peopleOptional?: boolean;
+  /** Each checklist item's kind: who, action, object or place. */
+  checklistKinds?: string[];
+  /** Each planned search's angle: subject, setting, mood or camera. */
+  angles?: string[];
   /** What a photo must show, most important first: the vision check goes through it item by item. */
   checklist?: string[];
   /** The adjustment notes the search followed. */
@@ -156,7 +160,7 @@ const PLAN_SYSTEM =
   'Rules: each search must find different photos, so do not repeat the same words across searches. Never use character names. ' +
   "Name a real place or landmark only when the script needs that exact place. Don't add story things (objects, events, people) that " +
   'the script, notes or vision do not suggest. Adjustment notes come first. ' +
-  'Return {"queries": [{"q": "...", "why": "which angle and why, under 12 words"}]}.';
+  'Return {"queries": [{"q": "...", "angle": "subject|setting|mood|camera", "why": "why, under 12 words"}]}.';
 
 /** Generic words a query may use even when the script doesn't (people and places in general). */
 const GENERIC = new Set('man men woman women person people boy girl child children kid kids couple crowd young old street room'.split(' '));
@@ -195,9 +199,15 @@ export async function planFind(brief: string, notes: string[], names: string[] =
       `${brief || '(no script for this shot)'}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
       { temperature: 0.4 },
     );
-    const raw = (Array.isArray(out.queries) ? out.queries : []).map((x) =>
-      typeof x === 'string' ? { q: x, why: '' } : { q: String((x as { q?: unknown })?.q ?? ''), why: asString((x as { why?: unknown })?.why, 120) },
-    );
+    const ANGLES = ['subject', 'setting', 'mood', 'camera'];
+    const raw = (Array.isArray(out.queries) ? out.queries : []).map((x, i) => {
+      if (typeof x === 'string') return { q: x, why: '', angle: ANGLES[i] ?? 'subject' };
+      const o = x as { q?: unknown; why?: unknown; angle?: unknown };
+      const why = asString(o.why, 120);
+      const said = String(o.angle ?? '').toLowerCase();
+      const angle = ANGLES.find((a) => said.startsWith(a)) ?? ANGLES.find((a) => why.toLowerCase().includes(a)) ?? ANGLES[i] ?? 'subject';
+      return { q: String(o.q ?? ''), why, angle };
+    });
     let picked = distinct(
       raw
         .map((x) => ({ ...x, q: cleanQuery(strip(x.q)) }))
@@ -205,7 +215,7 @@ export async function planFind(brief: string, notes: string[], names: string[] =
         .filter((x) => x.q.length > 2 && x.q.split(' ').length <= 5),
     );
     picked = picked.slice(0, 4);
-    if (picked.length) return { look, queries: picked.map((x) => x.q), why: picked.map((x) => x.why), notes, ...(peopleOptional(brief) ? { peopleOptional: true } : {}) };
+    if (picked.length) return { look, queries: picked.map((x) => x.q), why: picked.map((x) => x.why), angles: picked.map((x) => x.angle), notes, ...(peopleOptional(brief) ? { peopleOptional: true } : {}) };
   } catch {
     /* fall back to words from the script */
   }
@@ -397,7 +407,7 @@ export const deps = {
   searchPexels,
   searchUnsplash,
   keys: getPhotoKeys,
-  checklist: (brief: string, notes: string[], names: string[]) => makeChecklist(brief, notes, names),
+  checklist: (brief: string, notes: string[], names: string[], kinds?: string[]) => makeChecklist(brief, notes, names, kinds),
   checkImage: (c: ImageCandidate, items: string[]) => checkImage(c, items),
   checkFraming: async (c: ImageCandidate, model: string, shotType: string | undefined, setup?: ShotSetup) => checkFraming(model, await thumbB64(c), shotType, setup),
 };
@@ -463,7 +473,7 @@ async function run(id: number): Promise<void> {
     const names = sp.doc.characters.map((c) => c.name).filter(Boolean);
     plan.checklist = prop
       ? [prop.name.trim(), ...(prop.description?.trim() ? [prop.description.trim()] : [])].slice(0, 2)
-      : await deps.checklist(shotBrief(sp, shot!), activeAdjustments(shot!), names).catch(() => [] as string[]);
+      : await deps.checklist(shotBrief(sp, shot!), activeAdjustments(shot!), names, (plan.checklistKinds = [])).catch(() => [] as string[]);
     if (!plan.checklist.length) plan.checklist = plan.queries.slice(0, 3);
     save(id, { plan });
   }
@@ -484,7 +494,12 @@ async function run(id: number): Promise<void> {
       checked++;
       save(id, { status: 'searching', progress: `Looking at photo ${checked} of up to ${budget} (${picked.length} match${picked.length === 1 ? 'es' : ''} so far)…` });
       try {
-        c.check = await deps.checkImage(c, wanted);
+        // A photo is judged on what its search was for: one found for the setting, mood or camera view
+        // needn't have the person in it, only the place and things.
+        const angle = plan.angles?.[plan.queries.indexOf(c.query)] ?? 'subject';
+        const kinds = plan.checklistKinds ?? [];
+        const scene = wanted.filter((_, i) => kinds[i] === 'place' || kinds[i] === 'object');
+        c.check = await deps.checkImage(c, angle !== 'subject' && scene.length ? scene : wanted);
       } catch (e) {
         if ((e as Error).message === NO_VISION) unchecked = true;
         else continue; // photo wouldn't load: skip it
@@ -566,10 +581,11 @@ const LIST_SYSTEM =
   'You turn one storyboard shot into a short checklist of what a reference photo must show. Give 2 to 4 items, most important first: ' +
   'who (as "a man", "a woman", "a person", "a dog"…, never a name), what they are doing or holding, then where. Each item is 2 to 5 plain ' +
   'words, using only what the shot description says: add nothing of your own. Leave out weather, time of day, clothing and mood unless ' +
-  'the adjustment notes ask for them. Return {"items": ["..."]}.';
+  'the adjustment notes ask for them. Mark each item\'s kind: "who", "action", "object" or "place". ' +
+  'Return {"items": [{"text": "...", "kind": "who|action|object|place"}]}.';
 
 /** The text model's checklist for a shot, kept to the shot's own words (names removed). */
-export async function makeChecklist(brief: string, notes: string[], names: string[] = []): Promise<string[]> {
+export async function makeChecklist(brief: string, notes: string[], names: string[] = [], kindsOut?: string[]): Promise<string[]> {
   const out = await llmJson<{ items?: unknown }>(
     LIST_SYSTEM + (peopleOptional(brief) ? OPTIONAL_LIST : ''),
     `${brief}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
@@ -583,14 +599,22 @@ export async function makeChecklist(brief: string, notes: string[], names: strin
       .split(/\s+/)
       .map(stem),
   );
-  return (Array.isArray(out.items) ? out.items : [])
-    .map((x) => noNames(String(x ?? '')).replace(/\s+/g, ' ').trim().slice(0, 60))
+  const items = (Array.isArray(out.items) ? out.items : []).map((x, i) => {
+    const text = typeof x === 'string' ? x : String((x as { text?: unknown })?.text ?? '');
+    const k = typeof x === 'object' && x ? String((x as { kind?: unknown }).kind ?? '') : '';
+    const kind = /^(who|action|object|place)$/.test(k) ? k : WHO.test(text) ? 'who' : i === 1 ? 'action' : 'place';
+    return { text: noNames(text).replace(/\s+/g, ' ').trim().slice(0, 60), kind };
+  });
+  kindsOut?.splice(0, kindsOut.length);
+  const kept = items
     // Every word must come from the shot (or be a generic who-word).
-    .filter((x) => x.length > 2 && x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean).every((w) => w.length < 3 || allowed.has(stem(w))))
-    .filter((x) => !peopleOptional(brief) || !WHO.test(x))
+    .filter(({ text: x }) => x.length > 2 && x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean).every((w) => w.length < 3 || allowed.has(stem(w))))
+    .filter(({ text: x }) => !peopleOptional(brief) || !WHO.test(x))
     // Time of day isn't something a reference photo needs (unless a note asks for it).
-    .filter((x) => !TIME_ONLY.test(x.trim()) || notes.some((n) => n.toLowerCase().includes(x.trim().toLowerCase())))
+    .filter(({ text: x }) => !TIME_ONLY.test(x.trim()) || notes.some((n) => n.toLowerCase().includes(x.trim().toLowerCase())))
     .slice(0, 3);
+  kindsOut?.push(...kept.map((k) => k.kind));
+  return kept.map((k) => k.text);
 }
 
 const CHECK_SYSTEM =

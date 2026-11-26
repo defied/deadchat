@@ -1358,3 +1358,33 @@ test('reference researcher: reads the shot list and the director’s vision, wri
     globalThis.fetch = realFetch;
   }
 });
+
+test('photos are judged on what their search was for: setting and mood searches needn’t show the person', async () => {
+  const d = doc();
+  d.shots[0].summary = 'Jane grips a knife at the kitchen counter.';
+  const sp = store.createScreenplay(1, 'Angles', d);
+  const real = { ...finder.deps };
+  try {
+    finder.deps.planFind = async (_b, notes) => ({ look: '', queries: ['woman knife kitchen', 'dark kitchen counter'], angles: ['subject', 'setting'], notes });
+    finder.deps.checklist = async (_b, _n, _names, kinds) => {
+      kinds?.push('who', 'action', 'place');
+      return ['a woman', 'gripping a knife', 'kitchen counter'];
+    };
+    finder.deps.searchOpenverseImages = async (q, o) =>
+      o.page > 1 ? [] : [{
+        key: `openverse:${q}`, source: 'openverse' as const, sourceName: 'Flickr', title: q, creator: null,
+        license: { code: 'cc0' as const, name: 'CC0', url: null, commercial: true, derivatives: true, attribution: false, rank: 0 },
+        landingUrl: 'https://x', imageUrl: 'https://x/i.jpg', thumbUrl: 'https://x/t.jpg', width: 2000, height: 900, tags: q.split(' '), query: q, sourceScore: 1,
+      }];
+    finder.deps.searchPexels = async () => [];
+    finder.deps.searchUnsplash = async () => [];
+    const judged = new Map<string, string[]>();
+    finder.deps.checkImage = async (c, items) => (judged.set(c.query, items), { score: 8, sees: 'x', missing: '' });
+    const f = finder.createFind(sp, 'sh1');
+    for (let i = 0; i < 200 && !['done', 'failed'].includes(finder.getFind(f.id)!.status); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.deepEqual(judged.get('woman knife kitchen'), ['a woman', 'gripping a knife', 'kitchen counter']);
+    assert.deepEqual(judged.get('dark kitchen counter'), ['kitchen counter']);
+  } finally {
+    Object.assign(finder.deps, real);
+  }
+});
