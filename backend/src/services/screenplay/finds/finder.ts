@@ -5,7 +5,7 @@
 // it with the film's characters and props.
 
 import db from '../../../db/connection';
-import { asString, llmJson, screenplayModel } from '../llm';
+import { asString, llmJson, screenplayModel, withWaitListener } from '../llm';
 import { getModelCapabilities } from '../../chatModels';
 import { getPhotoKeys, getShotCheckModel } from '../../media/settings';
 import { checkFraming } from './framing';
@@ -64,6 +64,16 @@ const toFind = (r: Row): ShotFind => ({ ...r, plan: parse(r.plan, { look: '', qu
 export function getFind(id: number): ShotFind | null {
   const r = db.prepare('SELECT * FROM screenplay_shot_finds WHERE id = ?').get(id) as Row | undefined;
   return r ? toFind(r) : null;
+}
+
+/** Searches running now, or finished in the last 10 minutes (id, target, status, progress, count). */
+export function activeFinds(screenplayId: number): Array<Pick<ShotFind, 'id' | 'shot_id' | 'status' | 'progress' | 'error'> & { count: number }> {
+  const rows = db
+    .prepare(
+      "SELECT id, shot_id, status, progress, error, candidates FROM screenplay_shot_finds WHERE screenplay_id = ? AND (status IN ('queued', 'planning', 'searching') OR finished_at > datetime('now', '-10 minutes')) ORDER BY id",
+    )
+    .all(screenplayId) as Array<Pick<Row, 'id' | 'shot_id' | 'status' | 'progress' | 'error' | 'candidates'>>;
+  return rows.map(({ candidates, ...r }) => ({ ...r, count: parse<unknown[]>(candidates, []).length }));
 }
 
 /** The newest search for a shot. */
@@ -323,7 +333,10 @@ export function kick(): void {
       for (;;) {
         const row = db.prepare("SELECT id FROM screenplay_shot_finds WHERE status = 'queued' ORDER BY id LIMIT 1").get() as { id: number } | undefined;
         if (!row) break;
-        await run(row.id).catch((e) => save(row.id, { status: 'failed', error: (e as Error).message, finished_at: new Date().toISOString() }));
+        await withWaitListener(
+          (why) => save(row.id, { progress: why }),
+          () => run(row.id),
+        ).catch((e) => save(row.id, { status: 'failed', error: (e as Error).message, finished_at: new Date().toISOString() }));
       }
     } finally {
       running = false;

@@ -3,13 +3,14 @@
 // becomes the shot's frame (and can then be recreated with the cast and props).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, ExternalLink, Loader2, RefreshCw, Search, Sparkles } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, Loader2, Minimize2, RefreshCw, Search, Sparkles } from 'lucide-react';
 import * as api from '../../api/screenplays';
 import type { Adjustment, Detail, ImageCandidate, Shot, ShotFind } from '../../api/screenplays';
 import { Modal } from '../ui';
 import { useScreenplayActions } from './actions';
 import { AdjustmentNotes } from './AdjustmentNotes';
 import { SearchWords } from './SearchWords';
+import { useBackground } from './background';
 
 const busyStates: ShotFind['status'][] = ['queued', 'planning', 'searching'];
 
@@ -32,6 +33,7 @@ export function ShotFinder({
   onRecreate?: () => void;
 }) {
   const { screenplayId, flush, setDetail } = useScreenplayActions();
+  const bg = useBackground();
   const [find, setFind] = useState<ShotFind | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +119,12 @@ export function ShotFinder({
     }
   };
 
+  // Closing (or minimising) while it searches keeps it going in the background tray.
+  const close = () => {
+    if (find && busyStates.includes(find.status)) bg?.watchFind(find.id, shot.id);
+    onClose();
+  };
+
   const notesNow = activeNotes(shot);
   const notesChanged = !!find && find.plan.queries.length > 0 && notesNow.join('\n') !== (find.plan.notes ?? []).join('\n');
   const wordsEdited = !!find && words.join('\n') !== planned;
@@ -126,7 +134,7 @@ export function ShotFinder({
   return (
     <Modal
       title={`Find a shot · Shot ${number}${shot.type ? ` · ${shot.type}` : ''}`}
-      onClose={onClose}
+      onClose={close}
       width={1180}
       busy={keeping}
       footer={
@@ -162,6 +170,11 @@ export function ShotFinder({
               <span className="field-hint">Pick a photo to use as this shot’s frame.</span>
             )}
           </div>
+          {running && (
+            <button className="btn" onClick={close} title="Keep writing: the search goes on, and the tray tells you when the photos are ready">
+              <Minimize2 size={14} /> Run in background
+            </button>
+          )}
           <button className="btn" onClick={() => void more()} disabled={!find || running || find.status === 'failed' || !find.candidates.length}>
             {running && find?.candidates.length ? <Loader2 size={14} className="spin" /> : <Search size={14} />} Find more
           </button>

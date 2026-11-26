@@ -7,9 +7,12 @@ import { listBackends, startBackendMonitor } from './services/ollamaBackends';
 import { createWebSocketServer } from './ws/index';
 import { countMissingMediaFiles } from './services/mediaStore';
 import { startWorker } from './services/worker';
+import { setGpuBusyCheck } from './services/jobQueue';
+import { gpuHeld } from './services/screenplay/gpuGate';
 import { resumeAnalyses } from './services/cases/analysis';
 import { resumeHunts } from './services/screenplay/sounds/gatherer';
 import { resumeFinds } from './services/screenplay/finds/finder';
+import { resumeMentorJobs } from './services/screenplay/mentorJobs';
 import { startScheduler } from './services/scheduler';
 import { startInfluencerAutomation } from './services/influencers/automation';
 
@@ -43,10 +46,12 @@ server.listen(config.port, () => {
   console.log(`[startup] WebSocket available at ws://localhost:${config.port}/ws`);
 
   if (config.runWorker) {
+    setGpuBusyCheck(gpuHeld);
     startWorker();
     resumeAnalyses();
     resumeHunts();
     resumeFinds();
+    resumeMentorJobs();
     startScheduler();
     startInfluencerAutomation();
   } else {

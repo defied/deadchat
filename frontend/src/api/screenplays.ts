@@ -650,8 +650,43 @@ export interface MentorState {
   ready?: boolean;
 }
 
-/** One mentor turn (the writer's message, if any, and the mentor's answer). */
-export async function mentorTurn(id: number, shotId: string, message?: string): Promise<MentorState> {
-  const { data } = await client.post<{ mentor: MentorState }>(`/api/screenplays/${id}/shots/${shotId}/mentor`, message ? { message } : {});
-  return data.mentor;
+export interface MentorJob {
+  id: number;
+  shot_id: string;
+  message: string | null;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  progress: string;
+  result: MentorState | null;
+  error: string | null;
+}
+
+/** Start a mentor turn in the background (the writer's message, if any). */
+export async function startMentorTurn(id: number, shotId: string, message?: string): Promise<MentorJob> {
+  const { data } = await client.post<{ job: MentorJob }>(`/api/screenplays/${id}/shots/${shotId}/mentor`, message ? { message } : {});
+  return data.job;
+}
+
+/** Mentor turns not yet applied to the screenplay. */
+export async function openMentorJobs(id: number): Promise<MentorJob[]> {
+  const { data } = await client.get<{ jobs: MentorJob[] }>(`/api/screenplays/${id}/mentor-jobs`);
+  return data.jobs;
+}
+
+export async function mentorJobApplied(id: number, jobId: number): Promise<void> {
+  await client.post(`/api/screenplays/${id}/mentor-jobs/${jobId}/applied`, {});
+}
+
+export interface ActiveFind {
+  id: number;
+  shot_id: string;
+  status: ShotFind['status'];
+  progress: string;
+  error: string | null;
+  count: number;
+}
+
+/** Photo searches running, or finished in the last few minutes. */
+export async function activeFinds(id: number): Promise<ActiveFind[]> {
+  const { data } = await client.get<{ finds: ActiveFind[] }>(`/api/screenplays/${id}/finds/active`);
+  return data.finds;
 }
