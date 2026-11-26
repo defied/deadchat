@@ -120,7 +120,7 @@ export function ShotFinder({
   const notesNow = activeNotes(shot);
   const notesChanged = !!find && find.plan.queries.length > 0 && notesNow.join('\n') !== (find.plan.notes ?? []).join('\n');
   const wordsEdited = !!find && words.join('\n') !== planned;
-  const pick = find?.candidates.find((c) => c.key === selected) ?? null;
+  const pick = find?.candidates.find((c) => c.key === selected) ?? find?.plan.turnedDown?.find((c) => c.key === selected) ?? null;
 
   return (
     <Modal
@@ -230,6 +230,18 @@ export function ShotFinder({
           </div>
         )}
         {find?.status === 'done' && !!find.candidates.length && <p className="field-hint sp-find-count">{find.progress}</p>}
+        {!running && !!find?.plan.turnedDown?.length && (
+          <details className="sp-find-down">
+            <summary>
+              {find.plan.turnedDown.length} photo{find.plan.turnedDown.length === 1 ? '' : 's'} didn’t match well enough. Show them
+            </summary>
+            <div className="sp-find-grid">
+              {find.plan.turnedDown.map((c) => (
+                <Tile key={c.key} c={c} selected={selected === c.key} isFrame={frameKey === c.key} onSelect={() => setSelected(selected === c.key ? null : c.key)} />
+              ))}
+            </div>
+          </details>
+        )}
       </div>
     </Modal>
   );

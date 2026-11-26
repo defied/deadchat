@@ -22,6 +22,8 @@ export interface FindPlan {
   own?: boolean;
   /** Photos the vision check turned down (not checked again). */
   rejected?: string[];
+  /** The latest turned-down photos with what the check said, so the writer can see them (and still pick one). */
+  turnedDown?: ImageCandidate[];
   /** The vision check couldn't run (no vision model): photos are unchecked. */
   unchecked?: boolean;
   /** The adjustment notes the search followed. */
@@ -378,10 +380,11 @@ async function run(id: number): Promise<void> {
   // Best first by the words; then the vision model looks at each photo and
   // keeps those that really show the shot (no more than four from one search).
   const ranked = [...found.values()].sort((a, b) => scoreImage(b, plan, ratio) - scoreImage(a, plan, ratio));
-  const wanted = prop ? `A photo of ${prop.name}${prop.description?.trim() ? `: ${prop.description.trim()}` : ''}` : lookOf(shotBrief(sp, shot!), activeAdjustments(shot!)) || plan.queries.join(', ');
+  const wanted = prop ? `Main subject: ${prop.name}${prop.description?.trim() ? ` (${prop.description.trim()})` : ''}` : checkBrief(shotBrief(sp, shot!), activeAdjustments(shot!)) || `Main subject: ${plan.queries.join(', ')}`;
   const perQuery = new Map<string, number>();
   const picked: ImageCandidate[] = [];
   const rejected = [...(plan.rejected ?? [])];
+  const turnedDown = [...(plan.turnedDown ?? [])];
   let checked = 0;
   let unchecked = !!plan.unchecked;
   const budget = Math.min(ranked.length, MAX_CHECKS);
@@ -399,6 +402,7 @@ async function run(id: number): Promise<void> {
       }
       if (c.check && c.check.score < MIN_SCORE) {
         rejected.push(c.key);
+        turnedDown.push(c);
         continue;
       }
     }
@@ -415,7 +419,12 @@ async function run(id: number): Promise<void> {
     status: 'done',
     candidates,
     page,
-    plan: { ...plan, rejected: rejected.slice(-400), unchecked: unchecked || undefined },
+    plan: {
+      ...plan,
+      rejected: rejected.slice(-400),
+      turnedDown: turnedDown.sort((a, b) => (b.check?.score ?? 0) - (a.check?.score ?? 0)).slice(0, 40),
+      unchecked: unchecked || undefined,
+    },
     progress: picked.length
       ? `${matched}${checked ? ` · looked at ${checked} this time` : ''}`
       : f.candidates.length
@@ -443,12 +452,26 @@ export interface ImageCheck {
   missing: string;
 }
 
+/** What the photo check judges against: the subject and action first, then the place, then the notes. */
+export function checkBrief(brief: string, notes: string[]): string {
+  const line = (label: string) => new RegExp(`^${label}[^:]*: (.*)$`, 'mi').exec(brief)?.[1] ?? '';
+  const where = line('Setting').replace(/^(interior|exterior|interior\/exterior|establishing),?\s*/i, '');
+  return [
+    line('Moment') && `Main subject and action: ${line('Moment')}`,
+    line('People') && `Who: ${line('People')}`,
+    where && `Place (less important): ${where}`,
+    notes.length ? `Notes: ${notes.join('; ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 const CHECK_SYSTEM =
-  'You check photos for a film storyboard. You get what the shot needs and a photo. Look carefully at what is actually in the photo, ' +
-  'then score from 0 to 10 how well it could stand in for the shot: the right kind of subject doing the right thing in the right kind of ' +
-  'place, as described. Names in the description are characters: any person of the right kind counts. 10 = shows all of it; ' +
-  '7 = the main subject and action, minor differences; 5 = only the place or only the subject; 2 = loosely related; 0 = unrelated. ' +
-  'Be strict: a photo that merely shares a word with the description scores low. ' +
+  'You pick reference photos for a film storyboard. A reference photo only needs to show the same kind of thing: it will be redrawn ' +
+  'with the film\'s own actors, so faces, names, clothing, weather and exact location don\'t matter. Look at what is actually in the photo, ' +
+  'then score 0 to 10. Judge mostly the main subject and action, then the place. Names are characters: any person of the right kind counts. ' +
+  '9-10 = the right kind of subject doing that action in that kind of place; 7-8 = the right subject and action, a different place; ' +
+  '5-6 = the right subject or the right place, but not the action; 2-4 = loosely related; 0-1 = unrelated. ' +
   'Return {"score": n, "sees": "what the photo shows, under 15 words", "missing": "what the shot needs that the photo lacks, under 12 words, or empty"}.';
 
 let visionOk: { model: string; ok: boolean } | null = null;
@@ -485,7 +508,7 @@ export async function keepFound(
   key: string,
   saveImage: (bytes: Buffer, mime: string, filename: string) => number,
 ): Promise<number> {
-  const c = f.candidates.find((x) => x.key === key);
+  const c = f.candidates.find((x) => x.key === key) ?? f.plan.turnedDown?.find((x) => x.key === key);
   if (!c) throw new Error('That photo isn’t in this search');
   const propId = propIdOf(f.shot_id);
   const role = propId ? 'prop' : 'reference';

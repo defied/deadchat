@@ -1009,7 +1009,7 @@ test('the vision check keeps only photos that show the shot, best first, and nev
       throw new Error('timeout');
     };
     const f = await wait(finder.createFind(sp, 'sh1').id);
-    assert.match(wantedSeen, /^Jane grips a knife at the kitchen counter\./, 'photos are judged against the shot’s summary');
+    assert.match(wantedSeen, /^Main subject and action: Jane grips a knife at the kitchen counter\.\nWho: Jane = a person\nPlace \(less important\): Jane's kitchen, night/, 'photos are judged against the shot’s summary, subject first');
     assert.ok(f.candidates.length > 0 && f.candidates.every((c) => c.check!.score >= finder.MIN_SCORE), 'only matches are shown');
     const scores = f.candidates.map((c) => c.check!.score);
     assert.deepEqual(scores, [...scores].sort((a, b) => b - a), 'best first');
