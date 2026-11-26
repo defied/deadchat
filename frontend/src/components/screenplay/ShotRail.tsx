@@ -2,9 +2,9 @@
 // it's pinned to (pushed down when cards would overlap) and shows the example
 // frame DeadChat keeps in step with that part of the script.
 
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, Search, Sparkles, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
+import { AlertTriangle, AudioLines, Image as ImageIcon, ImagePlus, GraduationCap, Search, Sparkles, Clapperboard, Dices, Loader2, LayoutGrid, Music, Lock, LockOpen, Plus, RefreshCw, SlidersHorizontal, Trash2, Clock, X } from 'lucide-react';
 import type { Adjustment, Detail, ScreenplayDoc, Shot, ShotPlanView } from '../../api/screenplays';
 import { LENS_TYPES, foundMeta, isVoiceRow, recreatedFrom, soundMeta, summarizeShot, updateMedia, updateSound, uploadReference } from '../../api/screenplays';
 import { useScreenplayActions } from './actions';
@@ -14,6 +14,7 @@ import { MusicButton, SpImage } from './media';
 import { AdjustmentNotes } from './AdjustmentNotes';
 import { ShotFinder } from './ShotFinder';
 import { RecreateFrame } from './RecreateFrame';
+import { ShotSetupDialog } from './ShotSetup';
 
 const LENSES = [14, 18, 24, 35, 50, 85, 100, 135];
 const GAP = 12;
@@ -168,6 +169,15 @@ function ShotCard({
 }) {
   const [open, setOpen] = useState(false);
   const [finding, setFinding] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
+  // A shot made from a highlight opens its set-up straight away.
+  useEffect(() => {
+    const open = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === shot.id) setSettingUp(true);
+    };
+    window.addEventListener('sp-setup-shot', open);
+    return () => window.removeEventListener('sp-setup-shot', open);
+  }, [shot.id]);
   const { screenplayId } = useScreenplayActions();
   const [summarizing, setSummarizing] = useState(false);
   const resummarize = async () => {
@@ -235,6 +245,9 @@ function ShotCard({
         {cueReady?.media_id && <MusicButton key={cueReady.media_id} mediaId={cueReady.media_id} label={cue?.status === 'pending' ? 'Play the previous cue (new one rendering)' : 'Play music cue'} />}
         {cue?.status === 'pending' && <Loader2 size={12} className="spin" aria-label="Music updating" />}
         <span className="sp-grow" />
+        <button className={`icon-btn ${shot.mentor?.ready ? '' : 'sp-attn'}`} title="Set up the shot with the shot mentor" onClick={() => setSettingUp(true)}>
+          <GraduationCap size={14} />
+        </button>
         <button className="icon-btn" title="Find a shot: photos that match this part of the script" onClick={() => setFinding(true)}>
           <Search size={14} />
         </button>
@@ -293,7 +306,10 @@ function ShotCard({
         <div className="sp-frame sp-frame-start">
           <span>{plan?.blocked ?? 'No frame yet'}</span>
           <div>
-            <button className="btn btn-sm btn-primary" onClick={() => setFinding(true)}>
+            <button className={`btn btn-sm ${shot.setup ? '' : 'btn-primary'}`} onClick={() => setSettingUp(true)}>
+              <GraduationCap size={13} /> Set up
+            </button>
+            <button className={`btn btn-sm ${shot.setup ? 'btn-primary' : ''}`} onClick={() => setFinding(true)}>
               <Search size={13} /> Find a shot
             </button>
             <button
@@ -418,6 +434,22 @@ function ShotCard({
           <textarea rows={1} value={shot.notes ?? ''} placeholder="Blocking, movement, VFX… (for you; not used for the frame)" onChange={(e) => onPatch({ notes: e.target.value }, 'notes')} />
         </label>
       </div>
+      {settingUp && (
+        <ShotSetupDialog
+          shot={shot}
+          number={number}
+          onPatch={onPatch}
+          onClose={() => setSettingUp(false)}
+          onFind={() => {
+            setSettingUp(false);
+            setFinding(true);
+          }}
+          onGenerate={() => {
+            setSettingUp(false);
+            void refresh();
+          }}
+        />
+      )}
       {recreating && recreateBase && <RecreateFrame shot={shot} number={number} baseRow={recreateBase} detail={detail} onPatch={onPatch} onClose={() => setRecreating(false)} />}
       {finding && <ShotFinder shot={shot} number={number} detail={detail} onPatch={onPatch} onClose={() => setFinding(false)} onRecreate={() => setRecreating(true)} />}
       {open && ready?.media_id && (

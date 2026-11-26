@@ -9,6 +9,7 @@ import { asString, llmJson } from '../../influencers/llm';
 import { getActiveModel, getModelCapabilities } from '../../chatModels';
 import { getPhotoKeys, getShotCheckModel } from '../../media/settings';
 import { checkFraming } from './framing';
+import type { ShotSetup } from '../cinema';
 import * as store from '../store';
 import { presentCharacters, shotSection, visualText } from '../script';
 import { activeAdjustments, firstMoment } from '../prompts';
@@ -345,7 +346,7 @@ export const deps = {
   keys: getPhotoKeys,
   checklist: (brief: string, notes: string[], names: string[]) => makeChecklist(brief, notes, names),
   checkImage: (c: ImageCandidate, items: string[]) => checkImage(c, items),
-  checkFraming: async (c: ImageCandidate, model: string, shotType: string) => checkFraming(model, await thumbB64(c), shotType),
+  checkFraming: async (c: ImageCandidate, model: string, shotType: string | undefined, setup?: ShotSetup) => checkFraming(model, await thumbB64(c), shotType, setup),
 };
 
 async function run(id: number): Promise<void> {
@@ -436,9 +437,9 @@ async function run(id: number): Promise<void> {
         else continue; // photo wouldn't load: skip it
       }
       // The shot type: a cinematography model checks the photo's framing, when one is set up.
-      if (c.check && c.check.score >= MIN_SCORE && shot?.type && shotModel) {
+      if (c.check && c.check.score >= MIN_SCORE && (shot?.type || shot?.setup) && shotModel) {
         try {
-          const fr = await deps.checkFraming(c, shotModel, shot.type);
+          const fr = await deps.checkFraming(c, shotModel, shot.type, shot.setup);
           if (fr) {
             c.check.framing = fr;
             c.check.score = Math.max(0, Math.min(10, c.check.score + (fr.match === 'yes' ? 1 : fr.match === 'no' ? -2 : 0)));

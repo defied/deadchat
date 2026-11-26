@@ -335,6 +335,8 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
       card.classList.add('sp-shot-new');
       window.setTimeout(() => card.classList.remove('sp-shot-new'), 1800);
     }, 120);
+    // Then set it up with the shot mentor.
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent('sp-setup-shot', { detail: id })), 400);
     // The agent writes what's in the shot; the writer can edit it.
     void summarizeShot(screenplayId, heading, excerpt)
       .then((summary) => update((d) => ({ ...d, shots: d.shots.map((s) => (s.id === id && !s.summary ? { ...s, summary } : s)) }), `shot:${id}:summary`))

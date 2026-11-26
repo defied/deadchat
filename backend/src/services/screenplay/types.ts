@@ -1,3 +1,4 @@
+import type { SetupField, ShotSetup } from './cinema';
 // Screenplay documents. Everything in a `ScreenplayDoc` is written by the user;
 // DeadChat only reads it to render example shots and music cues.
 
@@ -38,6 +39,10 @@ export interface Shot {
   summary?: string;
   /** Photo search: the photo is for the place, angle and mood; it needn't have a person in it. */
   peopleOptional?: boolean;
+  /** The shot list: size, framing, angle, lens, lighting, composition, movement (set by the writer, with the mentor). */
+  setup?: ShotSetup;
+  /** The shot mentor's conversation about this shot. */
+  mentor?: MentorState;
   /** Duration in seconds. */
   seconds?: number;
   /** Lens in mm; falls back to the set-plan camera, then to the shot type. */
@@ -134,6 +139,22 @@ export interface ScreenplaySettings {
   lensType?: string;
   /** Pause rendering (the writer keeps working; nothing is queued). */
   paused?: boolean;
+}
+
+export interface MentorQuestion {
+  /** The shot-list field it would set, when it maps to one. */
+  field?: SetupField;
+  question: string;
+  options: string[];
+}
+
+export interface MentorState {
+  messages: Array<{ from: 'mentor' | 'writer'; text: string }>;
+  /** Values the mentor suggests, with a reason each. The writer accepts them; they're never applied on their own. */
+  suggestions?: Array<{ field: SetupField; value: string; why: string }>;
+  questions?: MentorQuestion[];
+  /** The mentor thinks the shot is set up well enough to find or generate images. */
+  ready?: boolean;
 }
 
 /** A prop with reference photos, so it looks the same in every frame it's put into. */
