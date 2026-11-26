@@ -482,7 +482,7 @@ router.post('/:id/shots/summary', owned, (req, res) =>
   wrap(res, async () => {
     const excerpt = (str(req.body?.excerpt, 4000) ?? '').trim();
     const heading = (str(req.body?.heading, 400) ?? '').trim();
-    return { summary: await summarizeShot(heading, excerpt) };
+    return { summary: await summarizeShot(heading, excerpt, sp(res).doc.characters.map((c) => c.name)) };
   }),
 );
 

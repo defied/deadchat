@@ -1156,3 +1156,24 @@ test('with a cinematography model set, matching framing adds a point and the wro
     db.prepare("DELETE FROM settings WHERE key = 'media.shot_check_model'").run();
   }
 });
+
+test('summaries keep character names exactly and never invent names', async () => {
+  const summarize = require('./summarize') as typeof import('./summarize');
+  const real = summarize.deps.llmJson;
+  try {
+    let sent = '';
+    summarize.deps.llmJson = (async (_s: string, user: string) => ((sent = user), { summary: 'PersonA exits an apartment building, looking at his phone.' })) as typeof real;
+    const out = await summarize.summarizeShot('EXT. NEW YORK CITY SKYLINE - DAY', 'Ferklnerkle69 exits an apartment building, scrolling on his phone.', ['Ferklnerkle69', 'Jane']);
+    assert.doesNotMatch(sent, /Ferklnerkle69/, 'the odd name travels as a placeholder');
+    assert.equal(out, 'Ferklnerkle69 exits an apartment building, looking at his phone.');
+    summarize.deps.llmJson = (async () => ({ summary: 'John exits an apartment building, looking at his phone.' })) as typeof real;
+    assert.equal(
+      await summarize.summarizeShot('EXT. NEW YORK CITY SKYLINE - DAY', 'Ferklnerkle69 exits an apartment building, scrolling on his phone.', ['Ferklnerkle69']),
+      'Ferklnerkle69 exits an apartment building, scrolling on his phone.',
+      'a made-up name falls back to the highlight',
+    );
+    assert.deepEqual(summarize.inventedNames('The camera shows John near New York.', 'exits a building in new york city'), ['John']);
+  } finally {
+    summarize.deps.llmJson = real;
+  }
+});
