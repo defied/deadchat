@@ -25,6 +25,8 @@ export interface Shot {
   excerpt?: string;
   /** What's in the shot, in a sentence (the agent's, editable). */
   summary?: string;
+  /** Photo search: the photo needn't have a person in it (place, angle and mood). */
+  peopleOptional?: boolean;
   seconds?: number;
   lens?: number;
   lensType?: string;
@@ -529,7 +531,7 @@ export interface ShotFind {
   shot_id: string;
   status: 'queued' | 'planning' | 'searching' | 'done' | 'failed';
   progress: string;
-  plan: { look: string; queries: string[]; notes: string[]; own?: boolean; unchecked?: boolean; turnedDown?: ImageCandidate[] };
+  plan: { look: string; queries: string[]; notes: string[]; own?: boolean; unchecked?: boolean; turnedDown?: ImageCandidate[]; peopleOptional?: boolean; checklist?: string[] };
   candidates: ImageCandidate[];
   error: string | null;
 }
