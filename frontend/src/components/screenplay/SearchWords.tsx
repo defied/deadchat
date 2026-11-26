@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 
-export function SearchWords({ words, onChange, disabled }: { words: string[]; onChange: (w: string[]) => void; disabled?: boolean }) {
+export function SearchWords({ words, onChange, disabled, why }: { words: string[]; onChange: (w: string[]) => void; disabled?: boolean; why?: Record<string, string> }) {
   const [draft, setDraft] = useState('');
   const add = () => {
     const w = draft.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -14,7 +14,7 @@ export function SearchWords({ words, onChange, disabled }: { words: string[]; on
   return (
     <div className="sp-words">
       {words.map((w) => (
-        <span key={w} className="sp-chip sp-word">
+        <span key={w} className="sp-chip sp-word" title={why?.[w] || undefined}>
           {w}
           <button className="icon-btn" title={`Don’t search for “${w}”`} onClick={() => onChange(words.filter((x) => x !== w))} disabled={disabled} aria-label={`Remove ${w}`}>
             <X size={11} />

@@ -195,7 +195,12 @@ export function ShotFinder({
             <span className="sp-adj-head">From the script</span>
             {find?.plan.look ? <p>{find.plan.look}</p> : <p className="field-hint">{running ? 'Reading the shot…' : 'What the script describes for this shot.'}</p>}
             <span className="sp-adj-head">Searching for</span>
-            <SearchWords words={words} onChange={setWords} disabled={running} />
+            <SearchWords
+              words={words}
+              onChange={setWords}
+              disabled={running}
+              why={Object.fromEntries((find?.plan.queries ?? []).map((q, i) => [q, find?.plan.why?.[i] ?? '']))}
+            />
             <span className="field-hint">Only these words are searched. Remove any you don’t want, or add your own.</span>
           </div>
           <div className="sp-find-notes">

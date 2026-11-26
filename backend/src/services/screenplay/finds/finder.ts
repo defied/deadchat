@@ -22,6 +22,8 @@ export interface FindPlan {
   queries: string[];
   /** The writer typed these searches: used exactly, nothing planned. */
   own?: boolean;
+  /** Why each planned search (same order as queries). */
+  why?: string[];
   /** Photos the vision check turned down (not checked again). */
   rejected?: string[];
   /** The latest turned-down photos with what the check said, so the writer can see them (and still pick one). */
@@ -111,11 +113,20 @@ export function shotBrief(sp: Screenplay, shot: Shot): string {
   return [
     h ? `Setting: ${[h.setting, h.location, h.time].filter(Boolean).join(', ')}` : sec.scene?.text ? `Setting: ${sec.scene.text}` : '',
     shot.summary?.trim() ? `Moment: ${shot.summary.trim()}` : action ? `Moment: ${firstMoment(action, 40)}` : '',
+    shot.setup && Object.keys(shot.setup).length ? `Shot list: ${Object.entries(shot.setup).map(([k, v]) => `${k} ${v}`).join(', ')}` : '',
+    visionLine(sp),
     // People optional: the photo is for the place, angle and mood; nobody need be in it.
     shot.peopleOptional ? PEOPLE_OPTIONAL : people.length ? `People (never use their names): ${people.join('; ')}` : '',
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/** The director's vision, short: tone and look steer the mood searches. */
+function visionLine(sp: Screenplay): string {
+  const v = sp.doc.pitch?.vision;
+  const parts = [v?.tone && `tone: ${v.tone}`, v?.look && `look: ${v.look}`].filter(Boolean).map((x) => String(x).replace(/\s+/g, ' ').slice(0, 300));
+  return parts.length ? `Director's vision: ${parts.join('; ')}` : '';
 }
 
 /** What the finder shows as "Looking for": the script's own words, then the notes. */
@@ -135,13 +146,17 @@ const TIME_ONLY = /^(day|daytime|night|nighttime|dawn|dusk|morning|evening|after
 const WHO = /\b(man|men|woman|women|person|people|boy|girl|child|children|kid|kids|couple|crowd|guy|lady)\b/i;
 
 const PLAN_SYSTEM =
-  'You turn one moment of a screenplay into searches for free stock photo libraries, whose search matches words in photo titles and tags. ' +
-  'Use ONLY things the script excerpt or the adjustment notes say are there: never add a place, object, weather, time of day, mood, style ' +
-  'or detail they don\'t mention. Each query is 2 to 4 plain words for something visible: who or what, and where. People are generic ' +
-  '(man, woman, person, child): never names, ages, numbers or hair colour. No camera or film words. ' +
-  'Adjustment notes override the script where they conflict. ' +
-  'Give up to 4 queries: the whole moment first, then the subject alone, then the place alone. ' +
-  'Return {"queries": ["..."]}.';
+  "You are a film director's reference researcher building a mood board for one shot. You search free stock photo libraries, which " +
+  'match words in photo titles and tags, so write each search the way a photographer titles a photo: 2 to 4 everyday words, generic ' +
+  'and photographable, not story-specific. Give four searches, one from each angle:\n' +
+  '1. The subject and action as an everyday photo ("man walking looking at phone").\n' +
+  '2. The setting as a photo subject ("apartment building entrance", "city street rain").\n' +
+  "3. The mood and light, from the director's vision and the shot list ('moody overcast street', 'storm light city').\n" +
+  '4. The camera\'s view, from the shot list, in plain words ("over the shoulder phone", "low angle man walking").\n' +
+  'Rules: each search must find different photos, so do not repeat the same words across searches. Never use character names. ' +
+  "Name a real place or landmark only when the script needs that exact place. Don't add story things (objects, events, people) that " +
+  'the script, notes or vision do not suggest. Adjustment notes come first. ' +
+  'Return {"queries": [{"q": "...", "why": "which angle and why, under 12 words"}]}.';
 
 /** Generic words a query may use even when the script doesn't (people and places in general). */
 const GENERIC = new Set('man men woman women person people boy girl child children kid kids couple crowd young old street room'.split(' '));
@@ -178,16 +193,41 @@ export async function planFind(brief: string, notes: string[], names: string[] =
     const out = await llmJson<{ queries?: unknown }>(
       PLAN_SYSTEM + (peopleOptional(brief) ? OPTIONAL_PLAN : ''),
       `${brief || '(no script for this shot)'}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
-      { temperature: 0.2 },
+      { temperature: 0.4 },
     );
-    let queries = withPerson(withMoment(onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source)), brief);
-    if (peopleOptional(brief)) queries = [...new Set(queries.map((q) => q.replace(WHO, ' ').replace(/\s+/g, ' ').trim()).filter((q) => q.length > 2))];
-    queries = queries.slice(0, 4);
-    if (queries.length) return { look, queries, notes, ...(peopleOptional(brief) ? { peopleOptional: true } : {}) };
+    const raw = (Array.isArray(out.queries) ? out.queries : []).map((x) =>
+      typeof x === 'string' ? { q: x, why: '' } : { q: String((x as { q?: unknown })?.q ?? ''), why: asString((x as { why?: unknown })?.why, 120) },
+    );
+    let picked = distinct(
+      raw
+        .map((x) => ({ ...x, q: cleanQuery(strip(x.q)) }))
+        .map((x) => (peopleOptional(brief) ? { ...x, q: x.q.replace(WHO, ' ').replace(/\s+/g, ' ').trim() } : x))
+        .filter((x) => x.q.length > 2 && x.q.split(' ').length <= 5),
+    );
+    picked = picked.slice(0, 4);
+    if (picked.length) return { look, queries: picked.map((x) => x.q), why: picked.map((x) => x.why), notes, ...(peopleOptional(brief) ? { peopleOptional: true } : {}) };
   } catch {
     /* fall back to words from the script */
   }
   return { look, queries: ruleQueries(brief, notes, names), notes, ...(peopleOptional(brief) ? { peopleOptional: true } : {}) };
+}
+
+const cleanQuery = (q: string) => q.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+
+/** Drop searches that mostly repeat an earlier one's words (they'd find the same photos). */
+export function distinct<T extends { q: string }>(items: T[]): T[] {
+  const out: T[] = [];
+  const words = (q: string) => new Set(q.split(' ').filter((w) => w.length > 2 && !STOP.has(w)).map(stem));
+  for (const it of items) {
+    const w = words(it.q);
+    const repeat = out.some((o) => {
+      const ow = words(o.q);
+      const shared = [...w].filter((x) => ow.has(x)).length;
+      return shared / Math.max(1, Math.min(w.size, ow.size)) >= 0.67;
+    });
+    if (!repeat) out.push(it);
+  }
+  return out;
 }
 
 /**
