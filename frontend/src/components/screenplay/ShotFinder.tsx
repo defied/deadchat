@@ -3,7 +3,7 @@
 // becomes the shot's frame (and can then be recreated with the cast and props).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, Loader2, RefreshCw, Search, Sparkles } from 'lucide-react';
 import * as api from '../../api/screenplays';
 import type { Adjustment, Detail, ImageCandidate, Shot, ShotFind } from '../../api/screenplays';
 import { Modal } from '../ui';
@@ -20,12 +20,15 @@ export function ShotFinder({
   detail,
   onPatch,
   onClose,
+  onRecreate,
 }: {
   shot: Shot;
   number: number;
   detail?: Detail;
   onPatch: (p: Partial<Shot>, field: string) => void;
   onClose: () => void;
+  /** After "Use and recreate": open the recreate step for the new frame. */
+  onRecreate?: () => void;
 }) {
   const { screenplayId, flush, setDetail } = useScreenplayActions();
   const [find, setFind] = useState<ShotFind | null>(null);
@@ -88,7 +91,7 @@ export function ShotFinder({
   }, [detail]);
   const frameKey = useMemo(() => [...kept.entries()].find(([, id]) => id === shot.frameImage)?.[0] ?? null, [kept, shot.frameImage]);
 
-  const use = async () => {
+  const use = async (andRecreate = false) => {
     if (!find || !selected) return;
     setKeeping(true);
     setError(null);
@@ -97,6 +100,7 @@ export function ShotFinder({
       setDetail(d);
       onPatch({ frameImage: d.added }, 'frameImage');
       onClose();
+      if (andRecreate) onRecreate?.();
     } catch (e) {
       setError(msg(e));
     } finally {
@@ -143,9 +147,14 @@ export function ShotFinder({
           <button className="btn" onClick={() => void more()} disabled={!find || running || find.status === 'failed' || !find.candidates.length}>
             {running && find?.candidates.length ? <Loader2 size={14} className="spin" /> : <Search size={14} />} Find more
           </button>
-          <button className="btn btn-primary" onClick={() => void use()} disabled={!pick || keeping}>
-            {keeping ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Use as frame
+          <button className="btn" onClick={() => void use()} disabled={!pick || keeping}>
+            <Check size={14} /> Use as frame
           </button>
+          {onRecreate && (
+            <button className="btn btn-primary" onClick={() => void use(true)} disabled={!pick || keeping} title="Use it, then have the AI put your characters and props into it">
+              {keeping ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} Use & recreate with cast
+            </button>
+          )}
         </div>
       }
     >

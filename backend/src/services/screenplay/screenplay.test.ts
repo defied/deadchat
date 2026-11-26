@@ -842,3 +842,60 @@ test('a prop search keeps its photos as prop images', async () => {
     globalThis.fetch = realFetch;
   }
 });
+
+// ── recreate ──
+
+test('recreate prompt: image 1 is the scene, faces and props by image number, text only when there is no photo', () => {
+  const p = prompts.recreatePrompt({
+    cast: [{ name: 'Jane', look: 'woman in her forties, short grey hair', wardrobe: 'Dressed in a worn green cardigan', image: 2 }, { name: 'Tom', look: 'tall man, beard', image: null }],
+    props: [{ name: 'knife', look: 'black handle', image: 3 }],
+    moment: 'Jane grips the knife.',
+    lens: '50mm lens',
+    notes: ['night'],
+  });
+  assert.match(p, /^Recreate image 1 as a cinematic film still: keep its camera angle/);
+  assert.match(p, /Jane, who looks exactly like the person in image 2: woman in her forties, short grey hair, wearing a worn green cardigan; Tom: tall man, beard/);
+  assert.match(p, /the knife looks exactly like the one in image 3 \(black handle\)/);
+  assert.match(p, /each appears exactly once/);
+  assert.match(p, /The moment: Jane grips the knife\. Also: night\. 50mm lens/);
+  assert.match(p, /the names "Jane", "Tom" are never written anywhere$/);
+});
+
+test('recreating a picked photo queues FLUX.2 with the photo, the cast photos and the prop photos, and keeps the credit', () => {
+  const d = doc();
+  d.props = [{ id: 'p1', name: 'knife', description: 'black handle' }];
+  const sp = store.createScreenplay(1, 'Recreate', d);
+  const media = () => Number(db.prepare("INSERT INTO media (user_id, type, filename, mime, size_bytes) VALUES (1, 'image', 'x.jpg', 'image/jpeg', 1)").run().lastInsertRowid);
+  const photo = store.addMedia(sp.id, 'reference', 'sh1', { status: 'ready', media_id: media(), label: 'Kitchen at night' });
+  store.updateMedia(photo.id, { meta: JSON.stringify({ found: { key: 'openverse:1', title: 'Kitchen', license: { name: 'CC BY 2.0', attribution: true } } }) });
+  const old = store.addMedia(sp.id, 'character', 'jane', { status: 'ready', media_id: media(), label: 'portrait' });
+  const face = store.addMedia(sp.id, 'character', 'jane', { status: 'ready', media_id: media(), label: 'casting' });
+  const knife = store.addMedia(sp.id, 'prop', 'p1', { status: 'ready', media_id: media() });
+  const doc2 = store.getScreenplay(sp.id)!.doc;
+  doc2.characters[0].primaryRefId = face.id;
+  store.saveScreenplay(sp.id, 1, { doc: doc2 });
+  const s = store.getScreenplay(sp.id)!;
+
+  const cand = render.recreateCandidates(s, s.doc.shots[0]);
+  assert.deepEqual(cand.characters.map((c) => [c.name, !!c.photo]), [['Jane', true]]);
+  assert.deepEqual(cand.props.map((p) => p.name), ['knife']);
+
+  const n = jobs().length;
+  const row = render.recreateFrame(s, s.doc.shots[0], photo.id, {});
+  const job = jobs()[n];
+  const params = JSON.parse(job.params);
+  assert.equal(params.catalogId, 'flux2-dev');
+  assert.deepEqual(params.refMediaIds, [photo.media_id, face.media_id, knife.media_id], 'the main photo, not the older one');
+  assert.notEqual(params.refMediaIds[1], old.media_id);
+  assert.match(params.prompt, /Jane, who looks exactly like the person in image 2/);
+  assert.match(params.prompt, /knife looks exactly like the one in image 3/);
+  assert.deepEqual([row.role, row.target, row.status, row.label], ['reference', 'sh1', 'pending', 'Recreated with AI']);
+  const meta = JSON.parse(store.getMedia(row.id)!.meta!);
+  assert.equal(meta.found.license.name, 'CC BY 2.0', 'the photo’s credit carries over');
+  assert.deepEqual(meta.recreated, { from: photo.id, characters: ['Jane'], props: ['knife'] });
+
+  const none = render.recreateFrame(s, s.doc.shots[0], photo.id, { characterIds: [], propIds: [] });
+  assert.deepEqual(JSON.parse(jobs()[n + 1].params).refMediaIds, [photo.media_id]);
+  assert.ok(none.id);
+  assert.throws(() => render.recreateFrame(s, s.doc.shots[0], face.id, {}), /Pick a photo/);
+});

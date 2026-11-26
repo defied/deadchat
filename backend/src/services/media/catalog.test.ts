@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEDIA_MODELS, buildGraph, resolveParams, ratioFromSize, type Graph } from './catalog';
+import { MEDIA_MODELS, buildGraph, getMediaModel, resolveParams, ratioFromSize, type Graph } from './catalog';
 import { cloudflareCost } from './cloudflare';
 
 const PROMPT = 'unit-test prompt: a red cube on a blue table';
@@ -69,4 +69,21 @@ test('cloudflare models: free-tier cost estimates match the published rates', ()
     assert.ok(m.ratios.includes(p.ratio));
     assert.ok(cloudflareCost(m, p) < 10_000, `${m.id} costs more than the whole free allowance`);
   }
+});
+
+test('FLUX.2 [dev] chains reference images onto the prompt (image 1 = the scene, at the output size)', () => {
+  const m = getMediaModel('flux2-dev')!;
+  assert.equal(m.maxRefs, 6);
+  const g = buildGraph(m, { prompt: 'p', ratio: '16:9', seed: 1, refImages: ['scene.jpg', 'face.png', 'knife.png'] });
+  assert.equal(g['dc_ref0_load'].inputs.image, 'scene.jpg');
+  assert.deepEqual([g['dc_ref0_scale'].inputs.width, g['dc_ref0_scale'].inputs.height], [1344, 768]);
+  assert.deepEqual([g['dc_ref1_scale'].inputs.width, g['dc_ref1_scale'].inputs.height], [1024, 1024]);
+  assert.deepEqual(g['dc_ref0'].inputs.conditioning, ['98:6', 0]);
+  assert.deepEqual(g['dc_ref1'].inputs.conditioning, ['dc_ref0', 0]);
+  assert.deepEqual(g['98:26'].inputs.conditioning, ['dc_ref2', 0], 'guidance takes the last reference');
+  const plain = buildGraph(m, { prompt: 'p', ratio: '16:9', seed: 1 });
+  assert.deepEqual(plain['98:26'].inputs.conditioning, ['98:6', 0]);
+  assert.equal(plain['dc_ref0'], undefined);
+  const zi = buildGraph(getMediaModel('z-image-turbo')!, { prompt: 'p', ratio: '16:9', seed: 1, refImages: ['x.png'] });
+  assert.ok(!Object.keys(zi).some((k) => k.startsWith('dc_ref')), 'models without maxRefs ignore them');
 });

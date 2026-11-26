@@ -356,6 +356,55 @@ export function castingPrompt(c: Character, style?: string): string {
   ].join('. ');
 }
 
+export interface RecreateCast {
+  name: string;
+  /** What they look like (from the profile); used whether or not there's a photo. */
+  look: string;
+  wardrobe?: string;
+  /** Which reference image shows them (2, 3…), or null for text only. */
+  image: number | null;
+}
+
+export interface RecreateProp {
+  name: string;
+  look?: string;
+  image: number | null;
+}
+
+/**
+ * The prompt for recreating a picked photo with the film's cast and props
+ * (FLUX.2 multi-reference: image 1 is the photo, then faces, then props).
+ */
+export function recreatePrompt(o: {
+  cast: RecreateCast[];
+  props: RecreateProp[];
+  moment?: string;
+  lens?: string;
+  notes?: string[];
+  style?: string;
+}): string {
+  const people = o.cast.map((c) => {
+    const who = c.image ? `${c.name}, who looks exactly like the person in image ${c.image}` : c.name;
+    return `${who}: ${c.look}${c.wardrobe ? `, wearing ${c.wardrobe.replace(/^(?:dressed(?:\s+up)?\s+in|wearing)\s+/i, '')}` : ''}`;
+  });
+  const things = o.props.map((p) => (p.image ? `the ${p.name} looks exactly like the one in image ${p.image}${p.look ? ` (${p.look})` : ''}` : `the ${p.name}: ${p.look ?? p.name}`));
+  return [
+    'Recreate image 1 as a cinematic film still: keep its camera angle, framing, composition, setting, background and lighting',
+    people.length
+      ? `The people in the shot are ${people.join('; ')}. Replace the main person in image 1 with ${o.cast.length === 1 ? 'them' : 'them, one each'}, same position and pose; each appears exactly once, and anyone else in the background stays an unrelated stranger`
+      : '',
+    things.length ? `Props: ${things.join('; ')}. Place them naturally in the scene` : '',
+    o.moment ? `The moment: ${o.moment}` : '',
+    o.notes?.length ? `Also: ${o.notes.join('; ')}` : '',
+    o.lens ?? '',
+    o.style?.trim() || 'Photorealistic, natural film lighting, film grain',
+    `No text, captions or watermarks${o.cast.length ? `; the names ${o.cast.map((c) => `"${c.name}"`).join(', ')} are never written anywhere` : ''}`,
+  ]
+    .filter(Boolean)
+    .join('. ')
+    .replace(/\.\./g, '.');
+}
+
 /** A clean reference photo of a prop, for putting it into frames later. */
 export function propPrompt(p: Prop, style?: string): string {
   return [
