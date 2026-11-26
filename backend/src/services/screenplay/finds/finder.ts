@@ -511,13 +511,17 @@ async function run(id: number): Promise<void> {
         const angle = plan.angles?.[plan.queries.indexOf(c.query)] ?? 'subject';
         const kinds = plan.checklistKinds ?? [];
         const scene = wanted.filter((_, i) => kinds[i] === 'place' || kinds[i] === 'object');
-        c.check = await deps.checkImage(c, angle !== 'subject' && scene.length ? scene : wanted);
+        // No place or object on the checklist: judge it on what its own search asked for.
+        c.check = await deps.checkImage(c, angle === 'subject' ? wanted : scene.length ? scene : [c.query]);
+        (c as ImageCandidate & { angle?: string }).angle = angle;
       } catch (e) {
         if ((e as Error).message === NO_VISION) unchecked = true;
         else continue; // photo wouldn't load: skip it
       }
       // The shot type: a cinematography model checks the photo's framing, when one is set up.
-      if (c.check && c.check.score >= MIN_SCORE && (shot?.type || shot?.setup) && shotModel) {
+      // Framing (size, angle, lens…) is about the shot itself: only subject and camera-view photos are held to it.
+      const angleOf = (c as ImageCandidate & { angle?: string }).angle ?? 'subject';
+      if (c.check && c.check.score >= MIN_SCORE && (angleOf === 'subject' || angleOf === 'camera') && (shot?.type || shot?.setup) && shotModel) {
         try {
           const fr = await deps.checkFraming(c, shotModel, shot.type, shot.setup);
           if (fr) {
