@@ -1,7 +1,7 @@
 // Reading a screenplay: which script elements belong to a shot, the scene
 // heading they sit under, and which characters are visible. Pure functions.
 
-import type { Character, ScreenplayDoc, ScriptElement, Shot } from './types';
+import type { Character, Prop, ScreenplayDoc, ScriptElement, Shot } from './types';
 
 export interface SceneHeading {
   /** "Interior", "Exterior", "Interior/exterior", or '' */
@@ -146,6 +146,19 @@ function titleCase(s: string): string {
     .split(/\s+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+/** Words a prop answers to: its name and its aliases. */
+export function propNames(p: Prop): string[] {
+  return [p.name, ...(p.aliases ?? '').split(',')].map((s) => s.trim()).filter((s) => s.length > 1);
+}
+
+/** Props a shot's part of the script mentions (by name or alias). */
+export function propsInShot(doc: ScreenplayDoc, shot: Shot): Prop[] {
+  const sec = shotSection(doc, shot);
+  if (!sec) return [];
+  const text = sec.elements.filter((e) => e.type !== 'character').map((e) => e.text).join('\n');
+  return (doc.props ?? []).filter((p) => propNames(p).some((n) => mentions(text, n)));
 }
 
 /** Visual text of a section: action, shot lines and general text (not dialogue). */

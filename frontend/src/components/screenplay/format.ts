@@ -1,7 +1,7 @@
 // Screenplay element rules (Final Draft conventions), Fountain and Final Draft
 // (.fdx) import/export, page estimates and print layout.
 
-import type { Character, ElementType, ScreenplayDoc, ScriptElement, TitlePage } from '../../api/screenplays';
+import type { Character, ElementType, Prop, ScreenplayDoc, ScriptElement, TitlePage } from '../../api/screenplays';
 
 export const ELEMENTS: Array<{ type: ElementType; label: string; key: string }> = [
   { type: 'scene', label: 'Scene Heading', key: '1' },
@@ -495,5 +495,28 @@ export function shotBlocks(doc: Pick<ScreenplayDoc, 'elements' | 'shots'>): Map<
     else if (e.type === 'scene') current = null;
     if (current) out.set(e.id, current);
   }
+  return out;
+}
+
+/** Words a prop answers to: its name and its aliases. */
+export function propNames(p: Pick<Prop, 'name' | 'aliases'>): string[] {
+  return [p.name, ...(p.aliases ?? '').split(',')].map((s) => s.trim()).filter((s) => s.length > 1);
+}
+
+function mentionsWord(text: string, word: string): boolean {
+  const w = word.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return !!w && new RegExp(`(^|[^\\p{L}\\p{N}])${w}(?=$|[^\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+/** For each shot id, the props its part of the script mentions (same rule as the server). */
+export function propsByShot(doc: Pick<ScreenplayDoc, 'elements' | 'shots' | 'props'>): Map<string, Prop[]> {
+  const blocks = shotBlocks(doc);
+  const text = new Map<string, string>();
+  for (const e of doc.elements) {
+    const sid = blocks.get(e.id);
+    if (sid && e.type !== 'character') text.set(sid, `${text.get(sid) ?? ''}\n${e.text}`);
+  }
+  const out = new Map<string, Prop[]>();
+  for (const s of doc.shots) out.set(s.id, (doc.props ?? []).filter((p) => propNames(p).some((n) => mentionsWord(text.get(s.id) ?? '', n))));
   return out;
 }

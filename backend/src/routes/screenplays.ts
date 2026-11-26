@@ -10,7 +10,7 @@ import os from 'os';
 import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
-import { createFind, findMore, getFind, keepFound, latestFind } from '../services/screenplay/finds/finder';
+import { createFind, findMore, getFind, keepFound, latestFind, propTarget } from '../services/screenplay/finds/finder';
 import { queueLines, voiceTarget } from '../services/screenplay/voices';
 import { suggestShots } from '../services/screenplay/suggestShots';
 import { getLatestCharacterAsset, listCharacters as listStudioCharacters } from '../services/characters';
@@ -23,6 +23,7 @@ import {
   refreshShots,
   queueCharacterRefs,
   castCharacter,
+  queuePropDrawing,
   reconcile,
   refineAppearance,
   scheduleReconcile,
@@ -193,11 +194,19 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
   const s = d.settings ?? {};
   const t = d.titlePage ?? {};
   const pitch = cleanPitch(d.pitch);
+  const props = (Array.isArray(d.props) ? d.props : []).slice(0, 500).map((p) => ({
+    id: id(p?.id),
+    name: str(p?.name, 120) ?? '',
+    aliases: str(p?.aliases, 300),
+    description: str(p?.description, 1500),
+    primaryRefId: num(p?.primaryRefId, 1, Number.MAX_SAFE_INTEGER),
+  })).filter((p) => p.id);
   return {
     ...(pitch ? { pitch } : {}),
     elements: elements.length ? elements : base.elements,
     shots,
     characters,
+    ...(props.length ? { props } : {}),
     plans,
     settings: {
       imageModel: str(s.imageModel, 80),
@@ -462,6 +471,51 @@ router.post('/:id/shots/:shotId/finds', owned, (req, res) =>
 
 router.get('/:id/shots/:shotId/finds/latest', owned, (req, res) => wrap(res, () => ({ find: latestFind(sp(res).id, id(req.params.shotId)) })));
 
+// Props: reference photos from uploads, the finder, or drawn with AI.
+function propOf(s: Screenplay, pid: unknown) {
+  const p = (s.doc.props ?? []).find((x) => x.id === String(pid));
+  if (!p) throw new Error('Save the prop first');
+  return p;
+}
+
+router.post('/:id/props/:pid/finds', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const p = propOf(s, req.params.pid);
+    if (!p.name.trim()) throw new Error('Name the prop first');
+    return { find: createFind(s, propTarget(p.id)) };
+  }),
+);
+
+router.get('/:id/props/:pid/finds/latest', owned, (req, res) => wrap(res, () => ({ find: latestFind(sp(res).id, propTarget(id(req.params.pid))) })));
+
+router.post('/:id/props/:pid/images', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const p = propOf(s, req.params.pid);
+    const data = str(req.body?.data, 30 * 1024 * 1024) ?? '';
+    const mime = str(req.body?.mime, 60) ?? '';
+    if (!data) throw new Error('No image');
+    if (!/^image\/(png|jpe?g|webp|gif)$/.test(mime)) throw new Error('Upload a PNG, JPEG, WebP or GIF image');
+    const bytes = Buffer.from(data, 'base64');
+    if (bytes.length > 20 * 1024 * 1024) throw new Error('Images must be under 20 MB');
+    const filename = str(req.body?.filename, 200);
+    const media = saveMedia({ userId: s.userId, type: 'image', bytes, mime, originalFilename: filename, prompt: 'Screenplay prop' });
+    store.addMedia(s.id, 'prop', p.id, { status: 'ready', media_id: media.id, label: filename ?? 'Uploaded' });
+    return detail(store.getScreenplay(s.id)!);
+  }),
+);
+
+router.post('/:id/props/:pid/draw', owned, (req, res) =>
+  wrap(res, () => {
+    const s = sp(res);
+    const p = propOf(s, req.params.pid);
+    if (!p.name.trim()) throw new Error('Name the prop first');
+    queuePropDrawing(s, p);
+    return detail(s);
+  }),
+);
+
 router.get('/:id/finds/:fid', owned, (req, res) => wrap(res, () => ({ find: findOf(sp(res), req.params.fid) })));
 
 router.post('/:id/finds/:fid/more', owned, (req, res) => wrap(res, () => ({ find: findMore(findOf(sp(res), req.params.fid)) })));
@@ -548,7 +602,7 @@ router.delete('/:id/media/:mid', owned, (req, res) =>
   wrap(res, () => {
     const row = store.getMedia(Number(req.params.mid));
     if (!row || row.screenplay_id !== sp(res).id) throw new Error('Not found');
-    if (!['reference', 'character', 'reel', 'sound'].includes(row.role)) throw new Error('Only reference, character, reel and sound files can be removed');
+    if (!['reference', 'character', 'reel', 'sound', 'prop'].includes(row.role)) throw new Error('Only reference, character, prop, reel and sound files can be removed');
     store.deleteMedia(row.id);
     if (row.role === 'reference') scheduleReconcile(sp(res).id, 0);
     return detail(sp(res));

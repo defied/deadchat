@@ -17,6 +17,7 @@ import {
   Keyboard,
   LayoutGrid,
   Loader2,
+  Package,
   Pause,
   Play,
   Presentation,
@@ -34,6 +35,7 @@ import type { ElementType, ScreenplayDoc } from '../api/screenplays';
 import { Alert, Field, Loading, Modal, RouteTabs, errorMessage } from '../components/ui';
 import { ScriptEditor, type EditorApi } from '../components/screenplay/ScriptEditor';
 import { CharactersTab } from '../components/screenplay/CharactersTab';
+import { PropsTab } from '../components/screenplay/PropsTab';
 import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
 import { PitchTab } from '../components/screenplay/PitchTab';
@@ -180,6 +182,7 @@ export function ScreenplayPage() {
         tabs={[
           { to: `/screenplays/${id}/script`, label: 'Script', icon: <Clapperboard size={14} /> },
           { to: `/screenplays/${id}/characters`, label: 'Characters', icon: <Users size={14} /> },
+          { to: `/screenplays/${id}/props`, label: 'Props', icon: <Package size={14} /> },
           { to: `/screenplays/${id}/plan`, label: 'Set plan', icon: <LayoutGrid size={14} /> },
           { to: `/screenplays/${id}/references`, label: 'References', icon: <ImageIcon size={14} /> },
           { to: `/screenplays/${id}/sound`, label: 'Sound', icon: <AudioLines size={14} /> },
@@ -276,6 +279,7 @@ export function ScreenplayPage() {
           />
         </>
       )}
+      {tab === 'props' && <PropsTab screenplayId={id} doc={doc} detail={s.detail} update={s.update} flush={s.flush} setDetail={s.setDetail} />}
       {tab === 'characters' && <CharactersTab screenplayId={id} doc={doc} detail={s.detail} update={s.update} flush={s.flush} setDetail={s.setDetail} />}
       {tab === 'plan' && (
         <SetPlan

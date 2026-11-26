@@ -207,7 +207,7 @@ export function ShotFinder({
   );
 }
 
-function Tile({ c, selected, isFrame, onSelect }: { c: ImageCandidate; selected: boolean; isFrame: boolean; onSelect: () => void }) {
+export function Tile({ c, selected, isFrame, onSelect }: { c: ImageCandidate; selected: boolean; isFrame: boolean; onSelect: () => void }) {
   const [broken, setBroken] = useState(false);
   if (broken) return null;
   return (
@@ -226,6 +226,6 @@ function Tile({ c, selected, isFrame, onSelect }: { c: ImageCandidate; selected:
   );
 }
 
-function msg(e: unknown): string {
+export function msg(e: unknown): string {
   return (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? (e as Error).message;
 }

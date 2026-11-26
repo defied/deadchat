@@ -119,10 +119,21 @@ export interface TitlePage {
   draftDate?: string;
 }
 
+/** A prop with reference photos, so it looks the same in every frame it's put into. */
+export interface Prop {
+  id: string;
+  name: string;
+  /** Other words the script uses for it, comma-separated. */
+  aliases?: string;
+  description?: string;
+  primaryRefId?: number;
+}
+
 export interface ScreenplayDoc {
   elements: ScriptElement[];
   shots: Shot[];
   characters: Character[];
+  props?: Prop[];
   plans: Record<string, SetPlan>;
   settings: ScreenplaySettings;
   titlePage?: TitlePage;
@@ -183,7 +194,7 @@ export interface ReelItem {
   caption?: string;
 }
 
-export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel' | 'sound';
+export type MediaRole = 'frame' | 'music' | 'character' | 'reference' | 'reel' | 'sound' | 'prop';
 
 export interface ScreenplayMedia {
   id: number;
@@ -559,4 +570,27 @@ export function foundMeta(m: ScreenplayMedia | undefined | null): FoundMeta | nu
   } catch {
     return null;
   }
+}
+
+// ── props ────────────────────────────────────────────────────────────────────
+
+export async function uploadPropImage(id: number, propId: string, file: File): Promise<Detail> {
+  const data64 = await fileToBase64(file);
+  const { data } = await client.post<Detail>(`/api/screenplays/${id}/props/${propId}/images`, { data: data64, mime: file.type, filename: file.name });
+  return data;
+}
+
+export async function drawProp(id: number, propId: string): Promise<Detail> {
+  const { data } = await client.post<Detail>(`/api/screenplays/${id}/props/${propId}/draw`, {});
+  return data;
+}
+
+export async function startPropFind(id: number, propId: string): Promise<ShotFind> {
+  const { data } = await client.post<{ find: ShotFind }>(`/api/screenplays/${id}/props/${propId}/finds`, {});
+  return data.find;
+}
+
+export async function latestPropFind(id: number, propId: string): Promise<ShotFind | null> {
+  const { data } = await client.get<{ find: ShotFind | null }>(`/api/screenplays/${id}/props/${propId}/finds/latest`);
+  return data.find;
 }

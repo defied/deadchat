@@ -4,7 +4,7 @@
 import { createHash } from 'crypto';
 import { presentCharacters, shotSection, visualText } from './script';
 import { defaultLens, describeStaging } from './staging';
-import type { Character, ScreenplayDoc, Shot } from './types';
+import type { Character, Prop, ScreenplayDoc, Shot } from './types';
 
 export const RATIO_ASPECT: Record<string, number> = { '16:9': 16 / 9, '21:9': 21 / 9, '4:3': 4 / 3, '1:1': 1, '9:16': 9 / 16 };
 
@@ -353,6 +353,16 @@ export function castingPrompt(c: Character, style?: string): string {
     'plain grey studio backdrop, soft even lighting',
     style?.trim() || 'photorealistic',
     'No text or watermark',
+  ].join('. ');
+}
+
+/** A clean reference photo of a prop, for putting it into frames later. */
+export function propPrompt(p: Prop, style?: string): string {
+  return [
+    `Product reference photo of ${p.name.trim()}${p.description?.trim() ? `: ${p.description.trim()}` : ''}`,
+    'the whole object in frame, three-quarter view, sharp focus, isolated on a plain light grey background, soft even studio lighting',
+    style?.trim() || 'photorealistic',
+    'No text, labels, hands or people',
   ].join('. ');
 }
 

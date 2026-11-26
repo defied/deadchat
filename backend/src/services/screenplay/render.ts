@@ -13,11 +13,11 @@ import { localModels } from '../influencers/media';
 import { getMediaSettings } from '../media/settings';
 import { describeImage } from '../media/enhance';
 import { asString, llmJson } from '../influencers/llm';
-import { adjustKey, appendAdjustments, castingPrompt, characterPrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
+import { adjustKey, appendAdjustments, castingPrompt, characterPrompt, propPrompt, hashOf, planMusic, planShot, type ReferenceNote, type ShotPlan } from './prompts';
 import db from '../../db/connection';
 import { getActiveModel } from '../chatModels';
 import * as store from './store';
-import type { Character, Screenplay, ScreenplayMedia, Shot } from './types';
+import type { Character, Prop, Screenplay, ScreenplayMedia, Shot } from './types';
 
 export const STABLE_MS = 6000;
 export const MUSIC_MODEL = 'ace-step-v1';
@@ -385,6 +385,20 @@ export function queueCharacterRefs(sp: Screenplay, c: Character, views: RefView[
     );
     return store.addMedia(sp.id, 'character', c.id, { prompt, job_id: jobId, label: view });
   });
+}
+
+// ── props ──────────────────────────────────────────────────────────────────────
+
+/** Draw a reference photo of a prop with the image model. */
+export function queuePropDrawing(sp: Screenplay, p: Prop): ScreenplayMedia {
+  const model = imageModelFor(sp);
+  const prompt = propPrompt(p, sp.doc.settings.style);
+  const jobId = enqueue(
+    'image',
+    { catalogId: model.id, prompt, negative: NEGATIVE, ratio: ratioFor(model, '1:1'), seed: Math.floor(Math.random() * 2_147_483_647), enhance: false, verifyAttempts: 1 },
+    { userId: sp.userId, heavy: true },
+  );
+  return store.addMedia(sp.id, 'prop', p.id, { prompt, job_id: jobId, label: 'Drawn with AI' });
 }
 
 // ── casting ──────────────────────────────────────────────────────────────────

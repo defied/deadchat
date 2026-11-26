@@ -10,7 +10,7 @@ import { getPhotoKeys } from '../../media/settings';
 import * as store from '../store';
 import { presentCharacters, shotSection, visualText } from '../script';
 import { activeAdjustments, firstMoment } from '../prompts';
-import type { Screenplay, Shot } from '../types';
+import type { Prop, Screenplay, Shot } from '../types';
 import { searchOpenverseImages, searchPexels, searchUnsplash, type ImageCandidate, type SearchOpts } from './sources';
 
 export interface FindPlan {
@@ -24,6 +24,7 @@ export interface FindPlan {
 export interface ShotFind {
   id: number;
   screenplay_id: number;
+  /** A shot id, or "prop:<id>" for a prop's reference photos. */
   shot_id: string;
   status: 'queued' | 'planning' | 'searching' | 'done' | 'failed';
   progress: string;
@@ -161,6 +162,22 @@ export function scoreImage(c: ImageCandidate, plan: FindPlan, ratio: number): nu
 
 const PER_ROUND = 10;
 
+const PROP_PREFIX = 'prop:';
+export const propTarget = (propId: string) => `${PROP_PREFIX}${propId}`;
+const propIdOf = (target: string) => (target.startsWith(PROP_PREFIX) ? target.slice(PROP_PREFIX.length) : null);
+
+/** Props are searched by what they are: their name, then with their description. */
+export function planPropFind(p: Prop): FindPlan {
+  const clean = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const name = clean(p.name);
+  const desc = clean(p.description ?? '')
+    .split(' ')
+    .filter((w) => w.length > 2 && !STOP.has(w))
+    .slice(0, 4);
+  const queries = [desc.length ? `${desc.slice(0, 2).join(' ')} ${name}` : '', name, desc.length >= 2 ? desc.join(' ') : ''].map((q) => q.trim()).filter((q) => q.length > 2);
+  return { look: p.description?.trim() || p.name, queries: [...new Set(queries)].slice(0, 3), notes: [] };
+}
+
 // ── running ──────────────────────────────────────────────────────────────────
 
 export function createFind(sp: Screenplay, shotId: string): ShotFind {
@@ -207,19 +224,22 @@ async function run(id: number): Promise<void> {
   const f = getFind(id)!;
   const sp = store.getScreenplay(f.screenplay_id);
   if (!sp) throw new Error('The screenplay was deleted');
-  const shot = sp.doc.shots.find((s) => s.id === f.shot_id);
-  if (!shot) throw new Error('That shot no longer exists');
+  const propId = propIdOf(f.shot_id);
+  const prop = propId ? (sp.doc.props ?? []).find((p) => p.id === propId) : undefined;
+  const shot = propId ? undefined : sp.doc.shots.find((s) => s.id === f.shot_id);
+  if (propId && !prop) throw new Error('That prop no longer exists');
+  if (!propId && !shot) throw new Error('That shot no longer exists');
 
   let plan = f.plan;
   if (!plan.queries?.length) {
-    save(id, { status: 'planning', progress: 'Reading the shot…' });
-    plan = await deps.planFind(shotBrief(sp, shot), activeAdjustments(shot), sp.doc.characters.map((c) => c.name).filter(Boolean));
-    if (!plan.queries.length) throw new Error('Nothing to search for yet. Write the action for this shot, or add an adjustment note.');
+    save(id, { status: 'planning', progress: prop ? 'Reading the prop…' : 'Reading the shot…' });
+    plan = prop ? planPropFind(prop) : await deps.planFind(shotBrief(sp, shot!), activeAdjustments(shot!), sp.doc.characters.map((c) => c.name).filter(Boolean));
+    if (!plan.queries.length) throw new Error(prop ? 'Name the prop first.' : 'Nothing to search for yet. Write the action for this shot, or add an adjustment note.');
     save(id, { plan });
   }
 
-  const ratioKey = sp.doc.settings.ratio ?? '21:9';
-  const ratio = RATIO[ratioKey] ?? 16 / 9;
+  // Props: any shape (the object matters, not the framing). Shots: the film's frame.
+  const ratio = prop ? 1 : (RATIO[sp.doc.settings.ratio ?? '21:9'] ?? 16 / 9);
   const opts = (page: number): SearchOpts => ({ page, wide: ratio > 1.2, keys: deps.keys() });
   const seen = new Set(f.candidates.map((c) => c.key));
   const found = new Map<string, ImageCandidate>();
@@ -287,9 +307,12 @@ export async function keepFound(
 ): Promise<number> {
   const c = f.candidates.find((x) => x.key === key);
   if (!c) throw new Error('That photo isn’t in this search');
-  const existing = store.listMedia(sp.id, 'reference').find((m) => parse<{ found?: { key?: string } }>(m.meta ?? '{}', {}).found?.key === key);
+  const propId = propIdOf(f.shot_id);
+  const role = propId ? 'prop' : 'reference';
+  const target = propId ?? f.shot_id;
+  const existing = store.listMedia(sp.id, role).find((m) => parse<{ found?: { key?: string } }>(m.meta ?? '{}', {}).found?.key === key);
   if (existing) {
-    if (existing.target !== f.shot_id) store.updateMedia(existing.id, { target: f.shot_id });
+    if (existing.target !== target) store.updateMedia(existing.id, { target });
     return existing.id;
   }
   const url = new URL(c.imageUrl);
@@ -306,7 +329,7 @@ export async function keepFound(
   }
   const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : mime === 'image/gif' ? 'gif' : 'jpg';
   const mediaId = saveImage(buf, mime, `${c.title.replace(/[^\w .-]+/g, '_').slice(0, 80) || 'photo'}.${ext}`);
-  const row = store.addMedia(sp.id, 'reference', f.shot_id, { status: 'ready', media_id: mediaId, label: c.title.slice(0, 200) });
+  const row = store.addMedia(sp.id, role, target, { status: 'ready', media_id: mediaId, label: c.title.slice(0, 200) });
   store.updateMedia(row.id, {
     meta: JSON.stringify({
       found: {
