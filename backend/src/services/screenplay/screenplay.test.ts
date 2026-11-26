@@ -899,3 +899,11 @@ test('recreating a picked photo queues FLUX.2 with the photo, the cast photos an
   assert.ok(none.id);
   assert.throws(() => render.recreateFrame(s, s.doc.shots[0], face.id, {}), /Pick a photo/);
 });
+
+test('finder relevance: most of the query must be in the title or tags; stems match', () => {
+  const c = (title: string, query: string, tags: string[] = []) => ({ title, query, tags });
+  assert.equal(finder.relevance(c('lean-to shed taking shape', 'phone lean')), 0.5);
+  assert.ok(finder.relevance(c('Stormy night: lightning over the city skyline', 'lightning storm city skyline')) >= 0.75);
+  assert.equal(finder.relevance(c('Brooklyn Bridge', 'young man smartphone street')), 0);
+  assert.ok(finder.relevance(c('A young man on his phones', 'young man smartphone', ['smartphone'])) === 1);
+});
