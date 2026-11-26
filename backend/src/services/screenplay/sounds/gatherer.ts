@@ -92,8 +92,8 @@ const PLAN_DEFAULT =
   'You are a sound researcher for a film. From the request and the script excerpt, list the separate sounds a sound ' +
   'designer would gather: background ambience, sound effects, foley (body movement, handled objects) and music. ' +
   'Follow the request first; use the script only to understand it, or to choose sounds when the request is empty. ' +
-  'Return {"wants":[{"want":"short plain description, e.g. heavy rain on a window at night","kind":"ambience|effect|foley|music",' +
-  '"queries":["2 to 4 short library search phrases, 1-3 words each, most specific first, e.g. rain window, heavy rain, rain glass"]}]}. ' +
+  'Return {"wants":[{"want":"short plain description of the sound and where it is","kind":"ambience|effect|foley|music",' +
+  '"queries":["2 to 4 short library search phrases, 1-3 words each, most specific first"]}]}. ' +
   'At most 8 wants, no duplicates, no dialogue or voices of named characters.';
 
 defineAgent({

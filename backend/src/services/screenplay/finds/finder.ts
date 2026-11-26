@@ -154,10 +154,11 @@ const PLAN_DEFAULT =
   "You are a film director's reference researcher building a mood board for one shot. You search free stock photo libraries, which " +
   'match words in photo titles and tags, so write each search the way a photographer titles a photo: 2 to 4 everyday words, generic ' +
   'and photographable, not story-specific. Give four searches, one from each angle:\n' +
-  '1. The subject and action as an everyday photo ("man walking looking at phone").\n' +
-  '2. The setting as a photo subject ("apartment building entrance", "city street rain").\n' +
-  "3. The mood and light, from the director's vision and the shot list ('moody overcast street', 'storm light city').\n" +
-  '4. The camera\'s view, from the shot list, in plain words ("over the shoulder phone", "low angle man walking").\n' +
+  '1. Subject: who or what, doing what, as an everyday photo of it.\n' +
+  '2. Setting: the place on its own, as a photo subject.\n' +
+  "3. Mood: the place or subject with the light and feeling from the director's vision and the shot list.\n" +
+  '4. Camera: the shot list\'s angle or framing in plain words with the subject.\n' +
+  'Build every search from THIS shot: its own subject, action, place, light and mood. Use no words that this shot, its notes or the vision do not suggest. ' +
   'Rules: each search must find different photos, so do not repeat the same words across searches. Never use character names. ' +
   "Name a real place or landmark only when the script needs that exact place. Don't add story things (objects, events, people) that " +
   'the script, notes or vision do not suggest. Adjustment notes come first. ' +
@@ -643,8 +644,7 @@ export async function makeChecklist(brief: string, notes: string[], names: strin
 
 const CHECK_DEFAULT =
   'You look at a photo for a film storyboard. First say briefly what the photo actually shows. Then, for each checklist item, answer ' +
-  '"yes" if the photo clearly shows it, "partly" if it shows something close (e.g. a man holding a phone for "a man scrolling a phone"; ' +
-  'a city street for "outside an apartment building"), or "no". Judge only what is visible; any person of the right kind counts. ' +
+  '"yes" if the photo clearly shows it, "partly" if it shows something close (the same kind of thing or place, or the action about to happen), or "no". Judge only what is visible; any person of the right kind counts. ' +
   'Return {"sees": "under 15 words", "answers": ["yes|partly|no", … one per item, in order]}.';
 
 defineAgent({
