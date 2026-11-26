@@ -520,15 +520,19 @@ export function ScriptEditor({ screenplayId, doc, detail, update, undo, redo, on
           />
         ))}
         {sel && (
-          <button
-            className="sp-shot-from-sel"
-            style={{ top: sel.top }}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => addShotFromSelection()}
-            title="Make a storyboard shot of the highlighted text"
-          >
-            <Clapperboard size={13} /> Shot from highlight
-          </button>
+          // The wrapper does the positioning: a button's own transform is
+          // replaced while it's pressed (button:active scales it), which made
+          // it jump away from the cursor before the click finished.
+          <div className="sp-shot-from-sel-at" style={{ top: sel.top }}>
+            <button
+              className="sp-shot-from-sel"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => addShotFromSelection()}
+              title="Make a storyboard shot of the highlighted text"
+            >
+              <Clapperboard size={13} /> Shot from highlight
+            </button>
+          </div>
         )}
         {suggest && suggestPos && (
           <ul className="sp-suggest" style={suggestPos} role="listbox">
