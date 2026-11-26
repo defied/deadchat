@@ -120,6 +120,7 @@ export function ShotFinder({
   const notesNow = activeNotes(shot);
   const notesChanged = !!find && find.plan.queries.length > 0 && notesNow.join('\n') !== (find.plan.notes ?? []).join('\n');
   const wordsEdited = !!find && words.join('\n') !== planned;
+  const optionChanged = !!find && find.plan.queries.length > 0 && !!find.plan.peopleOptional !== !!shot.peopleOptional;
   const pick = find?.candidates.find((c) => c.key === selected) ?? find?.plan.turnedDown?.find((c) => c.key === selected) ?? null;
 
   return (
@@ -184,19 +185,23 @@ export function ShotFinder({
             <span className="field-hint">Only these words are searched. Remove any you don’t want, or add your own.</span>
           </div>
           <div className="sp-find-notes">
+            <label className="toggle sp-find-opt" title="Find photos of the place, angle and mood, with or without anyone in them. Your characters can be put in when the AI recreates the frame.">
+              <input type="checkbox" checked={!!shot.peopleOptional} onChange={(e) => onPatch({ peopleOptional: e.target.checked ? true : undefined }, 'peopleOptional')} />
+              <span>People optional: look for the place, angle and mood</span>
+            </label>
             <AdjustmentNotes
               shot={shot}
               onChange={(adjustments: Adjustment[]) => onPatch({ adjustments }, 'adjustments')}
               hint="Steer the search: “night, not day”, “wider”, “no cars”. They also guide the AI when it recreates the frame."
             />
             <button
-              className={`btn btn-sm ${notesChanged || wordsEdited ? 'btn-primary' : ''}`}
+              className={`btn btn-sm ${notesChanged || wordsEdited || optionChanged ? 'btn-primary' : ''}`}
               onClick={() => void (wordsEdited ? search(words) : search())}
               disabled={running || (wordsEdited && !words.length)}
               title={wordsEdited ? 'Search exactly these words' : 'Read the script and notes again and choose the words'}
             >
               <RefreshCw size={13} className={running && !find?.candidates.length ? 'spin' : ''} />{' '}
-              {wordsEdited ? 'Search these words' : notesChanged ? 'Search again with these notes' : 'Search again'}
+              {wordsEdited ? 'Search these words' : notesChanged || optionChanged ? 'Search again with these settings' : 'Search again'}
             </button>
           </div>
         </div>

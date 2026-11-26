@@ -140,6 +140,7 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     type: str(s?.type, 120),
     excerpt: str(s?.excerpt, 4000),
     summary: str(s?.summary, 1000),
+    ...(s?.peopleOptional === true ? { peopleOptional: true } : {}),
     seconds: num(s?.seconds, 0, 3600),
     lens: num(s?.lens, 8, 800),
     lensType: oneOf(s?.lensType, LENS_TYPE_IDS),

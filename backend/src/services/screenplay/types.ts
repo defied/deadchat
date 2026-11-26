@@ -36,6 +36,8 @@ export interface Shot {
   excerpt?: string;
   /** What's in the shot, in a sentence: written by the agent from the excerpt, edited by the writer. */
   summary?: string;
+  /** Photo search: the photo is for the place, angle and mood; it needn't have a person in it. */
+  peopleOptional?: boolean;
   /** Duration in seconds. */
   seconds?: number;
   /** Lens in mm; falls back to the set-plan camera, then to the shot type. */

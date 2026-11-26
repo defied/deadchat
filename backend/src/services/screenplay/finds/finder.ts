@@ -26,6 +26,8 @@ export interface FindPlan {
   turnedDown?: ImageCandidate[];
   /** The vision check couldn't run (no vision model): photos are unchecked. */
   unchecked?: boolean;
+  /** The search was made with people optional. */
+  peopleOptional?: boolean;
   /** What a photo must show, most important first: the vision check goes through it item by item. */
   checklist?: string[];
   /** The adjustment notes the search followed. */
@@ -97,7 +99,8 @@ export function shotBrief(sp: Screenplay, shot: Shot): string {
   return [
     h ? `Setting: ${[h.setting, h.location, h.time].filter(Boolean).join(', ')}` : sec.scene?.text ? `Setting: ${sec.scene.text}` : '',
     shot.summary?.trim() ? `Moment: ${shot.summary.trim()}` : action ? `Moment: ${firstMoment(action, 40)}` : '',
-    people.length ? `People (never use their names): ${people.join('; ')}` : '',
+    // People optional: the photo is for the place, angle and mood; nobody need be in it.
+    shot.peopleOptional ? PEOPLE_OPTIONAL : people.length ? `People (never use their names): ${people.join('; ')}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -110,6 +113,13 @@ export function lookOf(brief: string, notes: string[]): string {
   const parts = [line('Moment'), where && `(${where})`].filter(Boolean).join(' ');
   return [parts, ...notes.map((n) => `· ${n}`)].filter(Boolean).join(' ');
 }
+
+const PEOPLE_OPTIONAL = 'People optional: yes (the photo is for the place, angle and mood; it needs no person)';
+const peopleOptional = (brief: string) => brief.includes(PEOPLE_OPTIONAL);
+const OPTIONAL_PLAN =
+  ' People are optional for this shot: make the queries about the place, the setting and the visible objects, not about people.';
+const OPTIONAL_LIST = ' People are optional for this shot: leave people out of the checklist; list the place and the visible objects.';
+const WHO = /\b(man|men|woman|women|person|people|boy|girl|child|children|kid|kids|couple|crowd|guy|lady)\b/i;
 
 const PLAN_SYSTEM =
   'You turn one moment of a screenplay into searches for free stock photo libraries, whose search matches words in photo titles and tags. ' +
@@ -153,16 +163,18 @@ export async function planFind(brief: string, notes: string[], names: string[] =
   const source = strip(`${brief}\n${notes.join('\n')}`);
   try {
     const out = await llmJson<{ queries?: unknown }>(
-      PLAN_SYSTEM,
+      PLAN_SYSTEM + (peopleOptional(brief) ? OPTIONAL_PLAN : ''),
       `${brief || '(no script for this shot)'}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
       { temperature: 0.2 },
     );
-    const queries = withPerson(withMoment(onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source)), brief).slice(0, 4);
-    if (queries.length) return { look, queries, notes };
+    let queries = withPerson(withMoment(onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source)), brief);
+    if (peopleOptional(brief)) queries = [...new Set(queries.map((q) => q.replace(WHO, ' ').replace(/\s+/g, ' ').trim()).filter((q) => q.length > 2))];
+    queries = queries.slice(0, 4);
+    if (queries.length) return { look, queries, notes, ...(peopleOptional(brief) ? { peopleOptional: true } : {}) };
   } catch {
     /* fall back to words from the script */
   }
-  return { look, queries: ruleQueries(brief, notes, names), notes };
+  return { look, queries: ruleQueries(brief, notes, names), notes, ...(peopleOptional(brief) ? { peopleOptional: true } : {}) };
 }
 
 /**
@@ -284,7 +296,7 @@ export function createFind(sp: Screenplay, shotId: string, queries: string[] = [
   if (queries.length) {
     const shot = sp.doc.shots.find((x) => x.id === shotId);
     const notes = shot ? activeAdjustments(shot) : [];
-    plan = { look: shot ? lookOf(shotBrief(sp, shot), notes) : queries.join(', '), queries, notes, own: true };
+    plan = { look: shot ? lookOf(shotBrief(sp, shot), notes) : queries.join(', '), queries, notes, own: true, ...(shot?.peopleOptional ? { peopleOptional: true } : {}) };
   }
   const r = db.prepare('INSERT INTO screenplay_shot_finds (screenplay_id, shot_id, plan) VALUES (?, ?, ?)').run(sp.id, shotId, JSON.stringify(plan ?? { look: '', queries: [], notes: [] }));
   kick();
@@ -479,7 +491,7 @@ const LIST_SYSTEM =
 /** The text model's checklist for a shot, kept to the shot's own words (names removed). */
 export async function makeChecklist(brief: string, notes: string[], names: string[] = []): Promise<string[]> {
   const out = await llmJson<{ items?: unknown }>(
-    LIST_SYSTEM,
+    LIST_SYSTEM + (peopleOptional(brief) ? OPTIONAL_LIST : ''),
     `${brief}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
     { temperature: 0 },
   );
@@ -495,6 +507,7 @@ export async function makeChecklist(brief: string, notes: string[], names: strin
     .map((x) => noNames(String(x ?? '')).replace(/\s+/g, ' ').trim().slice(0, 60))
     // Every word must come from the shot (or be a generic who-word).
     .filter((x) => x.length > 2 && x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean).every((w) => w.length < 3 || allowed.has(stem(w))))
+    .filter((x) => !peopleOptional(brief) || !WHO.test(x))
     .slice(0, 4);
 }
 

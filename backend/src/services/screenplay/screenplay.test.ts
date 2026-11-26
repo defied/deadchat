@@ -1061,3 +1061,31 @@ test('photo check: the checklist keeps to the shot’s words, and scores come fr
     globalThis.fetch = realFetch;
   }
 });
+
+test('people optional: the brief says so, and searches and checklists leave people out', async () => {
+  const d = doc();
+  d.shots[0].summary = 'Jane grips a knife at the kitchen counter.';
+  d.shots[0].peopleOptional = true;
+  const sp = store.createScreenplay(1, 'Optional', d);
+  const brief = finder.shotBrief(sp, sp.doc.shots[0]);
+  assert.match(brief, /People optional: yes/);
+  assert.doesNotMatch(brief, /Jane = /);
+  const realFetch = globalThis.fetch;
+  const systems: string[] = [];
+  try {
+    globalThis.fetch = (async (_u: unknown, init?: RequestInit) => {
+      const b = JSON.parse(String(init?.body));
+      systems.push(b.messages[0].content);
+      const content = /checklist/.test(b.messages[0].content) ? { items: ['a woman', 'knife', 'kitchen counter'] } : { queries: ['woman kitchen knife', 'kitchen counter'] };
+      return new Response(JSON.stringify({ message: { content: JSON.stringify(content) } }));
+    }) as typeof fetch;
+    const plan = await finder.planFind(brief, [], ['Jane']);
+    assert.deepEqual(plan.queries, ['kitchen knife', 'kitchen counter']);
+    assert.equal(plan.peopleOptional, true);
+    assert.match(systems[0], /People are optional/);
+    assert.deepEqual(await finder.makeChecklist(brief, [], ['Jane']), ['knife', 'kitchen counter']);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(cleanDoc({ elements: [{ id: 'a1', type: 'action', text: 'x' }], shots: [{ id: 's', anchorId: 'a1', peopleOptional: true }] }).shots[0].peopleOptional, true);
+});
