@@ -850,14 +850,15 @@ test('recreate prompt: image 1 is the scene, faces and props by image number, te
     cast: [{ name: 'Jane', look: 'woman in her forties, short grey hair', wardrobe: 'Dressed in a worn green cardigan', image: 2 }, { name: 'Tom', look: 'tall man, beard', image: null }],
     props: [{ name: 'knife', look: 'black handle', image: 3 }],
     moment: 'Jane grips the knife.',
-    lens: '50mm lens',
     notes: ['night'],
   });
-  assert.match(p, /^Recreate image 1 as a cinematic film still: keep its camera angle/);
+  assert.doesNotMatch(p, /mm lens/, 'the photo keeps its own lens');
+  assert.match(p, /^Edit image 1, keeping it as it is: the same place, buildings, landscape, background, camera angle/);
+  assert.match(p, /if not, place them naturally in the scene/);
   assert.match(p, /Jane, who looks exactly like the person in image 2: woman in her forties, short grey hair, wearing a worn green cardigan; Tom: tall man, beard/);
   assert.match(p, /the knife looks exactly like the one in image 3 \(black handle\)/);
-  assert.match(p, /each appears exactly once/);
-  assert.match(p, /The moment: Jane grips the knife\. Also: night\. 50mm lens/);
+  assert.match(p, /each appears exactly once/i);
+  assert.match(p, /What they are doing: Jane grips the knife\. Also: night\./);
   assert.match(p, /the names "Jane", "Tom" are never written anywhere$/);
 });
 
