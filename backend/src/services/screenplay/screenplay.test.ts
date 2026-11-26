@@ -981,7 +981,9 @@ test('the vision check keeps only photos that show the shot, best first, and nev
   const real = { ...finder.deps };
   try {
     const looked: string[] = [];
-    let wantedSeen = '';
+    let wantedSeen: string[] = [];
+    let briefSeen = '';
+    finder.deps.checklist = async (brief) => ((briefSeen = brief), ['a woman', 'gripping a knife', 'kitchen counter']);
     finder.deps.planFind = async (_b, notes) => ({ look: '', queries: ['woman kitchen knife', 'kitchen'], notes });
     finder.deps.searchOpenverseImages = async (q, o) =>
       o.page > 2
@@ -1009,7 +1011,9 @@ test('the vision check keeps only photos that show the shot, best first, and nev
       throw new Error('timeout');
     };
     const f = await wait(finder.createFind(sp, 'sh1').id);
-    assert.match(wantedSeen, /^Main subject and action: Jane grips a knife at the kitchen counter\.\nWho: Jane = a person\nPlace \(less important\): Jane's kitchen, night/, 'photos are judged against the shot’s summary, subject first');
+    assert.match(briefSeen, /Moment: Jane grips a knife at the kitchen counter\./, 'the checklist comes from the shot’s summary');
+    assert.deepEqual(wantedSeen, ['a woman', 'gripping a knife', 'kitchen counter']);
+    assert.deepEqual(f.plan.checklist, ['a woman', 'gripping a knife', 'kitchen counter']);
     assert.ok(f.candidates.length > 0 && f.candidates.every((c) => c.check!.score >= finder.MIN_SCORE), 'only matches are shown');
     const scores = f.candidates.map((c) => c.check!.score);
     assert.deepEqual(scores, [...scores].sort((a, b) => b - a), 'best first');
@@ -1039,4 +1043,21 @@ test('searches for a shot with someone in it say who', () => {
   assert.deepEqual(finder.withPerson(['exits apartment', 'scrolls phone', 'apartment building'], brief), ['man exits apartment', 'man scrolls phone', 'apartment building']);
   assert.deepEqual(finder.withPerson(['woman kitchen', 'kitchen'], brief.replace('male', 'female')), ['woman kitchen'], 'already says who; the repeat is dropped');
   assert.deepEqual(finder.withPerson(['kitchen'], 'Setting: Interior, kitchen'), ['kitchen'], 'nobody in the shot: unchanged');
+});
+
+test('photo check: the checklist keeps to the shot’s words, and scores come from yes / partly / no', async () => {
+  const items = ['a man', 'scrolling a phone', 'apartment building'];
+  assert.deepEqual(finder.scoreAnswers(items, ['yes', 'yes', 'partly']), { score: 9, missing: 'apartment building (partly)' });
+  assert.deepEqual(finder.scoreAnswers(items, ['yes', 'partly', 'no']), { score: 6, missing: 'scrolling a phone (partly); apartment building' });
+  assert.equal(finder.scoreAnswers(items, ['no', 'yes', 'yes']).score, 3, 'without the main subject it can’t pass');
+  const llm = require('../influencers/llm') as typeof import('../influencers/llm');
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ message: { content: JSON.stringify({ items: ['a man', 'Ferk scrolling his phone', 'stormy rooftop at sunset', 'apartment building'] }) } }))) as typeof fetch;
+    const list = await finder.makeChecklist('Moment: Ferk exits an apartment building, scrolling on his phone.', [], ['Ferk']);
+    assert.deepEqual(list, ['a man', 'scrolling his phone', 'apartment building'], 'names removed; anything the shot doesn’t say is dropped');
+    void llm;
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

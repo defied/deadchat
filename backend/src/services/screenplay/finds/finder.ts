@@ -26,6 +26,8 @@ export interface FindPlan {
   turnedDown?: ImageCandidate[];
   /** The vision check couldn't run (no vision model): photos are unchecked. */
   unchecked?: boolean;
+  /** What a photo must show, most important first: the vision check goes through it item by item. */
+  checklist?: string[];
   /** The adjustment notes the search followed. */
   notes: string[];
 }
@@ -321,7 +323,15 @@ export function resumeFinds(): void {
 }
 
 /** Injected in tests. */
-export const deps = { planFind, searchOpenverseImages, searchPexels, searchUnsplash, keys: getPhotoKeys, checkImage: (c: ImageCandidate, wanted: string) => checkImage(c, wanted) };
+export const deps = {
+  planFind,
+  searchOpenverseImages,
+  searchPexels,
+  searchUnsplash,
+  keys: getPhotoKeys,
+  checklist: (brief: string, notes: string[], names: string[]) => makeChecklist(brief, notes, names),
+  checkImage: (c: ImageCandidate, items: string[]) => checkImage(c, items),
+};
 
 async function run(id: number): Promise<void> {
   const f = getFind(id)!;
@@ -380,7 +390,15 @@ async function run(id: number): Promise<void> {
   // Best first by the words; then the vision model looks at each photo and
   // keeps those that really show the shot (no more than four from one search).
   const ranked = [...found.values()].sort((a, b) => scoreImage(b, plan, ratio) - scoreImage(a, plan, ratio));
-  const wanted = prop ? `Main subject: ${prop.name}${prop.description?.trim() ? ` (${prop.description.trim()})` : ''}` : checkBrief(shotBrief(sp, shot!), activeAdjustments(shot!)) || `Main subject: ${plan.queries.join(', ')}`;
+  if (!plan.checklist?.length) {
+    const names = sp.doc.characters.map((c) => c.name).filter(Boolean);
+    plan.checklist = prop
+      ? [prop.name.trim(), ...(prop.description?.trim() ? [prop.description.trim()] : [])].slice(0, 2)
+      : await deps.checklist(shotBrief(sp, shot!), activeAdjustments(shot!), names).catch(() => [] as string[]);
+    if (!plan.checklist.length) plan.checklist = plan.queries.slice(0, 3);
+    save(id, { plan });
+  }
+  const wanted = plan.checklist;
   const perQuery = new Map<string, number>();
   const picked: ImageCandidate[] = [];
   const rejected = [...(plan.rejected ?? [])];
@@ -444,40 +462,70 @@ const MAX_CHECKS = 30;
 const NO_VISION = 'no-vision';
 
 export interface ImageCheck {
-  /** 0–10: how well the photo shows what's wanted. */
+  /** 0–10: how much of the checklist the photo shows. */
   score: number;
   /** What's in the photo, briefly. */
   sees: string;
-  /** What the shot needs that the photo lacks ('' when nothing). */
+  /** Checklist items the photo lacks ('' when none). */
   missing: string;
 }
 
-/** What the photo check judges against: the subject and action first, then the place, then the notes. */
-export function checkBrief(brief: string, notes: string[]): string {
-  const line = (label: string) => new RegExp(`^${label}[^:]*: (.*)$`, 'mi').exec(brief)?.[1] ?? '';
-  const where = line('Setting').replace(/^(interior|exterior|interior\/exterior|establishing),?\s*/i, '');
-  return [
-    line('Moment') && `Main subject and action: ${line('Moment')}`,
-    line('People') && `Who: ${line('People')}`,
-    where && `Place (less important): ${where}`,
-    notes.length ? `Notes: ${notes.join('; ')}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+const LIST_SYSTEM =
+  'You turn one storyboard shot into a short checklist of what a reference photo must show. Give 2 to 4 items, most important first: ' +
+  'who (as "a man", "a woman", "a person", "a dog"…, never a name), what they are doing or holding, then where. Each item is 2 to 5 plain ' +
+  'words, using only what the shot description says: add nothing of your own. Leave out weather, time of day, clothing and mood unless ' +
+  'the adjustment notes ask for them. Return {"items": ["..."]}.';
+
+/** The text model's checklist for a shot, kept to the shot's own words (names removed). */
+export async function makeChecklist(brief: string, notes: string[], names: string[] = []): Promise<string[]> {
+  const out = await llmJson<{ items?: unknown }>(
+    LIST_SYSTEM,
+    `${brief}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
+    { temperature: 0 },
+  );
+  const noNames = (x: string) => names.reduce((t, n) => t.replace(new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ''), x);
+  const allowed = new Set(
+    `${brief} ${notes.join(' ')} a an the man woman person people child dog cat`
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .map(stem),
+  );
+  return (Array.isArray(out.items) ? out.items : [])
+    .map((x) => noNames(String(x ?? '')).replace(/\s+/g, ' ').trim().slice(0, 60))
+    // Every word must come from the shot (or be a generic who-word).
+    .filter((x) => x.length > 2 && x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean).every((w) => w.length < 3 || allowed.has(stem(w))))
+    .slice(0, 4);
 }
 
 const CHECK_SYSTEM =
-  'You pick reference photos for a film storyboard. A reference photo only needs to show the same kind of thing: it will be redrawn ' +
-  'with the film\'s own actors, so faces, names, clothing, weather and exact location don\'t matter. Look at what is actually in the photo, ' +
-  'then score 0 to 10. Judge mostly the main subject and action, then the place. Names are characters: any person of the right kind counts. ' +
-  '9-10 = the right kind of subject doing that action in that kind of place; 7-8 = the right subject and action, a different place; ' +
-  '5-6 = the right subject or the right place, but not the action; 2-4 = loosely related; 0-1 = unrelated. ' +
-  'Return {"score": n, "sees": "what the photo shows, under 15 words", "missing": "what the shot needs that the photo lacks, under 12 words, or empty"}.';
+  'You look at a photo for a film storyboard. First say briefly what the photo actually shows. Then, for each checklist item, answer ' +
+  '"yes" if the photo clearly shows it, "partly" if it shows something close (e.g. a man holding a phone for "a man scrolling a phone"; ' +
+  'a city street for "outside an apartment building"), or "no". Judge only what is visible; any person of the right kind counts. ' +
+  'Return {"sees": "under 15 words", "answers": ["yes|partly|no", … one per item, in order]}.';
 
 let visionOk: { model: string; ok: boolean } | null = null;
 
-/** Ask the vision model how well a photo (its thumbnail) shows what's wanted. */
-export async function checkImage(c: Pick<ImageCandidate, 'thumbUrl'>, wanted: string): Promise<ImageCheck> {
+/** Score from the answers: the first item (who or what) counts double and must be there. */
+export function scoreAnswers(items: string[], answers: string[]): { score: number; missing: string } {
+  let got = 0;
+  let total = 0;
+  const missing: string[] = [];
+  items.forEach((item, i) => {
+    const a = String(answers[i] ?? 'no').toLowerCase();
+    const v = a.startsWith('y') ? 1 : a.startsWith('p') ? 0.5 : 0;
+    const w = i === 0 ? 2 : 1;
+    got += v * w;
+    total += w;
+    if (v < 1) missing.push(v ? `${item} (partly)` : item);
+  });
+  let score = total ? Math.round((10 * got) / total) : 0;
+  if (items.length && !String(answers[0] ?? '').toLowerCase().match(/^(y|p)/)) score = Math.min(score, 3);
+  return { score, missing: missing.join('; ') };
+}
+
+/** Ask the vision model which checklist items a photo (its thumbnail) shows. */
+export async function checkImage(c: Pick<ImageCandidate, 'thumbUrl'>, items: string[]): Promise<ImageCheck> {
   const model = getActiveModel();
   if (visionOk?.model !== model) visionOk = { model, ok: (await getModelCapabilities(model).catch(() => [] as string[])).includes('vision') };
   if (!visionOk.ok) throw new Error(NO_VISION);
@@ -485,13 +533,13 @@ export async function checkImage(c: Pick<ImageCandidate, 'thumbUrl'>, wanted: st
   if (!r.ok) throw new Error(`thumbnail ${r.status}`);
   const buf = Buffer.from(await r.arrayBuffer());
   if (buf.length > 8 * 1024 * 1024) throw new Error('thumbnail too large');
-  const out = await llmJson<{ score?: unknown; sees?: unknown; missing?: unknown }>(CHECK_SYSTEM, `The shot needs: ${wanted}`, {
+  const out = await llmJson<{ sees?: unknown; answers?: unknown }>(CHECK_SYSTEM, `Checklist:\n${items.map((x, i) => `${i + 1}. ${x}`).join('\n')}`, {
     images: [buf.toString('base64')],
     temperature: 0,
   });
-  const score = Math.max(0, Math.min(10, Number(out.score)));
-  if (!Number.isFinite(score)) throw new Error('no score');
-  return { score: Math.round(score), sees: asString(out.sees, 160), missing: asString(out.missing, 120) };
+  const answers = Array.isArray(out.answers) ? out.answers.map((a) => String(a)) : [];
+  if (!answers.length) throw new Error('no answers');
+  return { sees: asString(out.sees, 160), ...scoreAnswers(items, answers) };
 }
 
 // ── keeping a pick ───────────────────────────────────────────────────────────
