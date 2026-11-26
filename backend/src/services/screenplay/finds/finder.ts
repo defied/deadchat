@@ -119,6 +119,7 @@ const peopleOptional = (brief: string) => brief.includes(PEOPLE_OPTIONAL);
 const OPTIONAL_PLAN =
   ' People are optional for this shot: make the queries about the place, the setting and the visible objects, not about people.';
 const OPTIONAL_LIST = ' People are optional for this shot: leave people out of the checklist; list the place and the visible objects.';
+const TIME_ONLY = /^(day|daytime|night|nighttime|dawn|dusk|morning|evening|afternoon|sunset|sunrise|midday|noon)$/i;
 const WHO = /\b(man|men|woman|women|person|people|boy|girl|child|children|kid|kids|couple|crowd|guy|lady)\b/i;
 
 const PLAN_SYSTEM =
@@ -508,7 +509,9 @@ export async function makeChecklist(brief: string, notes: string[], names: strin
     // Every word must come from the shot (or be a generic who-word).
     .filter((x) => x.length > 2 && x.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean).every((w) => w.length < 3 || allowed.has(stem(w))))
     .filter((x) => !peopleOptional(brief) || !WHO.test(x))
-    .slice(0, 4);
+    // Time of day isn't something a reference photo needs (unless a note asks for it).
+    .filter((x) => !TIME_ONLY.test(x.trim()) || notes.some((n) => n.toLowerCase().includes(x.trim().toLowerCase())))
+    .slice(0, 3);
 }
 
 const CHECK_SYSTEM =
