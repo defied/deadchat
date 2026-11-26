@@ -934,3 +934,9 @@ test('finder relevance: most of the query must be in the title or tags; stems ma
   assert.equal(finder.relevance(c('Brooklyn Bridge', 'young man smartphone street')), 0);
   assert.ok(finder.relevance(c('A young man on his phones', 'young man smartphone', ['smartphone'])) === 1);
 });
+
+test('single-thing searches get one that puts the subject in its place', () => {
+  assert.deepEqual(finder.withMoment(['phone', 'sneer', 'new york city', 'lightning storm']), ['phone lightning storm', 'phone', 'sneer', 'new york city', 'lightning storm']);
+  assert.deepEqual(finder.withMoment(['man phone street', 'street']), ['man phone street', 'street']);
+  assert.deepEqual(finder.withMoment(['phone']), ['phone']);
+});
