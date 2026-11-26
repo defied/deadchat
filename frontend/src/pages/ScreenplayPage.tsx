@@ -23,7 +23,6 @@ import {
   Presentation,
   Redo2,
   Settings,
-  Sparkles,
   Trash2,
   Undo2,
   Users,
@@ -40,7 +39,6 @@ import { SetPlan } from '../components/screenplay/SetPlan';
 import { ReferencesTab } from '../components/screenplay/ReferencesTab';
 import { PitchTab } from '../components/screenplay/PitchTab';
 import { SoundTab } from '../components/screenplay/SoundTab';
-import { GenerateShotsModal } from '../components/screenplay/GenerateShots';
 import { ScreenplayActionsContext } from '../components/screenplay/actions';
 import { useScreenplay } from '../components/screenplay/useScreenplay';
 import { ELEMENTS, download, pageStarts, parseFdx, parseFountain, printHtml, toFdx, toFountain } from '../components/screenplay/format';
@@ -57,7 +55,6 @@ export function ScreenplayPage() {
   const [curType, setCurType] = useState<ElementType | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [menu, setMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -205,11 +202,16 @@ export function ScreenplayPage() {
                 </option>
               ))}
             </select>
-            <button className="btn btn-sm" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.current?.addShot()} title="Pin a storyboard shot to the current line">
+            <button
+              className="btn btn-sm"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (!editor.current?.addShot()) setError('Highlight the part of the script the shot shows, then click Add shot (or the Shot button that appears by the highlight).');
+                else setError(null);
+              }}
+              title="Make a storyboard shot of the highlighted script text"
+            >
               <Clapperboard size={14} /> Add shot
-            </button>
-            <button className="btn btn-sm" onClick={() => setGenerating(true)} title="Suggest shots for every scene that has none">
-              <Sparkles size={14} /> Generate shots
             </button>
             <button
               className="btn btn-sm"
@@ -309,7 +311,6 @@ export function ScreenplayPage() {
 
       {settingsOpen && <SettingsModal doc={doc} title={s.title} update={s.update} onClose={() => setSettingsOpen(false)} />}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
-      {generating && <GenerateShotsModal screenplayId={id} doc={doc} update={s.update} flush={s.flush} onClose={() => setGenerating(false)} />}
     </div>
     </ScreenplayActionsContext.Provider>
   );

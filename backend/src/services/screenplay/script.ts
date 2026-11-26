@@ -73,6 +73,11 @@ export function shotSection(doc: ScreenplayDoc, shot: Shot): ShotSection | null 
       break;
     }
   }
+  // A highlighted shot covers exactly the highlighted text.
+  if (shot.excerpt?.trim()) {
+    const anchor = els[start];
+    return { scene, heading: scene ? parseHeading(scene.text) : null, elements: anchor.type === 'scene' ? [] : [{ ...anchor, text: shot.excerpt.trim() }] };
+  }
   return { scene, heading: scene ? parseHeading(scene.text) : null, elements: els.slice(start, end) };
 }
 

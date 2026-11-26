@@ -29,6 +29,13 @@ export interface Shot {
   anchorId: string;
   /** e.g. "Wide establishing", "Close-up", "Over-the-shoulder". Rendering starts once this is set. */
   type?: string;
+  /**
+   * The script text the writer highlighted for this shot. The shot covers
+   * exactly this (within its anchor line), nothing before or after.
+   */
+  excerpt?: string;
+  /** What's in the shot, in a sentence: written by the agent from the excerpt, edited by the writer. */
+  summary?: string;
   /** Duration in seconds. */
   seconds?: number;
   /** Lens in mm; falls back to the set-plan camera, then to the shot type. */

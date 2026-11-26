@@ -486,14 +486,16 @@ export function syncPlaceholders(
  * the next shot's anchor or the next scene heading (same rule as the server).
  */
 export function shotBlocks(doc: Pick<ScreenplayDoc, 'elements' | 'shots'>): Map<string, string> {
-  const byAnchor = new Map(doc.shots.map((s) => [s.anchorId, s.id]));
+  const byAnchor = new Map(doc.shots.map((s) => [s.anchorId, s]));
   const out = new Map<string, string>();
   let current: string | null = null;
   for (const e of doc.elements) {
     const starts = byAnchor.get(e.id);
-    if (starts) current = starts;
+    if (starts) current = starts.id;
     else if (e.type === 'scene') current = null;
     if (current) out.set(e.id, current);
+    // A highlighted shot covers only its own line.
+    if (starts?.excerpt) current = null;
   }
   return out;
 }
@@ -516,7 +518,16 @@ export function propsByShot(doc: Pick<ScreenplayDoc, 'elements' | 'shots' | 'pro
     const sid = blocks.get(e.id);
     if (sid && e.type !== 'character') text.set(sid, `${text.get(sid) ?? ''}\n${e.text}`);
   }
+  for (const s of doc.shots) if (s.excerpt?.trim()) text.set(s.id, s.excerpt);
   const out = new Map<string, Prop[]>();
   for (const s of doc.shots) out.set(s.id, (doc.props ?? []).filter((p) => propNames(p).some((n) => mentionsWord(text.get(s.id) ?? '', n))));
   return out;
+}
+
+/** Script order for shots: by their line, then by where the highlight starts in it. */
+export function sortShots<T extends { anchorId: string; excerpt?: string }>(shots: T[], elements: ScriptElement[]): T[] {
+  const order = new Map(elements.map((e, i) => [e.id, i]));
+  const text = new Map(elements.map((e) => [e.id, e.text]));
+  const at = (s: T) => (s.excerpt ? Math.max(0, (text.get(s.anchorId) ?? '').indexOf(s.excerpt)) : -1);
+  return [...shots].sort((a, b) => (order.get(a.anchorId) ?? 0) - (order.get(b.anchorId) ?? 0) || at(a) - at(b));
 }
