@@ -14,9 +14,11 @@ import type { Prop, Screenplay, Shot } from '../types';
 import { searchOpenverseImages, searchPexels, searchUnsplash, type ImageCandidate, type SearchOpts } from './sources';
 
 export interface FindPlan {
-  /** One sentence: the photo we are looking for. */
+  /** What we're looking for, in the script's own words (and the notes). */
   look: string;
   queries: string[];
+  /** The writer typed these searches: used exactly, nothing planned. */
+  own?: boolean;
   /** The adjustment notes the search followed. */
   notes: string[];
 }
@@ -67,7 +69,11 @@ function save(id: number, patch: Partial<Pick<ShotFind, 'status' | 'progress' | 
 
 // ── what to look for ─────────────────────────────────────────────────────────
 
-/** The shot in plain words for the search planner. Characters by look, never by name. */
+/**
+ * The shot in plain words for the search planner: only what the script says
+ * is there. People by gender or kind (never names or looks), no shot type,
+ * lens or film style (those aren't things a photo search can find).
+ */
 export function shotBrief(sp: Screenplay, shot: Shot): string {
   const doc = sp.doc;
   const sec = shotSection(doc, shot);
@@ -76,50 +82,87 @@ export function shotBrief(sp: Screenplay, shot: Shot): string {
   const action = visualText(sec.elements);
   const people = presentCharacters(sec.elements, doc.characters).map((p) => {
     const c = p.character;
-    const who = [c?.age, c?.gender, c?.kind && c.kind !== 'human' ? c.species || c.kind : ''].filter(Boolean).join(' ').trim();
-    return `${p.name} = ${who || 'a person'}${c?.appearance ? ` (${c.appearance.slice(0, 160)})` : ''}`;
+    const who = c?.kind && c.kind !== 'human' ? c.species || c.kind : c?.gender ? `a ${c.gender.trim().toLowerCase()} person` : 'a person';
+    return `${p.name} = ${who}`;
   });
   return [
-    shot.type ? `Shot type: ${shot.type}${shot.lens ? `, ${shot.lens}mm lens` : ''}` : '',
     h ? `Setting: ${[h.setting, h.location, h.time].filter(Boolean).join(', ')}` : sec.scene?.text ? `Setting: ${sec.scene.text}` : '',
     action ? `Moment: ${firstMoment(action, 40)}` : '',
-    people.length ? `People (use their look, never their names): ${people.join('; ')}` : '',
-    doc.settings.style?.trim() ? `Film style: ${doc.settings.style.trim()}` : '',
+    people.length ? `People (never use their names): ${people.join('; ')}` : '',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
+/** What the finder shows as "Looking for": the script's own words, then the notes. */
+export function lookOf(brief: string, notes: string[]): string {
+  const line = (label: string) => new RegExp(`^${label}: (.*)$`, 'mi').exec(brief)?.[1] ?? '';
+  const where = line('Setting').replace(/^(interior|exterior|interior\/exterior|establishing),?\s*/i, '');
+  const parts = [line('Moment'), where && `(${where})`].filter(Boolean).join(' ');
+  return [parts, ...notes.map((n) => `· ${n}`)].filter(Boolean).join(' ');
+}
+
 const PLAN_SYSTEM =
-  'You find reference photos for a storyboard frame in free stock photo libraries (Flickr, Wikimedia, Pexels). Their search matches ' +
-  'words in photo titles and tags, so write queries the way a photographer titles a photo: 3 or 4 plain words naming a SUBJECT and a ' +
-  'PLACE or SITUATION that are both visible, e.g. "young man smartphone street", "woman kitchen night", "lightning city skyline". ' +
-  'People are generic ("young man", "old woman", "girl", "couple"): no names, ages, numbers, hair or eye colour, and never a famous person. ' +
-  'Never a lone verb, adjective or emotion ("sneer", "lean", "angry"), never film or camera words ("shot", "close-up", "lens"). ' +
-  'Mix: two queries for the whole moment (subject in its place), one for the subject alone, one for the place alone. ' +
-  'Follow the adjustment notes first: they override the script where they conflict. ' +
-  'Example. Shot: a young man in a hoodie sneers at his phone on a stormy city street. Queries: ["young man smartphone street", ' +
-  '"man phone city night", "young man hoodie smartphone", "stormy city street"]. ' +
-  'Return {"look": "one sentence: the photo we want, people described generically", "queries": ["4 queries"]}.';
+  'You turn one moment of a screenplay into searches for free stock photo libraries, whose search matches words in photo titles and tags. ' +
+  'Use ONLY things the script excerpt or the adjustment notes say are there: never add a place, object, weather, time of day, mood, style ' +
+  'or detail they don\'t mention. Each query is 2 to 4 plain words for something visible: who or what, and where. People are generic ' +
+  '(man, woman, person, child): never names, ages, numbers or hair colour. No camera or film words. ' +
+  'Adjustment notes override the script where they conflict. ' +
+  'Give up to 4 queries: the whole moment first, then the subject alone, then the place alone. ' +
+  'Return {"queries": ["..."]}.';
+
+/** Generic words a query may use even when the script doesn't (people and places in general). */
+const GENERIC = new Set('man men woman women person people boy girl child children kid kids couple crowd young old street room'.split(' '));
+
+/** Keep only query words the script or notes contain (or generic people words): the model may not add its own. */
+export function onlyAsked(queries: string[], source: string): string[] {
+  const allowed = new Set(
+    source
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2)
+      .map(stem),
+  );
+  const out = queries
+    .map((q) =>
+      q
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !STOP.has(w) && (GENERIC.has(w) || allowed.has(stem(w))))
+        .slice(0, 4)
+        .join(' '),
+    )
+    .filter((q) => q.length > 2);
+  return [...new Set(out)];
+}
 
 export async function planFind(brief: string, notes: string[], names: string[] = []): Promise<FindPlan> {
   const strip = (q: string) => names.reduce((s, n) => s.replace(new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ''), q).replace(/\s+/g, ' ').trim();
+  const look = strip(lookOf(brief, notes));
+  const source = strip(`${brief}\n${notes.join('\n')}`);
   try {
-    const out = await llmJson<{ look?: unknown; queries?: unknown }>(
+    const out = await llmJson<{ queries?: unknown }>(
       PLAN_SYSTEM,
       `${brief || '(no script for this shot)'}${notes.length ? `\n\nAdjustment notes:\n${notes.map((n) => `- ${n}`).join('\n')}` : ''}`,
-      { temperature: 0.3 },
+      { temperature: 0.2 },
     );
-    const queries = (Array.isArray(out.queries) ? out.queries : [])
-      .map((q) => strip(String(q)).toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60))
-      .filter((q) => q.split(' ').length >= 1 && q.length > 2);
-    const unique = [...new Set(queries)].slice(0, 5);
-    const look = strip(typeof out.look === 'string' ? out.look : '').replace(/^[\s,;:.-]+/, '').slice(0, 300);
-    if (unique.length) return { look, queries: unique, notes };
+    const queries = onlyAsked((Array.isArray(out.queries) ? out.queries : []).map((q) => strip(String(q))), source).slice(0, 4);
+    if (queries.length) return { look, queries, notes };
   } catch {
     /* fall back to words from the script */
   }
-  return { look: '', queries: ruleQueries(brief, notes, names), notes };
+  return { look, queries: ruleQueries(brief, notes, names), notes };
+}
+
+/** The writer's own search words, used exactly as typed (cleaned). */
+export function ownQueries(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out = raw
+    .map((q) => String(q ?? '').toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60))
+    .filter((q) => q.length > 1);
+  return [...new Set(out)].slice(0, 6);
 }
 
 const STOP = new Set(
@@ -200,8 +243,14 @@ export function planPropFind(p: Prop): FindPlan {
 
 // ── running ──────────────────────────────────────────────────────────────────
 
-export function createFind(sp: Screenplay, shotId: string): ShotFind {
-  const r = db.prepare('INSERT INTO screenplay_shot_finds (screenplay_id, shot_id) VALUES (?, ?)').run(sp.id, shotId);
+export function createFind(sp: Screenplay, shotId: string, queries: string[] = []): ShotFind {
+  let plan: FindPlan | null = null;
+  if (queries.length) {
+    const shot = sp.doc.shots.find((x) => x.id === shotId);
+    const notes = shot ? activeAdjustments(shot) : [];
+    plan = { look: shot ? lookOf(shotBrief(sp, shot), notes) : queries.join(', '), queries, notes, own: true };
+  }
+  const r = db.prepare('INSERT INTO screenplay_shot_finds (screenplay_id, shot_id, plan) VALUES (?, ?, ?)').run(sp.id, shotId, JSON.stringify(plan ?? { look: '', queries: [], notes: [] }));
   kick();
   return getFind(Number(r.lastInsertRowid))!;
 }

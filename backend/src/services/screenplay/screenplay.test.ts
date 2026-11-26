@@ -691,18 +691,44 @@ test('casting asks for each look in turn, keeps the brief, and falls back to the
 
 // ── shot finder ──
 
-test('the shot brief describes people by look, and queries never carry names', async () => {
+test('the shot brief holds only what the script says; searches can only use the script, the notes or generic people words', async () => {
   const sp = store.createScreenplay(1, 'Finder brief', doc());
   const brief = finder.shotBrief(sp, sp.doc.shots[0]);
-  assert.match(brief, /Shot type: Wide establishing/);
-  assert.match(brief, /Setting: Interior, Jane's kitchen, night/);
-  assert.match(brief, /Moment: Rain hammers the window\./);
-  assert.match(brief, /Jane = a person \(woman in her forties/);
+  assert.equal(brief, "Setting: Interior, Jane's kitchen, night\nMoment: Rain hammers the window. JANE stands at the counter, gripping a knife.\nPeople (never use their names): Jane = a person");
+  assert.doesNotMatch(brief, /Wide establishing|lens|style|grey hair/i, 'no shot type, lens, style or looks');
+  assert.equal(finder.lookOf(brief, ['no knife, a mug instead']), "Rain hammers the window. JANE stands at the counter, gripping a knife. (Jane's kitchen, night) · no knife, a mug instead");
+  // The model adds things the script never said: they're removed.
+  const source = `${brief}\nno knife, a mug instead`;
+  assert.deepEqual(finder.onlyAsked(['woman kitchen knife', 'lightning city skyline', 'cosy kitchen sunset', 'rainy window', 'woman mug'], source), [
+    'woman kitchen knife',
+    'kitchen',
+    'rainy window',
+    'woman mug',
+  ]);
   const q = finder.ruleQueries(brief, ['no knife, a mug instead'], ['Jane', 'Tom']);
-  assert.ok(q.length >= 2);
   assert.ok(q.every((x) => !/jane|tom/i.test(x)), q.join(' | '));
   assert.ok(q.some((x) => /kitchen/.test(x)));
   assert.ok(q.some((x) => /mug/.test(x)), 'adjustment notes become searches');
+  assert.deepEqual(finder.ownQueries(['  Red Phone! ', 'red phone', 'x', 7]), ['red phone']);
+  const real = { ...finder.deps };
+  const searched: string[] = [];
+  let planned = false;
+  try {
+    finder.deps.planFind = async () => {
+      planned = true;
+      return { look: '', queries: ['x'], notes: [] };
+    };
+    finder.deps.searchOpenverseImages = async (q) => (searched.push(q), []);
+    finder.deps.searchPexels = async () => [];
+    finder.deps.searchUnsplash = async () => [];
+    const own = finder.createFind(sp, 'sh1', ['red phone', 'kitchen']);
+    assert.deepEqual([own.plan.own, own.plan.queries], [true, ['red phone', 'kitchen']]);
+    for (let i = 0; i < 100 && !['done', 'failed'].includes(finder.getFind(own.id)!.status); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal(planned, false, 'the writer’s own words are used exactly, nothing planned');
+    assert.deepEqual([...new Set(searched)], ['red phone', 'kitchen']);
+  } finally {
+    Object.assign(finder.deps, real);
+  }
 });
 
 test('a find proposes ten varied photos, find more adds ten new ones, and a pick is kept with its licence', async () => {

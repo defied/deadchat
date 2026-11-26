@@ -9,6 +9,7 @@ import type { Adjustment, Detail, ImageCandidate, Shot, ShotFind } from '../../a
 import { Modal } from '../ui';
 import { useScreenplayActions } from './actions';
 import { AdjustmentNotes } from './AdjustmentNotes';
+import { SearchWords } from './SearchWords';
 
 const busyStates: ShotFind['status'][] = ['queued', 'planning', 'searching'];
 
@@ -37,12 +38,20 @@ export function ShotFinder({
   const [keeping, setKeeping] = useState(false);
   const started = useRef(false);
 
-  const search = useCallback(async () => {
+  const [words, setWords] = useState<string[]>([]);
+  const findId = find?.id;
+  const planned = find?.plan.queries.join('\n') ?? '';
+  // Show each search's words; the writer can edit them before searching again.
+  useEffect(() => {
+    setWords(planned ? planned.split('\n') : []);
+  }, [findId, planned]);
+
+  const search = useCallback(async (own?: string[]) => {
     setError(null);
     setSelected(null);
     try {
       await flush();
-      setFind(await api.startFind(screenplayId, shot.id));
+      setFind(await api.startFind(screenplayId, shot.id, own));
     } catch (e) {
       setError(msg(e));
     }
@@ -110,6 +119,7 @@ export function ShotFinder({
 
   const notesNow = activeNotes(shot);
   const notesChanged = !!find && find.plan.queries.length > 0 && notesNow.join('\n') !== (find.plan.notes ?? []).join('\n');
+  const wordsEdited = !!find && words.join('\n') !== planned;
   const pick = find?.candidates.find((c) => c.key === selected) ?? null;
 
   return (
@@ -161,15 +171,11 @@ export function ShotFinder({
       <div className="sp-find">
         <div className="sp-find-top">
           <div className="sp-find-plan">
-            <span className="sp-adj-head">Looking for</span>
+            <span className="sp-adj-head">From the script</span>
             {find?.plan.look ? <p>{find.plan.look}</p> : <p className="field-hint">{running ? 'Reading the shot…' : 'What the script describes for this shot.'}</p>}
-            {!!find?.plan.queries.length && (
-              <div className="sp-find-queries">
-                {find.plan.queries.map((q) => (
-                  <span key={q} className="sp-chip">{q}</span>
-                ))}
-              </div>
-            )}
+            <span className="sp-adj-head">Searching for</span>
+            <SearchWords words={words} onChange={setWords} disabled={running} />
+            <span className="field-hint">Only these words are searched. Remove any you don’t want, or add your own.</span>
           </div>
           <div className="sp-find-notes">
             <AdjustmentNotes
@@ -177,8 +183,14 @@ export function ShotFinder({
               onChange={(adjustments: Adjustment[]) => onPatch({ adjustments }, 'adjustments')}
               hint="Steer the search: “night, not day”, “wider”, “no cars”. They also guide the AI when it recreates the frame."
             />
-            <button className={`btn btn-sm ${notesChanged ? 'btn-primary' : ''}`} onClick={() => void search()} disabled={running}>
-              <RefreshCw size={13} className={running && !find?.candidates.length ? 'spin' : ''} /> {notesChanged ? 'Search again with these notes' : 'Search again'}
+            <button
+              className={`btn btn-sm ${notesChanged || wordsEdited ? 'btn-primary' : ''}`}
+              onClick={() => void (wordsEdited ? search(words) : search())}
+              disabled={running || (wordsEdited && !words.length)}
+              title={wordsEdited ? 'Search exactly these words' : 'Read the script and notes again and choose the words'}
+            >
+              <RefreshCw size={13} className={running && !find?.candidates.length ? 'spin' : ''} />{' '}
+              {wordsEdited ? 'Search these words' : notesChanged ? 'Search again with these notes' : 'Search again'}
             </button>
           </div>
         </div>

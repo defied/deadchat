@@ -10,6 +10,7 @@ import { EmptyState, Field } from '../ui';
 import { newId, propsByShot } from './format';
 import { SpImage } from './media';
 import { Tile, msg } from './ShotFinder';
+import { SearchWords } from './SearchWords';
 
 interface Props {
   screenplayId: number;
@@ -242,11 +243,18 @@ function PropSearch({
   const running = !!find && ['queued', 'planning', 'searching'].includes(find.status);
   const kept = new Set(photos.map((m) => api.foundMeta(m)?.key).filter(Boolean));
 
-  const search = async () => {
+  const [words, setWords] = useState<string[]>([]);
+  const planned = find?.plan.queries.join('\n') ?? '';
+  useEffect(() => {
+    setWords(planned ? planned.split('\n') : []);
+  }, [find?.id, planned]);
+  const edited = !!find && words.join('\n') !== planned;
+
+  const search = async (own?: string[]) => {
     setError(null);
     try {
       await flush();
-      setFind(await api.startPropFind(screenplayId, prop.id));
+      setFind(await api.startPropFind(screenplayId, prop.id, own));
     } catch (e) {
       setError(msg(e));
     }
@@ -287,14 +295,12 @@ function PropSearch({
   return (
     <div className="sp-prop-search">
       <div className="sp-prop-search-head">
-        <span className="sp-adj-head">Photos of {prop.name}</span>
-        {!!find?.plan.queries.length && (
-          <span className="sp-find-queries">
-            {find.plan.queries.map((q) => <span key={q} className="sp-chip">{q}</span>)}
-          </span>
-        )}
+        <span className="sp-adj-head">Searching for</span>
+        <SearchWords words={words} onChange={setWords} disabled={running} />
         <span className="sp-grow" />
-        <button className="btn btn-sm" onClick={() => void search()} disabled={running}>Search again</button>
+        <button className={`btn btn-sm ${edited ? 'btn-primary' : ''}`} onClick={() => void (edited ? search(words) : search())} disabled={running || (edited && !words.length)}>
+          {edited ? 'Search these words' : 'Search again'}
+        </button>
         <button className="btn btn-sm" onClick={onClose}>Done</button>
       </div>
       {error && <div className="sp-shot-warn"><AlertTriangle size={12} /> {error}</div>}
