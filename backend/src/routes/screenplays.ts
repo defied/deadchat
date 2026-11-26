@@ -11,6 +11,9 @@ import multer from 'multer';
 import { saveMedia, saveMediaFile } from '../services/mediaStore';
 import { createHunt, getHunt, keepCandidate, listHunts } from '../services/screenplay/sounds/gatherer';
 import { summarizeShot } from '../services/screenplay/summarize';
+import { mentorTurn } from '../services/screenplay/mentor';
+import { SETUP_FIELDS, cleanSetup, type SetupField } from '../services/screenplay/cinema';
+import type { MentorState } from '../services/screenplay/types';
 import { createFind, findMore, getFind, keepFound, latestFind, ownQueries, propTarget } from '../services/screenplay/finds/finder';
 import { queueLines, voiceTarget } from '../services/screenplay/voices';
 import { suggestShots } from '../services/screenplay/suggestShots';
@@ -127,6 +130,32 @@ function cleanPitch(p: any): Pitch | undefined { // eslint-disable-line @typescr
 
 const LENS_TYPE_IDS = LENS_TYPES.map((l) => l.id);
 
+function cleanMentor(raw: unknown): MentorState | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const m = raw as Record<string, unknown>;
+  const fields = Object.keys(SETUP_FIELDS);
+  const messages = (Array.isArray(m.messages) ? m.messages : [])
+    .slice(-40)
+    .map((x) => ({ from: (x as { from?: unknown })?.from === 'writer' ? ('writer' as const) : ('mentor' as const), text: str((x as { text?: unknown })?.text, 2000) ?? '' }))
+    .filter((x) => x.text);
+  const suggestions = (Array.isArray(m.suggestions) ? m.suggestions : [])
+    .slice(0, 8)
+    .map((x) => x as { field?: unknown; value?: unknown; why?: unknown })
+    .filter((x) => typeof x.field === 'string' && fields.includes(x.field) && cleanSetup({ [x.field]: x.value }))
+    .map((x) => ({ field: x.field as SetupField, value: Object.values(cleanSetup({ [x.field as string]: x.value })!)[0]!, why: str(x.why, 300) ?? '' }));
+  const questions = (Array.isArray(m.questions) ? m.questions : [])
+    .slice(0, 4)
+    .map((x) => x as { field?: unknown; question?: unknown; options?: unknown })
+    .map((x) => ({
+      ...(typeof x.field === 'string' && fields.includes(x.field) ? { field: x.field as SetupField } : {}),
+      question: str(x.question, 300) ?? '',
+      options: (Array.isArray(x.options) ? x.options : []).slice(0, 8).map((o) => str(o, 80) ?? '').filter(Boolean),
+    }))
+    .filter((x) => x.question);
+  if (!messages.length && !suggestions.length && !questions.length) return undefined;
+  return { messages, ...(suggestions.length ? { suggestions } : {}), ...(questions.length ? { questions } : {}), ...(m.ready === true ? { ready: true } : {}) };
+}
+
 export function cleanDoc(raw: unknown): ScreenplayDoc {
   const d = (raw ?? {}) as Partial<ScreenplayDoc>;
   const base = emptyDoc();
@@ -141,6 +170,8 @@ export function cleanDoc(raw: unknown): ScreenplayDoc {
     excerpt: str(s?.excerpt, 4000),
     summary: str(s?.summary, 1000),
     ...(s?.peopleOptional === true ? { peopleOptional: true } : {}),
+    setup: cleanSetup(s?.setup),
+    mentor: cleanMentor(s?.mentor),
     seconds: num(s?.seconds, 0, 3600),
     lens: num(s?.lens, 8, 800),
     lensType: oneOf(s?.lensType, LENS_TYPE_IDS),
@@ -483,6 +514,16 @@ router.post('/:id/shots/summary', owned, (req, res) =>
     const excerpt = (str(req.body?.excerpt, 4000) ?? '').trim();
     const heading = (str(req.body?.heading, 400) ?? '').trim();
     return { summary: await summarizeShot(heading, excerpt, sp(res).doc.characters.map((c) => c.name)) };
+  }),
+);
+
+// The shot mentor: one turn of the conversation about how to set up this shot.
+router.post('/:id/shots/:shotId/mentor', owned, (req, res) =>
+  wrap(res, async () => {
+    const s = sp(res);
+    const shot = s.doc.shots.find((x) => x.id === id(req.params.shotId));
+    if (!shot) throw new Error('That shot no longer exists. Save and try again.');
+    return { mentor: await mentorTurn(s, shot, str(req.body?.message, 1000) ?? undefined) };
   }),
 );
 

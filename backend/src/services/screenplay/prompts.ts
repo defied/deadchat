@@ -4,6 +4,7 @@
 import { createHash } from 'crypto';
 import { presentCharacters, shotSection, visualText } from './script';
 import { defaultLens, describeStaging } from './staging';
+import { setupPhrases, typeFromSetup } from './cinema';
 import type { Character, Prop, ScreenplayDoc, Shot } from './types';
 
 export const RATIO_ASPECT: Record<string, number> = { '16:9': 16 / 9, '21:9': 21 / 9, '4:3': 4 / 3, '1:1': 1, '9:16': 9 / 16 };
@@ -244,7 +245,9 @@ export function planShot(
   const section = shotSection(doc, shot);
   if (!section) return { waiting: 'This shot’s script line was deleted', characters: [] };
   const blockHash = hashOf(section.scene?.text ?? '', section.elements.map((e) => [e.type, e.text]), shot.summary ?? '');
-  if (!shot.type?.trim()) return { waiting: 'Pick a shot type to render', characters: [], blockHash };
+  // The shot list (setup) says it best; else the free-text shot type.
+  const type = typeFromSetup(shot.setup) ?? shot.type?.trim();
+  if (!type) return { waiting: 'Set up the shot (or pick a shot type) to render', characters: [], blockHash };
   // The shot's summary (what's in it), when there is one; else its script text.
   const action = shot.summary?.trim() || visualText(section.elements);
   const h = section.heading;
@@ -255,7 +258,7 @@ export function planShot(
   const plan = doc.plans[sceneId];
   const camera = plan?.items.find((it) => it.kind === 'camera' && it.ref === shot.id);
   const ratio = doc.settings.ratio ?? '21:9';
-  const lens = shot.lens ?? camera?.lens ?? defaultLens(shot.type);
+  const lens = shot.lens ?? camera?.lens ?? defaultLens(type);
   const staging = describeStaging(plan, camera ? { ...camera, lens } : undefined, doc.characters, RATIO_ASPECT[ratio] ?? 16 / 9, lens);
 
   // With a set plan, only the characters the camera sees are described.
@@ -274,7 +277,8 @@ export function planShot(
   const inferred = cast.length === 1 ? genderFromText(blockText) : null;
   const moment = firstMoment(action);
   const parts = [
-    `Cinematic film still, ${composition(shot.type, cast[0]?.name ?? null, cast[1]?.name ?? null)}`,
+    `Cinematic film still, ${composition(type, cast[0]?.name ?? null, cast[1]?.name ?? null)}`,
+    ...setupPhrases(shot.setup),
     lensLook(lens, shot.lensType || doc.settings.lensType),
     flareLine(shot.lensType || doc.settings.lensType, `${where} ${moment}`),
     where,

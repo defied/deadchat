@@ -1,3 +1,4 @@
+import type { SetupField, ShotSetup } from '../components/screenplay/cinema';
 import client from './client';
 
 export type ElementType =
@@ -27,6 +28,10 @@ export interface Shot {
   summary?: string;
   /** Photo search: the photo needn't have a person in it (place, angle and mood). */
   peopleOptional?: boolean;
+  /** The shot list: size, framing, angle, lens, lighting, composition, movement. */
+  setup?: ShotSetup;
+  /** The shot mentor's conversation. */
+  mentor?: MentorState;
   seconds?: number;
   lens?: number;
   lensType?: string;
@@ -634,4 +639,19 @@ export function recreatedFrom(m: ScreenplayMedia | undefined | null): { from: nu
 export async function summarizeShot(id: number, heading: string, excerpt: string): Promise<string> {
   const { data } = await client.post<{ summary: string }>(`/api/screenplays/${id}/shots/summary`, { heading, excerpt });
   return data.summary;
+}
+
+// ── shot mentor ──────────────────────────────────────────────────────────────
+
+export interface MentorState {
+  messages: Array<{ from: 'mentor' | 'writer'; text: string }>;
+  suggestions?: Array<{ field: SetupField; value: string; why: string }>;
+  questions?: Array<{ field?: SetupField; question: string; options: string[] }>;
+  ready?: boolean;
+}
+
+/** One mentor turn (the writer's message, if any, and the mentor's answer). */
+export async function mentorTurn(id: number, shotId: string, message?: string): Promise<MentorState> {
+  const { data } = await client.post<{ mentor: MentorState }>(`/api/screenplays/${id}/shots/${shotId}/mentor`, message ? { message } : {});
+  return data.mentor;
 }

@@ -1177,3 +1177,66 @@ test('summaries keep character names exactly and never invent names', async () =
     summarize.deps.llmJson = real;
   }
 });
+
+// ── shot list + mentor ──
+
+test('shot list: values are kept only from the lists; the setup names the shot and shapes the drawing', () => {
+  const cinema = require('./cinema') as typeof import('./cinema');
+  assert.deepEqual(cinema.cleanSetup({ size: 'medium close up', framing: 'Over the shoulder', angle: 'sideways', junk: 'x' }), { size: 'Medium Close Up', framing: 'Over the shoulder' });
+  assert.equal(cinema.cleanSetup({ angle: 'nope' }), undefined);
+  assert.equal(cinema.typeFromSetup({ size: 'Close Up', framing: 'Over the shoulder', angle: 'Low angle' }), 'Over the shoulder, Close Up, Low angle');
+  assert.equal(cinema.typeFromSetup({ size: 'Wide', framing: 'Single', angle: 'Eye level' }), 'Wide');
+  const d = doc();
+  d.shots[0].type = undefined;
+  d.shots[0].setup = { size: 'Close Up', framing: 'Over the shoulder', lens: 'Long lens / telephoto', lightType: 'Practical light', lightCondition: 'Low contrast' };
+  const p = prompts.planShot(d, d.shots[0]);
+  assert.match(p.prompt!, /^Cinematic film still, over-the-shoulder shot/);
+  assert.match(p.prompt!, /telephoto lens, compressed background/);
+  assert.match(p.prompt!, /Lighting: practical light, low contrast/);
+  const clean = cleanDoc({ ...d, shots: [{ ...d.shots[0], setup: { size: 'huge' }, mentor: { messages: [{ from: 'x', text: 'hi' }], suggestions: [{ field: 'size', value: 'close up', why: 'w' }, { field: 'bogus', value: 'x' }], ready: true } }] });
+  assert.equal(clean.shots[0].setup, undefined);
+  assert.deepEqual(clean.shots[0].mentor, { messages: [{ from: 'mentor', text: 'hi' }], suggestions: [{ field: 'size', value: 'Close Up', why: 'w' }], ready: true });
+});
+
+test('the mentor suggests and asks from the lists, never sets the shot list, and is only ready when size, framing and angle are set', async () => {
+  const mentor = require('./mentor') as typeof import('./mentor');
+  const d = doc();
+  d.shots[0] = { id: 'sh1', anchorId: 'a1', excerpt: 'JANE stands at the counter, gripping a knife.', summary: 'Jane grips a knife at the counter.' };
+  const sp = store.createScreenplay(1, 'Mentor', d);
+  const real = mentor.deps.llmJson;
+  try {
+    let asked = '';
+    mentor.deps.llmJson = (async (_s: string, user: string) => {
+      asked = user;
+      return {
+        reply: 'A knife in a tight grip is about tension. A Close Up on the hand and face makes the audience feel it.',
+        suggestions: [{ field: 'size', value: 'close up', why: 'tension' }, { field: 'angle', value: 'Wonky', why: 'x' }, { field: 'mood', value: 'dark' }],
+        questions: [{ field: 'framing', question: 'Do we see her face or her hands?', options: ['Single', 'Insert', 'Banana'] }, { question: 'Only one option', options: ['a'] }],
+        ready: true,
+      };
+    }) as typeof real;
+    const first = await mentor.mentorTurn(sp, sp.doc.shots[0]);
+    assert.match(asked, /Highlighted text: JANE stands at the counter, gripping a knife\./);
+    assert.match(asked, /Set so far: nothing/);
+    assert.match(asked, /open the conversation/);
+    assert.deepEqual(first.suggestions, [{ field: 'size', value: 'Close Up', why: 'tension' }]);
+    assert.deepEqual(first.questions, [{ field: 'framing', question: 'Do we see her face or her hands?', options: ['Single', 'Insert'] }]);
+    assert.equal(first.ready, undefined, 'not ready while size, framing and angle are open');
+    assert.equal(sp.doc.shots[0].setup, undefined, 'the mentor never changes the shot list');
+
+    const shot = { ...sp.doc.shots[0], setup: { size: 'Close Up', framing: 'Single', angle: 'Eye level' }, mentor: first };
+    const second = await mentor.mentorTurn(sp, shot, 'What does eye level mean?');
+    assert.match(asked, /Writer: What does eye level mean\?/);
+    assert.match(asked, /Set so far: Shot size: Close Up; Framing: Single; Camera angle: Eye level/);
+    assert.equal(second.ready, true);
+    assert.deepEqual(second.messages.slice(-2).map((m) => m.from), ['writer', 'mentor']);
+    assert.equal(second.suggestions?.some((s) => s.field === 'size'), undefined, 'no suggestion that matches what is already set');
+  } finally {
+    mentor.deps.llmJson = real;
+  }
+});
+
+test('framing check follows the shot list when there is one', () => {
+  const framing = require('./finds/framing') as typeof import('./finds/framing');
+  assert.deepEqual(framing.expectedFor('Wide', { size: 'Close Up', lightType: 'Moonlight', movement: 'Pan' }), { size: 'Close Up', lightType: 'Moonlight' });
+});

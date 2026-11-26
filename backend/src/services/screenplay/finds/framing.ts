@@ -4,20 +4,22 @@
 
 import { getOllamaUrl } from '../../appSettings';
 
-export const SIZES = ['Extreme Wide', 'Wide', 'Medium Wide', 'Medium', 'Medium Close Up', 'Close Up', 'Extreme Close Up'] as const;
-export const FRAMINGS = ['Single', 'Two shot', 'Group shot', 'Over the shoulder', 'Point of view', 'Insert'] as const;
-export const ANGLES = ['Aerial', 'Overhead', 'High angle', 'Eye level', 'Low angle', 'Dutch angle'] as const;
+import { ANGLES, COMPOSITIONS, FRAMINGS, LENS_SIZES, LIGHT_CONDITIONS, LIGHT_TYPES, SIZES, type ShotSetup } from '../cinema';
 
-export interface Expected {
-  size?: (typeof SIZES)[number];
-  framing?: (typeof FRAMINGS)[number];
-  angle?: (typeof ANGLES)[number];
-}
+export { ANGLES, FRAMINGS, SIZES };
+
+export type Expected = ShotSetup;
 
 /** What the writer's shot type asks for, in the terms the model knows. */
-export function expectedFor(type: string | undefined): Expected {
+export function expectedFor(type: string | undefined, setup?: ShotSetup): Expected {
   const t = (type ?? '').toLowerCase();
   const out: Expected = {};
+  // A shot set up field by field says exactly what it wants.
+  if (setup) {
+    const { movement: _movement, ...rest } = setup;
+    void _movement;
+    if (Object.keys(rest).length) return { ...rest };
+  }
   if (/over.?the.?shoulder|\bots\b/.test(t)) out.framing = 'Over the shoulder';
   else if (/\bpov\b|point of view/.test(t)) out.framing = 'Point of view';
   else if (/insert/.test(t)) out.framing = 'Insert';
@@ -70,35 +72,37 @@ export function parseChoice(text: string, options: readonly string[]): string | 
   return byName ?? null;
 }
 
-/** Compare the photo's framing with what the shot type asks for. Null when the shot type asks for nothing checkable. */
-export async function checkFraming(model: string, imageB64: string, shotType: string | undefined): Promise<Framing | null> {
-  const want = expectedFor(shotType);
-  if (!want.size && !want.framing && !want.angle) return null;
+const QUESTIONS: Array<{ field: keyof Expected; question: string; options: readonly string[]; ordered?: boolean }> = [
+  { field: 'size', question: 'What is the shot size of this image?', options: SIZES, ordered: true },
+  { field: 'framing', question: 'What is the framing of this shot?', options: FRAMINGS },
+  { field: 'angle', question: 'What is the camera angle of this shot?', options: ANGLES },
+  { field: 'lens', question: 'What lens size was used for this shot?', options: LENS_SIZES, ordered: true },
+  { field: 'lightType', question: 'What is the lighting type of this shot?', options: LIGHT_TYPES },
+  { field: 'lightCondition', question: 'What is the lighting condition of this shot?', options: LIGHT_CONDITIONS },
+  { field: 'composition', question: 'What is the composition of this shot?', options: COMPOSITIONS },
+];
+
+/**
+ * Compare the photo with what the shot asks for (its setup, else its type),
+ * one question per field. Null when nothing is checkable.
+ */
+export async function checkFraming(model: string, imageB64: string, shotType: string | undefined, setup?: ShotSetup): Promise<Framing | null> {
+  const want = expectedFor(shotType, setup);
   const seen: string[] = [];
   const results: Array<'yes' | 'close' | 'no'> = [];
-  if (want.size) {
-    const got = await ask(model, imageB64, 'What is the shot size of this image?', SIZES);
-    if (got) {
-      seen.push(got);
-      const d = Math.abs(SIZES.indexOf(got as (typeof SIZES)[number]) - SIZES.indexOf(want.size));
-      results.push(d === 0 ? 'yes' : d === 1 ? 'close' : 'no');
-    }
-  }
-  if (want.framing) {
-    const got = await ask(model, imageB64, 'What is the framing of this shot?', FRAMINGS);
-    if (got) {
-      seen.push(got);
-      results.push(got === want.framing ? 'yes' : 'no');
-    }
-  }
-  if (want.angle) {
-    const got = await ask(model, imageB64, 'What is the camera angle of this shot?', ANGLES);
-    if (got) {
-      seen.push(got);
-      results.push(got === want.angle ? 'yes' : 'no');
-    }
+  for (const q of QUESTIONS) {
+    const target = want[q.field];
+    if (!target) continue;
+    const got = await ask(model, imageB64, q.question, q.options);
+    if (!got) continue;
+    seen.push(got);
+    if (got === target) results.push('yes');
+    else if (q.ordered && Math.abs(q.options.indexOf(got) - q.options.indexOf(target)) === 1) results.push('close');
+    else results.push('no');
   }
   if (!results.length) return null;
-  const match = results.includes('no') ? 'no' : results.includes('close') ? 'close' : 'yes';
+  const no = results.filter((r) => r === 'no').length;
+  // Most fields right counts as close; the framing check shouldn't sink a photo over one detail.
+  const match = no === 0 ? (results.includes('close') ? 'close' : 'yes') : no * 2 <= results.length - 1 ? 'close' : 'no';
   return { seen: seen.join(' · '), match };
 }
